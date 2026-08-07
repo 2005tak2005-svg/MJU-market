@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+._*
+
+# Claude Code — local settings ต่อเครื่อง ไม่ควร commit
+.claude/settings.local.json
+
+# 🔴 ห้าม commit เด็ดขาด — secret
+.env
+.env.*
+*.pem
+*.key
+**/service_role*
+**/*service-role*
+FLUTTERFLOW_API_TOKEN*
+
+# FlutterFlow export (ถ้ามีคนเผลอ export ลงโฟลเดอร์นี้)
+# repo นี้เก็บเอกสารอย่างเดียว โค้ดที่ export มาไม่ควรอยู่ที่นี่
+export/
+build/
+.dart_tool/
+pubspec.lock
+
+# scratch
+tmp/
+*.tmp
+*.bak

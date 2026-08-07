@@ -1,0 +1,94 @@
+# PATTERNS.md — pattern ที่ใช้ซ้ำข้าม layer
+
+> ไฟล์นี้มีไว้กันการเล่าเรื่องเดิมซ้ำในหลาย layer — layer ไฟล์ให้อ้างรหัส `PT-xx` แทนคัดลอกเนื้อหามาวาง
+
+---
+
+## PT-01 — เข้าถึงชื่อ/รูปผู้ใช้ ผ่าน `public_profiles` เท่านั้น
+
+**ปัญหา:** `"Profile"` มี RLS จำกัด SELECT เฉพาะแถวของตัวเอง (+ admin เห็นหมด) → view ใดก็ตามที่ join `"Profile"` เพื่อดึงชื่อ จะคืน NULL เมื่อ user ธรรมดาเปิดดูข้อมูลคนอื่น
+
+**วิธีแก้:** join `public.public_profiles` (id / full_name / avatar_url) แทน — view นี้ไม่มี `security_invoker` จึงรันด้วยสิทธิ์ owner (`postgres`, `rolbypassrls = true`) ข้าม RLS ของ `"Profile"` ได้ โดย `email`/`phone`/`student_id`/`role` ยังถูกซ่อนเพราะไม่ได้อยู่ใน view
+
+**ใช้ที่ไหนแล้ว:** `products_review_view` (seller_name) · `chat_summary` (member_names) · `chat_messages_view` (sender_name)
+
+**🔴 กฎ:** view/query ใหม่ที่ต้องการชื่อผู้ใช้ ต้องใช้ pattern นี้เสมอ
+**🔴 วิธีตรวจ:** ทดสอบด้วยบัญชี user ธรรมดาที่**ไม่ใช่**เจ้าของข้อมูล — ถ้าเทสด้วย admin จะไม่มีวันเจอบั๊กนี้
+
+---
+
+## PT-02 — find-or-create ห้องแชท (ปุ่ม "แชทกับผู้ขาย")
+
+**ใช้ที่:** `MaterialCard` ใน Admin Inspect (L2) · `ProductDetail` ของผู้ซื้อ (L3) · ทางเข้าห้องแชท (L4)
+**บริบทต่างกันแค่ admin→seller vs buyer→seller — โค้ดเดียวกันใช้ซ้ำได้ทั้งหมด**
+
+Action Flow:
+1. เรียก RPC `find_or_create_chat(user_a, user_b)` ผ่าน action type **"Supabase Function Call"**
+   - `user_a = currentUserId`, `user_b = seller_id` (จาก parameter ที่ widget รับมา)
+2. ได้ `chat_id` กลับมา
+3. **Navigate To** หน้า `chat messages` ส่ง `chat_id` เป็น Page Parameter
+
+> ⚠️ RPC ตัวนี้ **ยังไม่ apply** — ดู `PROPOSED_SQL.md` P-03
+> เหตุผลที่ต้องใช้ RPC: หาห้องที่ทั้งคู่เป็นสมาชิกคือ self-join ข้าม 2 แถวใน `chat_user` FlutterFlow query builder ทำเองไม่ได้
+
+---
+
+## PT-03 — popup + ส่ง Supabase Row ทั้งแถวเป็น parameter
+
+**ใช้ที่:** DataTable → `MaterialCard` (L2 Inspect) · `MaterialCard` → `reason` (L2 reject) · Browse card → `ProductDetail` (L3) · chat list → `chat messages` (L4)
+
+วิธี: ผูก Backend Query กับ **view** (ไม่ใช่ตารางดิบ) แล้วส่ง Row ทั้งแถวไปเป็น component/page parameter — ปลายทาง bind ทุก field ได้เลยโดยไม่ต้อง query ซ้ำ
+
+ข้อดี: query ครั้งเดียว, ชื่อ field ตรงกับ view จึงลดโอกาสผิดกฎ "ชื่อตรง 3 จุด"
+
+---
+
+## PT-04 — realtime alert popup (ผู้ใช้ต้องเปิดหน้าค้างอยู่)
+
+**ใช้ที่:** reject alert ฝั่งผู้ขายใน `MyPost` (L2)
+
+1. เปิด Realtime บนตารางต้นทาง (ทำแล้วกับ `products`, `chat`, `chat_message`)
+2. เปิด **"Listen for realtime updates"** บน Backend Query ของหน้านั้น
+3. **On Data Change** → เช็คเงื่อนไข → เปิด popup component ส่ง row เป็น parameter
+
+**⚠️ ข้อจำกัดที่ต้องยอมรับ:** event fire เฉพาะตอนผู้ใช้เปิดหน้านั้นค้างอยู่พอดี — ถ้าปิดแอปอยู่จะไม่เห็น popup (เห็นเป็นข้อมูลปกติเมื่อเปิดครั้งถัดไป) ถ้าต้องแจ้งได้แม้ปิดแอป ต้องรอ Layer 6
+
+---
+
+## PT-05 — conditional update กัน race condition
+
+**ใช้ที่:** ปุ่ม "จองสินค้า" (L5)
+
+```sql
+UPDATE products SET status = 'reserved' WHERE id = ? AND status = 'available';
+-- ถ้า 0 แถวถูกอัปเดต = มีคนจองไปแล้ว
+```
+
+อย่าเช็คก่อนแล้วค่อย update แยก 2 คำสั่ง — กดพร้อมกันจะได้ทั้งคู่
+
+---
+
+## PT-06 — Custom Function `getOtherUsers` (ชื่อห้องแชท)
+
+- Custom Function ชื่อ `getOtherUsers`, Return Type `String`
+- Arguments: `nicknamesList: List<String>`, `userIdsList: List<String>`, `authUser: String`
+- Logic: loop `userIdsList` คู่กับ `nicknamesList` ตัดตำแหน่งที่ `user_id == authUser` ออก แล้ว join ด้วย `", "`
+- Map argument: `chat_summary.member_names` → `nicknamesList`, `chat_summary.user_ids` → `userIdsList`, Authenticated User ID → `authUser`
+- **Type casting:** FlutterFlow cast จาก Supabase Row เป็น `String` ให้อัตโนมัติ แม้คอลัมน์จริงเป็น `uuid[]` — ไม่ต้อง cast เอง (ยืนยันแล้ว)
+- ทดสอบ: `['John','Joe','Mike']` + `['user1','user2','user3']` + authUser `'user2'` → ต้องได้ `"John, Mike"`
+
+---
+
+## PT-07 — role-based navigation
+
+```
+Action 1: Supabase Auth → Sign In
+Action 2: Backend Query → Query Row บน "Profile" filter id = Authenticated User UID
+Action 3: Conditional
+  ถ้า profileRow.role == "admin"  → Navigate To `HomeAdmin`
+  Else (ครอบคลุม "user" + null)   → Navigate To `home`
+```
+
+- เทียบ string **case-sensitive** พิมพ์ `"admin"`/`"user"` ให้ตรงเป๊ะ
+- ถ้าต้องรองรับ **auto-login** (เปิดแอปตอนมี session ค้าง) ต้องทำ logic เดียวกันซ้ำที่ **on Page Load ของหน้า Splash/Initial** ไม่งั้นไม่ถูก route ตาม role
+- `role` มี CHECK constraint คุ้มครองค่าเพี้ยนอยู่แล้ว

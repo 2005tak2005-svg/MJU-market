@@ -29,9 +29,9 @@ docs/
 ├── STATUS.md          สถานะ 8 layers + คำถามค้าง + แม่แบบเปิด session
 ├── DECISIONS.md       บันทึกการตัดสินใจ (D-xx)
 ├── AGENTS.md          บทบาท agent + write-ownership
-├── agents/            นิยาม subagent (ก็อปไป .claude/agents/ ก่อนใช้)
 ├── layers/L1..L8      วิธีทำแต่ละ layer
 └── checks/L1..L8.sql  query ตรวจสอบต่อ layer
+.claude/agents/        นิยาม subagent — อยู่ที่นี่ที่เดียว ห้ามทำสำเนาไว้ใน docs/
 ```
 
 ## หลักการที่ทำให้เอกสารชุดนี้ไม่บวม

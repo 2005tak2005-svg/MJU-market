@@ -46,7 +46,7 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 | จะใช้ pattern ที่เคยทำแล้ว | `docs/PATTERNS.md` |
 | "ทำไมถึงตัดสินใจแบบนี้" | `docs/DECISIONS.md` |
 | ตรวจงานที่ทำเสร็จ | `docs/checks/Lx.sql` |
-| จะเรียก subagent | `docs/AGENTS.md` |
+| จะเรียก subagent | `docs/AGENTS.md` → นิยามตัวจริงอยู่ `.claude/agents/` เท่านั้น |
 
 > ไม่ต้องอ่านทุกไฟล์ทุกครั้ง — เปิดเท่าที่ตารางบอก
 
@@ -119,4 +119,5 @@ docs/
 ├── layers/L1..L8      วิธีทำแต่ละ layer
 └── checks/L1..L8.sql  query ตรวจสอบ
 .claude/agents/        นิยาม subagent (db-verifier / ui-checker / doc-syncer)
+                       🔴 ที่เดียว — ห้ามทำสำเนาไว้ใน docs/
 ```

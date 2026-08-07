@@ -341,6 +341,21 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 | `private.current_profile_role()` | `with_check` ของ `Users can update own profile` — กันเลื่อนขั้นตัวเอง |
 | `private.current_profile_student_id()` | `with_check` เดียวกัน — กันแก้ `student_id` ที่ตั้งแล้ว |
 
+```sql
+-- ทั้ง 3 ตัวเป็น LANGUAGE sql, STABLE, SECURITY DEFINER, SET search_path TO ''
+CREATE OR REPLACE FUNCTION private.is_admin() RETURNS boolean AS $$
+  SELECT EXISTS (SELECT 1 FROM public."Profile" WHERE id = auth.uid() AND role = 'admin');
+$$;
+
+CREATE OR REPLACE FUNCTION private.current_profile_role() RETURNS varchar AS $$
+  SELECT role FROM public."Profile" WHERE id = auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION private.current_profile_student_id() RETURNS varchar AS $$
+  SELECT student_id FROM public."Profile" WHERE id = auth.uid();
+$$;
+```
+
 > 📌 อยู่ใน schema `private` ไม่ใช่ `public` — query ที่กรอง `nspname='public'` อย่างเดียวจะ**มองไม่เห็น** (`checks/_common.sql` [C7] เดิมพลาดข้อนี้ แก้แล้ว)
 
 ---
@@ -348,3 +363,34 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 ## Storage
 
 **ยังไม่มี bucket** — Layer 2 ต้องสร้าง `product-images` + policy
+
+---
+
+## 🔍 ผล `get_advisors` (2026-08-07)
+
+### 🔴 ERROR ที่ **ห้ามแก้** — อ่านก่อนจะไป "แก้ให้เขียว"
+
+| lint | เป้า |
+|---|---|
+| `security_definer_view` | `public.public_profiles` |
+
+> **นี่คือ D-01 ที่ตั้งใจทำแบบนี้ ไม่ใช่บั๊ก**
+> `public_profiles` **ต้องไม่มี** `security_invoker` เพราะมันต้องรันด้วยสิทธิ์ owner เพื่อให้ user ธรรมดาเห็นชื่อ/รูปคนอื่นได้
+> ถ้าไปใส่ `security_invoker = true` ตามที่ advisor แนะนำ → RLS ของ `"Profile"` จะกลับมาบังคับ → **`seller_name` / `member_names` จะเป็น NULL ทั้งระบบทันที** ซึ่งคือบั๊กที่โปรเจกต์นี้เคยเจอมาแล้ว
+> ตัว view เปิดเผยแค่ `id` / `full_name` / `avatar_url` — `email` / `phone` / `student_id` / `role` ไม่ได้อยู่ในนั้น จึงยอมรับได้
+> **ทดสอบยืนยันแล้ว** ด้วย user ธรรมดา เห็นครบ 4 คน ไม่มี NULL
+
+### ⚠️ WARN ที่ควรจัดการ
+
+| lint | รายละเอียด |
+|---|---|
+| `anon_security_definer_function_executable` | `public.handle_new_user()` เรียกได้ผ่าน `/rest/v1/rpc/handle_new_user` โดย `anon` และ `authenticated` — ควร `REVOKE EXECUTE` เพราะมันเป็น trigger function ไม่ได้ตั้งใจให้เรียกตรง (เรียกตรงจะ error เพราะไม่มี `NEW` แต่ไม่ควรเปิดไว้ตั้งแต่แรก) |
+| `auth_leaked_password_protection` | ปิดอยู่ — เปิดใน Dashboard > Auth ได้ ตรวจรหัสผ่านกับ HaveIBeenPwned |
+
+### ℹ️ INFO / ที่รู้อยู่แล้ว
+
+- `rls_enabled_no_policy` → `reports` (ตั้งใจ รอ P-10)
+- `unindexed_foreign_keys` **7 จุด** — `chat_message.chat_id`, `chat_message.user_id`, `chat_user.user_id`, `products.category_id`, `products.seller_id`, `reports.reported_product_id`, `reports.reporter_id`
+  ยังไม่เร่ง เพราะข้อมูลยังน้อย แต่ `products.seller_id` กับ `chat_message.chat_id` จะเจ็บก่อนเพื่อนเมื่อข้อมูลโต
+- `auth_rls_initplan` **2 policy** ของ `"Profile"` — `auth.uid()` ถูกประเมินใหม่ทุกแถว แก้โดยเปลี่ยนเป็น `(select auth.uid())`
+- `multiple_permissive_policies` — `"Profile"` มี 2 policy ซ้อนกันสำหรับ SELECT/UPDATE (self + admin) เป็นผลจากดีไซน์ ยอมรับได้

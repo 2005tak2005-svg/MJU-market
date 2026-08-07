@@ -53,13 +53,22 @@ SELECT viewname FROM pg_views
 WHERE schemaname = 'public' AND viewname <> 'public_profiles'
   AND definition ILIKE '%"Profile"%';
 
--- [C7] function / trigger ที่มีอยู่จริง
-SELECT p.proname, pg_get_function_arguments(p.oid) AS args
+-- [C7] function ที่มีอยู่จริง
+--      🔴 ต้องรวม schema 'private' ด้วย — helper ของ RLS (is_admin ฯลฯ) อยู่ที่นั่น
+--         เวอร์ชันเดิมกรองแค่ 'public' เลยมองไม่เห็น แล้วสรุปผิดว่า "ยังไม่มี function เลย"
+SELECT n.nspname AS schema, p.proname, pg_get_function_arguments(p.oid) AS args,
+       p.prosecdef AS security_definer, p.proconfig
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public' ORDER BY 1;
+WHERE n.nspname IN ('public','private') ORDER BY 1, 2;
 
-SELECT tgname, c.relname AS on_table
-FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+-- [C7b] trigger ที่มีอยู่จริง — แยกบล็อก (กับดักที่ 1)
+--       🔴 ต้องแสดง schema ด้วย — trigger สำคัญที่สุดของระบบ (on_auth_user_created)
+--          อยู่บน auth.users ไม่ใช่ public จึงดูจากชื่อตารางอย่างเดียวไม่พอ
+SELECT t.tgname, n.nspname AS schema, c.relname AS on_table, t.tgenabled,
+       pg_get_triggerdef(t.oid) AS def
+FROM pg_trigger t
+JOIN pg_class c ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE NOT t.tgisinternal ORDER BY 1;
 
 -- [C8] ⭐ ทดสอบมุมมองของ user ธรรมดา — ข้อที่พลาดบ่อยที่สุด

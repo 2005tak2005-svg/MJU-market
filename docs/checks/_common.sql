@@ -16,6 +16,13 @@
 -- ⚠️ กับดักที่ 3 — ตารางว่าง ผลลัพธ์ 0 แถวก็ "ไม่ใช่ PASS"
 --    เช็คแบบ "ห้ามมี NULL" กับตารางว่างจะผ่านเสมอโดยไม่ได้ตรวจอะไรเลย
 --    ต้องมีข้อมูลจริงก่อน ถึงจะสรุปได้
+--
+-- ✅ ข่าวดี (ยืนยันแล้ว 2026-08-07) — `BEGIN;` ที่ไม่ปิดด้วย COMMIT จะถูก ROLLBACK อัตโนมัติ
+--    ทดสอบด้วยการ UPDATE bio/phone ในบล็อกที่ขึ้นต้นด้วย BEGIN แล้วไม่ COMMIT
+--    → query ทีหลังพบว่าค่ายังเป็น NULL แปลว่าไม่ commit จริง
+--    ⇒ บล็อกทดสอบที่ขึ้นต้นด้วย BEGIN "เขียนจริงไม่ได้" จึงปลอดภัยที่จะทดสอบ UPDATE/INSERT
+--      ว่า policy ปฏิเสธถูกไหม โดยไม่ทิ้งขยะไว้ใน DB
+--    ⚠️ แต่คำสั่งที่ "ไม่มี BEGIN" นำหน้า = autocommit เขียนจริงทันที ระวังให้ดี
 
 -- [C1] ตารางทั้งหมดใน public + สถานะ RLS
 --      คาดหวัง: rls_enabled = true ทุกตาราง
@@ -102,3 +109,34 @@ SELECT chat_id, member_names FROM chat_summary LIMIT 5;
 SELECT
   (SELECT count(*) FROM products_review_view) AS prv_rows_as_postgres,
   (SELECT count(*) FROM chat_summary)         AS chat_rows_as_postgres;
+
+-- [C9] ⭐ ทดสอบด้าน "ลบ" — policy ต้องปฏิเสธ ไม่ใช่แค่ยอมให้ทำสิ่งที่ถูก
+--      ปลอดภัยเพราะ BEGIN ที่ไม่ COMMIT จะ rollback เอง (ดูหัวไฟล์)
+--      คาดหวังทุกข้อ: error 42501 หรือ 0 แถว — ถ้า "สำเร็จ" เมื่อไหร่คือช่องโหว่
+
+-- [C9a] user ยกระดับตัวเองเป็น admin ไม่ได้ → คาดหวัง 42501
+BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"<UID>","role":"authenticated"}';
+UPDATE public."Profile" SET role='admin' WHERE id='<UID>' RETURNING email, role;
+
+-- [C9b] user แก้ student_id ตัวเองไม่ได้ → คาดหวัง 42501
+BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"<UID>","role":"authenticated"}';
+UPDATE public."Profile" SET student_id='6500000000' WHERE id='<UID>' RETURNING email, student_id;
+
+-- [C9c] user แก้โปรไฟล์คนอื่นไม่ได้ → คาดหวัง 0 แถว (RLS กรองเงียบ ไม่ error)
+BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"<UID>","role":"authenticated"}';
+UPDATE public."Profile" SET full_name='ไม่ควรสำเร็จ' WHERE id='<UID_คนอื่น>' RETURNING email, full_name;
+
+-- [C10] anon เห็นอะไรบ้าง — สำคัญถ้าจะเปิด browse ก่อนล็อกอิน
+--       ปัจจุบัน "CAT" คืน 0 เพราะ policy เป็น TO authenticated
+BEGIN;
+SET LOCAL ROLE anon;
+SELECT
+  (SELECT count(*) FROM public."CAT")     AS cat_as_anon,
+  (SELECT count(*) FROM public.products)  AS products_as_anon,
+  (SELECT count(*) FROM public_profiles)  AS profiles_as_anon;

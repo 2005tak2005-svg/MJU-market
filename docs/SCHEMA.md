@@ -4,8 +4,9 @@
 > SQL ที่ยังเป็นข้อเสนอ อยู่ที่ `PROPOSED_SQL.md` เท่านั้น ห้ามปนกัน
 > Project: `MJU market` (`rooydbxgcsybyanwsewv`) | ตรวจกับ DB จริงล่าสุด: **2026-08-07** (รัน `checks/_common.sql` ครบทุกบล็อก)
 >
-> 📌 สถานะข้อมูล ณ 2026-08-07: **ทุกตารางว่างเปล่า 0 แถว** รวมถึง `auth.users`
-> → เช็คแบบ "ห้ามมี NULL" ยังตรวจไม่ได้ และยังทดสอบมุมมอง user ธรรมดาไม่ได้เลย (ไม่มี UID ให้ใช้)
+> 📌 สถานะข้อมูล ณ 2026-08-07: `auth.users` + `"Profile"` มี **4 แถว (ข้อมูลทดสอบ)** · `"CAT"` มี **12 แถว (ข้อมูลจริง)**
+> ตารางที่เหลือ (`products` / `chat` / `chat_user` / `chat_message` / `reports`) **ยังว่าง 0 แถว**
+> → เช็ค "ห้ามมี NULL" ของ `products_review_view` และ `chat_summary` **ยังตรวจไม่ได้** ต้องมีประกาศ/ห้องแชทจริงก่อน
 > ⚠️ ห้ามคัดลอก schema จากไฟล์นี้ไปวางซ้ำในไฟล์อื่น — ให้อ้างอิงมาที่นี่ที่เดียว
 
 ---
@@ -218,6 +219,23 @@ AND (private.current_profile_student_id() IS NULL            -- ตั้ง stu
 >
 > ⚠️ 2 policy ที่ `roles = public` (ไม่ใช่ `authenticated`) ครอบคลุม `anon` ด้วย — ปลอดภัยอยู่เพราะ `auth.uid()` / `is_admin()` เป็น NULL/false สำหรับ anon แต่ควรเปลี่ยนเป็น `authenticated` ให้ชัดเจน
 
+#### ✅ ทดสอบ RLS ด้วย user จริงที่ไม่ใช่ admin แล้ว 2026-08-07
+
+ทดสอบเป็น `mju6598765432@mju.ac.th` (`role='user'`, ไม่ใช่เจ้าของข้อมูลที่ไปยุ่ง) ด้วยท่า `SET LOCAL ROLE authenticated` + `request.jwt.claims`:
+
+| ทดสอบ | คาดหวัง | ผลจริง |
+|---|---|---|
+| `SELECT` จาก `public_profiles` | เห็นชื่อทุกคน | ✅ 4 แถว **ไม่มี NULL** |
+| `SELECT` จาก `"Profile"` ตรง ๆ | เห็นแค่ของตัวเอง | ✅ 1 แถว |
+| `UPDATE role = 'admin'` ให้ตัวเอง | ถูกปฏิเสธ | ✅ `42501 new row violates row-level security policy` |
+| `UPDATE student_id` ของตัวเอง | ถูกปฏิเสธ | ✅ `42501` |
+| `UPDATE full_name` ของ**คนอื่น** | ไม่มีผล | ✅ 0 แถว (ตรวจซ้ำแล้วข้อมูลคนอื่นไม่ถูกแตะ) |
+| `UPDATE full_name`/`bio`/`phone` ของตัวเอง | สำเร็จ | ✅ |
+
+> ⭐ **นี่คือการพิสูจน์ D-01** — `public_profiles` ให้ user ธรรมดาเห็นชื่อคนอื่นได้ โดย `email`/`student_id`/`role` ยังถูกซ่อน
+> บั๊ก "ชื่อผู้ขายเป็น NULL เฉพาะ user ธรรมดา" ที่เอกสารเตือนไว้ **ยืนยันแล้วว่าไม่เกิดกับ `public_profiles`**
+> (แต่ `products_review_view` / `chat_summary` ยังตรวจไม่ได้ เพราะยังไม่มีประกาศและห้องแชท)
+
 > ⚠️ **TODO ก่อน production:** `products` / `chat` / `chat_user` / `chat_message` เป็น allow-all ทั้งหมด — authenticated user ทุกคนอ่าน/เขียนได้หมดทุกห้อง ต้องเปลี่ยนเป็น restrictive ตาม `chat_user` membership ก่อนเปิดให้นักศึกษาใช้จริง (ดู `DECISIONS.md` D-03)
 
 **วิธีดู RLS จริง** — `list_tables` ไม่คืน policy ต้องรัน:
@@ -281,7 +299,39 @@ CREATE TRIGGER on_auth_user_created
 3. **ใส่ `full_name` จาก `raw_user_meta_data->>'full_name'`** — FlutterFlow ต้องส่ง meta data ตัวนี้ตอน Sign Up ไม่งั้น `full_name` เป็น NULL
 
 > ⚠️ ยังไม่มี `ON CONFLICT` — ถ้าแถวใน `"Profile"` มีอยู่แล้วจะ error และทำให้สมัครไม่ผ่านทั้งรายการ
-> ⚠️ **ยังไม่เคยทดสอบกับการสมัครจริง** — `auth.users` มี 0 แถว เส้นทางนี้จึงยังไม่เคยรันเลยสักครั้ง
+
+#### ✅ ทดสอบกับการสมัครจริงแล้ว 2026-08-07 (user 4 คนผ่าน Dashboard)
+
+| อีเมลที่สมัคร | ผล | `student_id` ที่ได้ |
+|---|---|---|
+| `mju6512345678@mju.ac.th` | ✅ สร้างสำเร็จ | `6512345678` |
+| `mju6598765432@mju.ac.th` | ✅ สร้างสำเร็จ | `6598765432` |
+| `somchai.j@mju.ac.th` (บุคลากร) | ✅ สร้างสำเร็จ | `NULL` |
+| `MJU6511112222@mju.ac.th` (ตัวใหญ่) | ✅ สร้างสำเร็จ | `6511112222` |
+| `test@gmail.com` | ❌ **ถูกปฏิเสธ** | – |
+
+ทุกคนได้ `role = 'user'` และมีแถวใน `"Profile"` ครบ (`users_without_profile = 0`)
+
+**เคสตัวใหญ่ผ่าน** — Supabase normalize อีเมลเป็นตัวเล็กก่อนเก็บลง `auth.users` regex ใน trigger ที่ไม่มี `lower()` จึงไม่เป็นปัญหาจริง (ข้อกังวลใน D-10 ตกไป)
+
+**`full_name` เป็น NULL ทุกคน** เพราะ Dashboard > Add user ไม่มีช่องใส่ user metadata → ยืนยันว่าถ้า FlutterFlow ไม่ส่ง `full_name` ใน meta data ชื่อจะหายทั้งระบบจริง
+
+#### 🔴 P-02 ทำงาน แต่ error ที่ client ได้รับใช้ไม่ได้เลย
+
+จาก auth log ของ Supabase:
+
+```
+POST /admin/users → 500  error_code: unexpected_failure
+error: failed to close prepared statement: ERROR: current transaction is aborted,
+       commands ignored until end of transaction block (SQLSTATE 25P02):
+       ERROR: Only @mju.ac.th email addresses are allowed (SQLSTATE P0001)
+```
+
+ข้อความจริงของเราถูกห่อไว้ชั้นในสุด **ฝั่ง client เห็นแค่ `Failed to create user: {}`** — body ว่างเปล่า
+
+> ⚠️ **FlutterFlow พึ่ง error message จาก server ไม่ได้** ต้อง validate โดเมนฝั่ง client ก่อน submit เสมอ
+> trigger เป็นแค่ตาข่ายกันพลาดชั้นสุดท้าย ไม่ใช่ชั้นที่คุยกับผู้ใช้
+> (สาเหตุ: `raise exception` ทำให้ transaction abort → GoTrue ปิด prepared statement ไม่ได้ → error จริงถูกกลบด้วย 25P02 แล้วส่งกลับเป็น 500 เปล่า ๆ)
 
 ### `private.*` — helper สำหรับ RLS (ทั้ง 3 ตัว SECURITY DEFINER, `search_path=''`)
 

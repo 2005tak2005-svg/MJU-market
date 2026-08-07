@@ -102,22 +102,22 @@ UNIQUE `(chat_id, user_id)` — กันสมาชิกซ้ำในห้
 | คอลัมน์ | ชนิด |
 |---|---|
 | `id` | uuid PK, default `gen_random_uuid()` |
-| `reporter_id` | uuid **NOT NULL**, FK → `"Profile".id` ON UPDATE CASCADE ON DELETE CASCADE, ⚠️ default `gen_random_uuid()` |
-| `reported_product_id` | uuid nullable, FK → `products.id` ON UPDATE CASCADE ON DELETE CASCADE, ⚠️ default `gen_random_uuid()` |
+| `reporter_id` | uuid **NOT NULL**, FK → `"Profile".id` ON UPDATE CASCADE ON DELETE CASCADE, ไม่มี default |
+| `reported_product_id` | uuid nullable, FK → `products.id` ON UPDATE CASCADE ON DELETE CASCADE, ไม่มี default |
 | `reason` | text nullable |
 | `status` | varchar nullable, **ไม่มี CHECK** — ค่าที่ใช้ได้ยังไม่ถูกบังคับ |
-| `created_at` | timestamptz nullable, **ไม่มี default** |
+| `created_at` | timestamptz **NOT NULL** default `now()` |
 
-> RLS เปิดอยู่ **แต่ยังไม่มี policy เลย = deny-all** — ต้องเพิ่มก่อนใช้จริง (Layer 7, ดู P-10)
+> ✅ **แก้แล้ว 2026-08-07** (migration `fix_reports_column_defaults`, ตารางว่าง 0 แถว ตอน apply)
+> เดิม `reporter_id` / `reported_product_id` มี default `gen_random_uuid()` ซึ่งไร้ความหมายกับคอลัมน์ FK
+> — insert โดยไม่ส่งค่าจะได้ UUID มั่วที่ไม่ตรงแถวไหน แล้วไปตายที่ FK violation แทน NOT NULL violation
+> และ `created_at` ไม่มี default ต่างจากทุกตารางอื่น ตอนนี้ถอด default ทิ้งและตั้ง `now()` เรียบร้อย
 >
-> 🔴 **บั๊ก schema ที่ต้องแก้ก่อนใช้ L7:** `reporter_id` และ `reported_product_id` มี default `gen_random_uuid()`
-> ซึ่งไม่มีความหมายสำหรับคอลัมน์ FK — ถ้า INSERT โดยไม่ส่งค่ามา จะได้ UUID มั่วที่ไม่ตรงกับแถวไหนเลย
-> แล้วไปตายที่ FK violation แทนที่จะเป็น NOT NULL violation ทำให้ debug ยาก
-> `created_at` ก็ไม่มี default `now()` ต่างจากทุกตารางอื่นในระบบ
-
-### `public.reports` — สิ่งที่ยังไม่ได้ตรวจ
-
-ตารางว่าง 0 แถว + deny-all → ยังไม่เคยมีการเขียน/อ่านจริงผ่าน policy เลย
+> 🔴 RLS เปิดอยู่ **แต่ยังไม่มี policy เลย = deny-all** — ต้องเพิ่มก่อนใช้จริง (Layer 7, ดู P-10)
+>
+> ⚠️ **ยังค้าง:** `status` ไม่มี CHECK — ค่าที่ใช้ได้ (`open`/`resolved`/…) ยังไม่ตัดสินใจ รอทำพร้อม P-10
+>
+> ⚠️ **ยังไม่ได้ตรวจ:** ตารางว่าง + deny-all → ยังไม่เคยเขียน/อ่านจริงผ่าน policy สักครั้ง
 
 ### ตารางที่ยังไม่มี
 

@@ -9,9 +9,10 @@
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
 - [ ] สร้าง Storage bucket `product-images` + policy (upload ได้ถ้า authenticated, ลบได้เฉพาะไฟล์ตัวเอง — แนะนำ path prefix = user id)
-- [ ] **Seed ข้อมูลจริงเข้า `"CAT"`** (ตอนนี้ 0 แถว — dropdown จะว่างเปล่าจนกว่าจะทำ)
 
-**ทำแล้ว:** schema ครบ · RLS allow-all · `products_review_view` · Realtime บน `products`
+**ทำแล้ว:** schema ครบ · RLS allow-all · `products_review_view` · Realtime บน `products` · **seed `"CAT"` 12 หมวดหมู่แล้ว (id 1–12 ดู `../SCHEMA.md`)**
+
+> ⚠️ dropdown หมวดหมู่ต้องอ่านตอน**ล็อกอินแล้ว**เท่านั้น — `anon` เห็น `"CAT"` เป็น 0 แถว (policy เป็น `TO authenticated`)
 
 ---
 

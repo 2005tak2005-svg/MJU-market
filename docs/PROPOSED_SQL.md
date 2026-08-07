@@ -6,8 +6,8 @@
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
-| P-01 | `handle_new_user()` + trigger auto-insert Profile | L1 | 🔥 คิวถัดไป |
-| P-02 | trigger ตรวจโดเมน `@mju.ac.th` ฝั่ง server | L1 | รอตัดสินใจ |
+| ~~P-01~~ | ~~`handle_new_user()` + trigger auto-insert Profile~~ | L1 | ✅ **apply แล้ว** ย้ายไป `SCHEMA.md` (พบ 2026-08-07) |
+| ~~P-02~~ | ~~trigger ตรวจโดเมน `@mju.ac.th` ฝั่ง server~~ | L1 | ✅ **apply แล้ว** รวมอยู่ใน `handle_new_user()` |
 | P-03 | `find_or_create_chat(user_a, user_b)` | L2/L3/L4 | รอ confirm แนวทาง |
 | P-04 | `update_chat_last_message()` + trigger | L4 | รอ confirm |
 | P-05 | `search_products(...)` | L3 | รอทดสอบว่า FF filter พอไหม |
@@ -19,28 +19,26 @@
 
 ---
 
-## P-01 — trigger auto-insert Profile (L1) 🔥
+## ~~P-01~~ / ~~P-02~~ — ✅ apply ไปแล้วทั้งคู่ (ตรวจพบ 2026-08-07)
 
-```sql
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
-BEGIN
-  INSERT INTO public."Profile" (id, email)
-  VALUES (NEW.id, NEW.email);   -- ไม่ระบุ role ปล่อยให้ default 'user' ทำงาน
-  RETURN NEW;
-END; $$ LANGUAGE plpgsql SECURITY DEFINER;
+**ย้ายไป `SCHEMA.md` → หัวข้อ "Trigger / Function ที่ apply แล้ว" แล้ว อ่านที่นั่นแทน**
 
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-```
+ตอนตรวจ DB จริงครั้งแรกพบว่า `handle_new_user()` + trigger `on_auth_user_created`
+มีอยู่ใน DB เรียบร้อยแล้ว และตัวมันทำงานของ **P-02 รวมอยู่ในตัวเดียวกัน** (บังคับโดเมน `@mju.ac.th`)
+ไฟล์นี้กับ `SCHEMA.md` เข้าใจผิดตรงกันมาตลอดว่ายังไม่มี
 
-> ⚠️ trigger นี้ไม่รู้ค่า `student_id` / `phone` ที่กรอกในฟอร์มสมัคร — FlutterFlow ต้องมี Action **Update Row** ต่อจาก Sign Up เพื่อใส่ 2 ค่านั้นเพิ่ม
+⚠️ ของจริงต่างจากที่ร่างไว้ข้างบน 3 จุด อย่าใช้ร่างเดิมอ้างอิง:
 
-## P-02 — ตรวจโดเมน `@mju.ac.th` ฝั่ง server (L1)
+| ร่างเดิมเขียนว่า | ของจริง |
+|---|---|
+| insert แค่ `id`, `email` | insert `id, email, full_name, role, student_id` |
+| ไม่ระบุ `role` ปล่อย default | ระบุ `role = 'user'` ตรง ๆ |
+| FlutterFlow ต้อง Update Row ใส่ `student_id` เอง | trigger derive `student_id` จากอีเมลให้แล้ว — **ห้ามเขียนทับ** จะชน CHECK `profile_student_id_matches_email` |
 
-แนะนำ 2 ชั้น: (a) validate ใน FlutterFlow sign-up form ก่อนส่ง (b) trigger `AFTER INSERT ON auth.users` เช็ค `NEW.email ILIKE '%@mju.ac.th'` ไม่ผ่านให้ raise exception
-*ยังไม่ได้ตัดสินใจว่าจะทำชั้น (b) จริงไหม*
+**ยังค้างอยู่จริง ๆ:** `phone` ยังไม่มีใครใส่ให้ — ถ้าฟอร์มสมัครเก็บเบอร์ FlutterFlow ยังต้อง Update Row เพิ่มเอง
+
+🔴 **ยังไม่เคยทดสอบ** — `auth.users` มี 0 แถว เส้นทางสมัครสมาชิกจึงยังไม่เคยรันจริงสักครั้ง
+ต้องสมัคร user จริงแล้วยืนยันว่าแถวใน `"Profile"` เกิดขึ้นครบก่อนถึงจะปิด L1 ได้
 
 ## P-03 — find-or-create ห้องแชท (L2 / L3 / L4)
 

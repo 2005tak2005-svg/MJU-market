@@ -185,3 +185,27 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 > ⚠️ **ยังไม่ได้ทดสอบ:** การอ่านผ่าน public URL จริง และ flow อัปครบ 3 รูปแล้วผูกเข้าประกาศ
 
 **สถานะ storage หลัง apply:** 1 bucket (`product-images`) · 4 policy บน `storage.objects` · 0 object
+
+---
+
+## 2026-08-08 (รอบสอง)
+
+### V-09 · ทดสอบ trigger หลังแก้ regex + normalize อีเมล
+
+ทดสอบทันทีหลัง apply 2 migration (`profile_email_domain_check`, `handle_new_user_normalize_email_and_anchor_regex`)
+วิธี: `DO` block ที่ INSERT เข้า `auth.users` จริงทั้ง 4 เคส แล้ว `RAISE EXCEPTION` ปิดท้ายเพื่อ rollback ทั้งก้อน — **ได้ผลจริงโดยไม่ทิ้งข้อมูลค้าง**
+
+| # | อินพุต | คาดหวัง | ผลจริง |
+|---|---|---|---|
+| 1 | `MJU6511119999@MJU.AC.TH` | normalize + derive ได้ | ✅ `email=mju6511119999@mju.ac.th` `student_id=6511119999` |
+| 2 | `ajarn.somsri@mju.ac.th` (บุคลากร) | สมัครได้ `student_id` NULL | ✅ `student_id=NULL` |
+| 3 | `hacker@evil.com@mju.ac.th` | ถูกบล็อก | ✅ ถูกบล็อก |
+| 4 | `hacker@evil.com` | ถูกบล็อก | ✅ ถูกบล็อก |
+
+🔴 **เคส 3 คือของที่ regex เดิมปล่อยผ่าน** — `'@mju\.ac\.th$'` เช็คแค่ท้ายสตริง อีเมลนี้ลงท้ายถูกจริงเลยผ่านด่านและได้ Profile ในระบบ (เหตุผลเต็ม: `DECISIONS.md` **D-10** หัวข้อช่องโหว่)
+
+**ยืนยันไม่มีข้อมูลค้าง:** `auth.users` = 4 · `"Profile"` = 4 (เท่าเดิมก่อนทดสอบ)
+
+**ยืนยันก่อน apply CHECK `profile_email_domain`:** 4 แถวเดิมไม่มีแถวไหนขัด (`would_violate = 0`, `null_emails = 0`, `not_lowercase = 0`) จึงเพิ่ม constraint ได้โดยไม่ต้องแก้ข้อมูลก่อน
+
+> ⚠️ **ยังไม่ได้ทดสอบ:** เส้นทางสมัครจริงผ่าน GoTrue (`/auth/v1/signup`) หลังแก้ — ทดสอบนี้เขียนลง `auth.users` ตรง ๆ ซึ่งข้ามการ normalize ของ GoTrue ไป (จงใจ เพื่อดูว่า trigger เอาอยู่เอง) เส้นทางจริงยังต้องยืนยันตอนทำหน้า Sign Up

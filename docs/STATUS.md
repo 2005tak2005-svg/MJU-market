@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-07** — ตรวจ `SCHEMA.md` กับ DB จริงครั้งแรก (เอกสารเดิมลงวันที่ 2026-08-02 ไม่เคย query จริงเลย)
+> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) + ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง
 
 > 🔴 **บทเรียนของวันนี้:** เอกสารเดิมเขียนว่า "ยังไม่มี trigger/function เลย" ทั้งที่ **P-01 กับ P-02 apply อยู่ใน DB มาตลอด**
 > ต้นเหตุคือ `checks/_common.sql` [C7] กรองแค่ `nspname='public'` เลยมองไม่เห็นของใน schema `private` และ trigger บน `auth.users`
@@ -11,9 +11,9 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **สร้าง Storage bucket `product-images`** + policy → ปลดล็อกอัปโหลดรูปใน L2 (งานฝั่ง Supabase ชิ้นเดียวที่เหลือใน L1–L2)
-2. **เริ่มหน้า FlutterFlow ของ L1** — Sign Up / Log In / Edit Profile (ฝั่ง Supabase ปิดครบแล้ว)
-3. **ลงประกาศทดสอบ 1–2 ชิ้น** → ปลดล็อกการตรวจ `products_review_view` / `chat_summary` ว่า `seller_name` / `member_names` ไม่เป็น NULL ([C8] ที่ยังค้าง)
+1. **สร้าง Storage bucket `product-images`** + policy → ปลดล็อกอัปโหลดรูปใน L2
+2. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ)
+3. **ลงประกาศทดสอบ 1–2 ชิ้น + สร้างห้องแชท 1 ห้อง 2 คน** → ปลดล็อกการตรวจ `products_review_view` / `chat_summary` ว่า `seller_name` / `member_names` ไม่เป็น NULL ([C8] ที่ยังค้าง) — เป็นสิ่งเดียวที่ปิด L4 ฝั่ง Supabase ได้
 
 ---
 
@@ -21,16 +21,27 @@
 
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
-| 1 | Auth & User Profiles | ✅ **100%** | ⬜ ยังไม่สร้างหน้า | trigger + RLS ทดสอบกับ user จริง 4 คนผ่านครบ |
+| 1 | Auth & User Profiles | 🟨 **เหลือเส้นทาง `full_name`** | ⬜ ยังไม่สร้างหน้า | RLS + derive `student_id` ทดสอบผ่านครบ · แต่ดู 🔴 ด้านล่าง |
 | 2 | Product Listings + Storage | 🟨 เหลือ Storage bucket | 🟨 approve/reject ปุ่มเริ่มทำแล้วบางส่วน | seed `CAT` 12 หมวดแล้ว · schema/RLS/view/realtime เสร็จ |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
-| 4 | Chat & Messaging | ✅ 100% | ⬜ ยังไม่เริ่ม | RLS เป็น allow-all ชั่วคราว |
+| 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่ม | RLS เป็น allow-all ชั่วคราว · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | ⬜ ยังไม่มีตาราง | ⬜ | |
 | 7 | Reviews & Reports | 🟨 `reports` มีแล้ว (ไม่มี policy) / `reviews` ยังไม่มี | ⬜ | |
 | 8 | Admin Dashboard | ⬜ | ⬜ | |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม
+
+> 🔴 **กฎการให้ ✅ (ใช้กับตัวเราเองด้วย): "ตารางว่าง 0 แถว = ยังไม่ PASS"**
+> เราตั้งกฎนี้ไว้ตอนตรวจ DB แล้วดันให้ ✅ ตัวเองทั้งที่เส้นทางจริงยังไม่เคยรัน — ลด L1/L4 กลับเป็น 🟨 เมื่อ 2026-08-08
+
+**L1 — ทำไมยังไม่ใช่ ✅** — เส้นทาง `full_name` ของ `handle_new_user()` **ยังไม่เคยรันสำเร็จเลยสักครั้ง**
+`insert ... new.raw_user_meta_data->>'full_name'` ไม่เคยได้ค่าที่ไม่ใช่ NULL เพราะสมัคร 4 คนผ่าน Dashboard > Add user ซึ่ง**ไม่มีช่องใส่ user metadata** ชื่อที่เห็นในตารางตอนนี้เป็นค่าที่เติมมือทีหลัง ไม่ใช่ผลจาก trigger
+→ ปิด L1 ฝั่ง Supabase ได้ต่อเมื่อ **สมัครผ่าน FlutterFlow Sign Up ที่ส่ง `full_name` ใน meta data แล้วเห็นชื่อโผล่ใน `"Profile"` เอง** (ผลตรวจที่ทำให้รู้: `VERIFICATION.md` V-02 ข้อ 5)
+
+**L4 — ทำไมยังไม่ใช่ ✅** — `chat_summary.member_names` **ยังไม่เคยตรวจว่าไม่เป็น NULL** เพราะ `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถวทั้งหมด
+view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
+→ ปิด L4 ฝั่ง Supabase ได้ต่อเมื่อ **สร้างห้องแชท 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดา เห็น `member_names` ครบ ไม่มี NULL**
 
 ---
 

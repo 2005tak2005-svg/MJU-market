@@ -344,8 +344,15 @@ begin
 
   derived_student_id := substring(normalized_email from '^mju([0-9]{10})@mju\.ac\.th$');
 
-  insert into public."Profile" (id, email, full_name, role, student_id)
-  values (new.id, normalized_email, new.raw_user_meta_data->>'full_name', 'user', derived_student_id);
+  insert into public."Profile" (id, email, full_name, role, student_id, phone)
+  values (
+    new.id,
+    normalized_email,
+    nullif(trim(new.raw_user_meta_data->>'full_name'), ''),
+    'user',
+    derived_student_id,
+    nullif(trim(new.raw_user_meta_data->>'phone'), '')
+  );
 
   return new;
 end;
@@ -364,7 +371,9 @@ CREATE TRIGGER on_auth_user_created
    ⚠️ **`"Profile".email` ถูก `lower()` เสมอ ส่วน `auth.users.email` เก็บตามที่ผู้ใช้พิมพ์** — โค้ดที่จับคู่สองที่นี้ด้วย `=` ตรง ๆ จะพลาดเมื่อผู้ใช้พิมพ์ตัวใหญ่ ให้ join ด้วย `id` เท่านั้น
 3. **`full_name` มาจาก `raw_user_meta_data->>'full_name'`** — FlutterFlow ต้องส่ง meta data ตัวนี้ตอน Sign Up ไม่งั้น `full_name` เป็น NULL
 4. **ไม่มี `ON CONFLICT`** — ถ้าแถวใน `"Profile"` มีอยู่แล้วจะ error และทำให้สมัครไม่ผ่านทั้งรายการ
-5. **`phone` / `bio` / `avatar_url` ไม่มีใครใส่ให้** — `insert` แตะแค่ `id, email, full_name, role, student_id` ถ้าฟอร์มสมัครเก็บเบอร์ FlutterFlow ต้อง Update Row เพิ่มเอง
+5. **`phone` มาจาก `raw_user_meta_data->>'phone'`** (เพิ่ม 2026-08-08 ดู **D-14**) — ส่ง key `phone` ไปพร้อม `full_name` ตอน Sign Up ได้เลย **ไม่ต้อง Update Row ตามหลัง**
+6. **`bio` / `avatar_url` ยังไม่มีใครใส่ให้** — `insert` แตะแค่ `id, email, full_name, role, student_id, phone` สองตัวนี้ต้องแก้ที่หน้า Edit Profile
+7. **`full_name` / `phone` ผ่าน `nullif(trim(...), '')`** — ส่งช่องว่างล้วนมาจะได้ `NULL` ไม่ใช่ `''` เพื่อให้เช็ค "ยังไม่กรอก" ที่เดียวพอ
 
 ### `private.*` — helper สำหรับ RLS
 
@@ -431,6 +440,31 @@ AS $function$ SELECT student_id FROM public."Profile" WHERE id = auth.uid() $fun
 ```
 
 > 📌 **จำนวนรูปสูงสุด 3 บังคับที่ `products.image_urls` ไม่ใช่ที่ Storage** — policy บน `storage.objects` เห็นทีละไฟล์ นับรวมไม่ได้ ผลคืออัปไฟล์ที่ 4 เข้า bucket ได้ แต่ผูกกับประกาศไม่ได้ (กลายเป็นไฟล์กำพร้า) เหตุผลเต็ม: `DECISIONS.md` **D-12**
+
+### bucket `avatars`
+
+| ค่า | |
+|---|---|
+| `public` | **true** — `public_profiles.avatar_url` ถูกแสดงทุกหน้าจอ signed URL หมดอายุจึงเก็บลงคอลัมน์ไม่ได้ (เหตุผลเดียวกับ D-12) |
+| `file_size_limit` | `2097152` (2 MB ต่อไฟล์) |
+| `allowed_mime_types` | `{image/jpeg, image/png, image/webp}` |
+
+🔴 **path บังคับ `<auth.uid()>/<ชื่อไฟล์>`** เหมือนกัน
+
+| policyname | cmd | roles | qual / with_check |
+|---|---|---|---|
+| `avatars public read` | SELECT | `{public}` | qual: `(bucket_id = 'avatars'::text)` |
+| `avatars owner upload` | INSERT | `{authenticated}` | with_check: ↓ |
+| `avatars owner update` | UPDATE | `{authenticated}` | qual **และ** with_check: ↓ |
+| `avatars owner delete` | DELETE | `{authenticated}` | qual: ↓ |
+
+```sql
+-- นิพจน์ ↓ ร่วมกันทั้ง upload / update / delete (ค่าจริง คำต่อคำ)
+((bucket_id = 'avatars'::text)
+ AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text))
+```
+
+> 📌 **`"Profile".avatar_url` เป็นแค่ text ไม่มีอะไรผูกกับไฟล์จริงใน bucket** — ลบไฟล์แล้วคอลัมน์ยังชี้ URL เดิม และเปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ (ไฟล์กำพร้าแบบเดียวกับ D-12)
 
 ---
 

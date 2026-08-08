@@ -35,9 +35,17 @@ WHERE table_schema='public' AND table_name='products_review_view' ORDER BY ordin
 SELECT tablename FROM pg_publication_tables
 WHERE pubname='supabase_realtime' AND tablename='products';
 
--- [2.8] Storage bucket — คาดหวังหลังทำ: มี product-images
-SELECT id, name, public FROM storage.buckets;
-SELECT name, definition FROM pg_policies WHERE schemaname='storage';
+-- [2.8] Storage bucket — คาดหวัง 1 แถว: product-images, public=true,
+--       file_size_limit=5242880, allowed_mime_types={image/jpeg,image/png,image/webp}
+SELECT id, public, file_size_limit, allowed_mime_types
+FROM storage.buckets WHERE id = 'product-images';
+
+-- [2.8b] policy บน storage.objects — คาดหวัง 4 แถว (public read / owner upload / update / delete)
+--        ⚠️ pg_policies ไม่มีคอลัมน์ `name` และ `definition` ต้องใช้ policyname/qual/with_check
+--        (เวอร์ชันเดิมของบล็อกนี้เขียนผิด รันแล้ว error ทันที — แก้ 2026-08-08)
+SELECT policyname, cmd, roles, qual, with_check
+FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+ORDER BY policyname;
 
 -- [2.9] ข้อมูลจริง — ประกาศที่ moderation_status ผิดค่า หรือ seller_id ไม่ตรงกับ Profile ที่มีอยู่
 SELECT moderation_status, count(*) FROM public.products GROUP BY 1;
@@ -47,3 +55,47 @@ LEFT JOIN public."Profile" pr ON pr.id = p.seller_id WHERE pr.id IS NULL;
 -- [2.10] rejected แล้วแต่ไม่มีเหตุผล (flow ไม่ครบ)
 SELECT id, title FROM public.products
 WHERE moderation_status='rejected' AND (rejection_reason IS NULL OR rejection_reason = '');
+
+-- [2.11] CHECK จำกัด 3 รูป ต้องยังอยู่ — คาดหวัง 1 แถว
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conname = 'products_image_urls_max_3';
+
+-- [2.12] ⭐ ทดสอบจริงแบบไม่ทิ้งข้อมูลค้าง — INSERT จริงแล้ว abort ทั้ง block ด้วย RAISE
+--        คาดหวัง: error ที่ขึ้นต้นด้วย [ผล] แล้วบอกว่า
+--        3รูป=ผ่าน | 4รูป=ถูกปฏิเสธ | โฟลเดอร์ตัวเอง=อัปได้ | โฟลเดอร์คนอื่น=ถูกบล็อก
+--        (error ตัวนี้คือ "ผ่าน" ไม่ใช่ "พัง" — เป็นกลไก rollback)
+--        แทน <EMAIL> ด้วย user ธรรมดาที่ไม่ใช่ admin
+-- DO $$
+-- DECLARE me uuid; other uuid; r3 text; r4 text; own text; oth text;
+-- BEGIN
+--   SELECT id INTO me    FROM public."Profile" WHERE email = '<EMAIL>';
+--   SELECT id INTO other FROM public."Profile" WHERE id <> me LIMIT 1;
+--
+--   BEGIN
+--     INSERT INTO public.products (seller_id, title, image_urls)
+--     VALUES (me, 'ทดสอบ', ARRAY['a.jpg','b.jpg','c.jpg']);            r3 := 'ผ่าน';
+--   EXCEPTION WHEN check_violation THEN r3 := 'ถูกปฏิเสธ'; END;
+--   BEGIN
+--     INSERT INTO public.products (seller_id, title, image_urls)
+--     VALUES (me, 'ทดสอบ', ARRAY['a.jpg','b.jpg','c.jpg','d.jpg']);    r4 := 'ผ่าน';
+--   EXCEPTION WHEN check_violation THEN r4 := 'ถูกปฏิเสธ'; END;
+--
+--   PERFORM set_config('request.jwt.claims',
+--     json_build_object('sub', me::text, 'role','authenticated')::text, true);
+--   SET LOCAL ROLE authenticated;
+--
+--   BEGIN
+--     INSERT INTO storage.objects (bucket_id, name, owner)
+--     VALUES ('product-images', me::text || '/pic1.jpg', me);          own := 'อัปได้';
+--   EXCEPTION WHEN insufficient_privilege THEN own := 'ถูกบล็อก (ผิดคาด!)'; END;
+--   BEGIN
+--     INSERT INTO storage.objects (bucket_id, name, owner)
+--     VALUES ('product-images', other::text || '/hack.jpg', me);       oth := 'อัปได้ (ช่องโหว่!)';
+--   EXCEPTION WHEN insufficient_privilege THEN oth := 'ถูกบล็อก'; END;
+--
+--   RAISE EXCEPTION '[ผล] 3รูป=% | 4รูป=% | โฟลเดอร์ตัวเอง=% | โฟลเดอร์คนอื่น=%', r3, r4, own, oth;
+-- END $$;
+
+-- [2.13] ❌ ตรวจจาก DB ไม่ได้ ต้องอัปไฟล์จริงผ่านแอป/REST:
+--        file_size_limit (5 MB) และ allowed_mime_types — สองอย่างนี้บังคับที่ Storage API
+--        ไม่ใช่ที่ Postgres การ INSERT เข้า storage.objects ตรง ๆ จึงข้ามด่านนี้ไปเลย

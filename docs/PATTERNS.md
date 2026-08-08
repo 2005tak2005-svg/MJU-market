@@ -95,9 +95,16 @@ Action 3: Conditional
 
 ---
 
-## PT-08 — upload รูปเข้า Storage `product-images`
+## PT-08 — upload รูปเข้า Storage
 
-**ใช้ที่:** `AddProduct` (L2) · แก้ไขประกาศ (L2/L5)
+**ใช้ที่:** `AddProduct` (L2) · แก้ไขประกาศ (L2/L5) · รูปโปรไฟล์ใน Edit Profile (L1)
+
+| bucket | ใช้กับ | ขนาดสูงสุด | จำนวน |
+|---|---|---|---|
+| `product-images` | รูปสินค้า | 5 MB | 3 รูป (CHECK บนตาราง) |
+| `avatars` | รูปโปรไฟล์ | 2 MB | 1 รูป (เก็บลง `avatar_url` ทับของเดิม) |
+
+ท่าเหมือนกันทุกอย่าง ต่างแค่ชื่อ bucket และปลายทางที่เก็บ URL — เหตุผลที่แยก bucket: **D-15**
 
 **🔴 path ต้องขึ้นต้นด้วย `auth.uid()` เสมอ** — `<currentUserId>/<ชื่อไฟล์>`
 policy อ่าน `(storage.foldername(name))[1]` มาเทียบกับ `auth.uid()` ตั้งผิด = อัปไม่ผ่านทันที (ไม่ fail เงียบ)
@@ -117,4 +124,5 @@ Action Flow:
 | เฉพาะ **jpeg / png / webp** | `allowed_mime_types` ของ bucket | Storage API ตีกลับตอนอัป |
 
 > ⚠️ **ยังไม่มีระบบเก็บกวาดไฟล์กำพร้า** — ถ้าผู้ใช้อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket (หนี้ใน `STATUS.md`)
-> รายละเอียดการตัดสินใจ: `DECISIONS.md` **D-12** · ค่าจริงของ bucket/policy: `SCHEMA.md` หัวข้อ Storage
+> ใช้กับ `avatars` ด้วย — เปลี่ยนรูปโปรไฟล์แล้วไฟล์เก่าไม่ถูกลบ
+> รายละเอียดการตัดสินใจ: `DECISIONS.md` **D-12** / **D-15** · ค่าจริงของ bucket/policy: `SCHEMA.md` หัวข้อ Storage

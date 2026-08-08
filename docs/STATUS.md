@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป**
+> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป** · **ปิด D-10 (ยืนยันรูปแบบอีเมลจริง) + อุด regex ที่ไม่ anchor + normalize อีเมล** · **repo เป็น private (D-13)**
 
 > 🔴 **บทเรียนของวันนี้:** เอกสารเดิมเขียนว่า "ยังไม่มี trigger/function เลย" ทั้งที่ **P-01 กับ P-02 apply อยู่ใน DB มาตลอด**
 > ต้นเหตุคือ `checks/_common.sql` [C7] กรองแค่ `nspname='public'` เลยมองไม่เห็นของใน schema `private` และ trigger บน `auth.users`
@@ -53,7 +53,7 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 
 **Layer 1**
 - จะทำ role-based redirect ซ้ำที่หน้า Splash/Initial (กรณี auto-login) ด้วยไหม
-- 🔴 **รูปแบบอีเมลจริงของแม่โจ้เป็นยังไง** (pete กำลังเช็ค) — CHECK ปัจจุบันรับเฉพาะ `mju<10หลัก>@mju.ac.th` ถ้าของจริงไม่ตรง นักศึกษาจะไม่มี `student_id` เลยสักคน ดู **D-10**
+- ~~รูปแบบอีเมลจริงของแม่โจ้เป็นยังไง~~ → **ตกไป 2026-08-08** pete ยืนยัน `mju<10หลัก>@mju.ac.th` ตรงกับ constraint เดิม ปิดใน **D-10**
 - `handle_new_user()` ยังไม่มี `ON CONFLICT` — ถ้าแถวใน `"Profile"` ซ้ำจะ error ทั้งรายการ ต้องกันไหม
 - ~~จะทำ server-side validate โดเมน (P-02) ไหม~~ → **ตกไป apply แล้วและทดสอบผ่านแล้ว**
 
@@ -99,6 +99,8 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้ ถ้า L8 ให้ admin เพิ่มหมวดหมู่เองควรใส่
 - [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
 - [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน
+- [ ] **`Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)`** — ตอนนี้ trigger `lower()` ให้ก่อน insert จึงยังไม่มีปัญหา แต่ถ้ามีเส้นทางเขียนอื่นที่ไม่ผ่าน trigger จะสมัครซ้ำด้วยอีเมลคนละตัวพิมพ์ได้ (ตรวจด้วย `checks/L1.sql` [1.9])
+- [ ] **repo เป็น private แล้ว (D-13) แต่นั่นไม่ใช่การปิดช่องโหว่** — ของจริงที่ต้องปิดคือ 3 ข้อบนสุดของรายการนี้ อย่าให้ private กลายเป็นข้ออ้างเลื่อนออกไป
 
 ---
 

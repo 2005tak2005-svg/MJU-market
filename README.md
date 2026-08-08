@@ -16,6 +16,7 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** + **Claude Cod
 | คนที่กลับมาทำต่อ | `docs/STATUS.md` ← สถานะปัจจุบัน + คิวถัดไป |
 | อยากรู้ว่า DB หน้าตายังไง | `docs/SCHEMA.md` |
 | อยากรู้ว่าทำไมตัดสินใจแบบนี้ | `docs/DECISIONS.md` |
+| อยากรู้ว่าเคยทดสอบอะไรไปแล้ว / ผลตรวจเป็นยังไง | `docs/VERIFICATION.md` |
 
 ## โครงสร้าง
 
@@ -23,7 +24,8 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** + **Claude Cod
 CLAUDE.md              กฎห้ามข้าม + router บอกว่างานไหนอ่านไฟล์ไหน
 docs/
 ├── INBOX.md           ที่ทิ้งสเปคใหม่ที่ยังไม่ได้จัดระเบียบ
-├── SCHEMA.md          ⭐ ความจริงของ DB — เฉพาะที่ apply แล้ว
+├── SCHEMA.md          ⭐ ความจริงของ DB — เฉพาะที่ re-derive จาก catalog ได้เดี๋ยวนี้
+├── VERIFICATION.md    🧪 ผลตรวจ/ผลทดสอบที่ผูกกับวันที่ (append-only, V-xx)
 ├── PROPOSED_SQL.md    🚧 SQL ที่ยังไม่ apply ทั้งหมด
 ├── PATTERNS.md        pattern ที่ใช้ซ้ำข้าม layer (PT-xx)
 ├── STATUS.md          สถานะ 8 layers + คำถามค้าง + แม่แบบเปิด session
@@ -40,6 +42,7 @@ docs/
 2. **แยก "apply แล้ว" ออกจาก "ยังไม่ apply"** — `SCHEMA.md` vs `PROPOSED_SQL.md` ปนกันเมื่อไหร่ agent จะเขียนโค้ดอ้างของที่ไม่มีอยู่จริง
 3. **pattern ที่ใช้ ≥2 layer เขียนครั้งเดียว** ใน `PATTERNS.md` แล้วอ้างรหัส PT-xx
 4. **ประวัติการตัดสินใจแยกจากวิธีทำ** — `DECISIONS.md` อ่านเมื่ออยากรู้ "ทำไม" ไม่ต้องอ่านตอนลงมือ
+5. **แยก "ความจริงที่ re-derive ได้เดี๋ยวนี้" ออกจาก "ความจริง ณ วันนั้น"** — `SCHEMA.md` ต้อง query catalog ยืนยันได้ทุกบรรทัด ส่วนผลทดสอบ/ผล advisor/จำนวนแถว ไปอยู่ `VERIFICATION.md` แบบ append-only ปนกันเมื่อไหร่ schema จะเก่าโดยไม่มีใครรู้
 
 ผลคืองาน 1 layer อ่าน ~200 บรรทัด แทนที่จะเป็นไฟล์รวม 500+ บรรทัด
 

@@ -150,3 +150,37 @@ derived_student_id := substring(new.email from '^mju([0-9]{10})@mju\.ac\.th$');
 | เก็บ CHECK ไว้แต่ให้ admin override ได้ | ซับซ้อนขึ้น ต้องมี policy เพิ่ม |
 
 **ห้ามแก้ constraint นี้จนกว่า pete จะยืนยันรูปแบบอีเมลจริง** — เดาแล้วแก้ผิดจะพังตอนมีผู้ใช้จริงแล้ว ซึ่งแก้ยากกว่าตอนนี้ที่ตารางยังว่าง
+
+---
+
+## D-11 — ทำไมเอกสารถึงเคยเขียนผิด และแก้ครั้งใหญ่อะไรไปบ้าง (2026-08-07)
+
+> ย้ายเรื่องเล่าส่วนนี้ออกจาก `SCHEMA.md` เมื่อ 2026-08-08 เพราะเป็น **ประวัติ ไม่ใช่ schema**
+> ผลตรวจดิบที่ใช้ยืนยันอยู่ที่ `VERIFICATION.md` (V-01 … V-06)
+
+### สิ่งที่เอกสารเดิมเขียนผิด แล้วตรวจกับ DB จริงจึงพบ
+
+| จุด | เอกสารเดิมเขียนว่า | ของจริง |
+|---|---|---|
+| Trigger / Function | "ยังไม่มีเลย" | มี function **4 ตัว** + trigger **1 ตัว** apply อยู่แล้ว |
+| P-01 / P-02 ใน `PROPOSED_SQL.md` | "ยังเป็นข้อเสนอ ยังไม่ apply" | apply ไปแล้วทั้งคู่ — รวมอยู่ใน `handle_new_user()` ตัวเดียวกัน |
+| policy `Admins can view/update all profiles` | ใช้ `EXISTS (SELECT 1 FROM "Profile" ...)` inline | เรียก `private.is_admin()` (SECURITY DEFINER) |
+| `with_check` ของ `Users can update own profile` | ล็อกแค่ `role` | ล็อกทั้ง `role` **และ** `student_id` |
+| `student_id` ตอนสมัคร | "FlutterFlow ต้อง Update Row ใส่เอง" (หมายเหตุใน P-01) | trigger derive ให้เองจากอีเมล — **เขียนทับจะชน CHECK** `profile_student_id_matches_email` |
+
+**ทำไมต้องใช้ `private.is_admin()` แทน `EXISTS` inline:** policy บน `"Profile"` ที่ query `"Profile"` เองทำให้เกิด infinite recursion — SECURITY DEFINER ตัดวงจรนั้น
+
+### 🔴 ต้นเหตุที่ทำให้ทั้งหมดนี้รอดสายตา — `checks/_common.sql` [C7] กรอง `nspname = 'public'`
+
+[C7] ("function ที่มีอยู่จริง") เขียน `WHERE nspname = 'public'` ซึ่ง**ตัดของสองกลุ่มทิ้งไปเงียบ ๆ**:
+
+1. **function ใน schema `private`** — `is_admin()` / `current_profile_role()` / `current_profile_student_id()` อยู่ใน `private` ทั้งหมด (จงใจ ไม่ให้ expose ผ่าน PostgREST) จึงไม่โผล่ในผลเช็คเลย
+2. **trigger บน `auth.users`** — `on_auth_user_created` ผูกกับตารางใน schema `auth` ไม่ใช่ `public`
+
+เช็คจึงคืน "0 function, 0 trigger" อย่างมั่นใจ แล้วเอกสารก็จดตามนั้นว่า "ยังไม่มีเลย"
+
+**แก้แล้ว:** [C7] ขยายเป็น `nspname IN ('public','private')` และแยก [C7b] สำหรับ trigger ที่กวาด schema `auth` ด้วย
+
+**บทเรียนที่ต้องจำ:** เช็คที่คืน "ไม่มีอะไร" อันตรายกว่าเช็คที่ล้มเหลว — มันดูเหมือนผ่าน
+เขียน query ตรวจสอบเมื่อไหร่ ให้ถามก่อนเสมอว่า **"scope ที่กรองไว้ ตัดอะไรทิ้งไปบ้าง"** ไม่ใช่แค่ "ผลลัพธ์ถูกไหม"
+(บทเรียนคู่ขนานกับ D-01 ที่รอดสายตาเพราะทดสอบด้วย admin อย่างเดียว — คนละสาเหตุ แต่อาการเดียวกันคือ "ผ่านทั้งที่ผิด")

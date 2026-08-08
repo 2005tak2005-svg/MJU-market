@@ -45,6 +45,7 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 | ทำ FlutterFlow UI / Action Flow | `docs/layers/Lx-*.md` + `docs/PATTERNS.md` |
 | จะใช้ pattern ที่เคยทำแล้ว | `docs/PATTERNS.md` |
 | "ทำไมถึงตัดสินใจแบบนี้" | `docs/DECISIONS.md` |
+| "เคยทดสอบอะไรไปแล้วบ้าง / ผล advisor" | `docs/VERIFICATION.md` (append-only เรียงตามวันที่) |
 | ตรวจงานที่ทำเสร็จ | `docs/checks/Lx.sql` |
 | จะเรียก subagent | `docs/AGENTS.md` → นิยามตัวจริงอยู่ `.claude/agents/` เท่านั้น |
 
@@ -110,7 +111,8 @@ git add -A && git commit -m "..." && git push
 CLAUDE.md              ← ไฟล์นี้ (กฎ + router)
 docs/
 ├── INBOX.md           ✍️ pete ทิ้งสเปคใหม่ที่นี่ — Claude เป็นคนกระจายเข้าที่
-├── SCHEMA.md          ⭐ ความจริงของ DB — เฉพาะที่ apply แล้ว
+├── SCHEMA.md          ⭐ ความจริงของ DB — เฉพาะที่ re-derive จาก catalog ได้เดี๋ยวนี้
+├── VERIFICATION.md    🧪 ผลตรวจ/ผลทดสอบที่ผูกกับวันที่ (append-only) — ของที่ไม่ใช่ schema มาที่นี่
 ├── PROPOSED_SQL.md    🚧 SQL ที่ยังไม่ apply ทั้งหมด
 ├── PATTERNS.md        pattern ที่ใช้ซ้ำข้าม layer
 ├── STATUS.md          สถานะ 8 layers + คำถามค้าง + แม่แบบเปิด session

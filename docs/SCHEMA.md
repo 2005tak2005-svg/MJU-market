@@ -351,6 +351,7 @@ CREATE TRIGGER on_auth_user_created
 2. **`student_id` เป็นค่า derived** — trigger ดึงจากอีเมลเอง FlutterFlow **ห้าม**เขียนทับ จะชน CHECK `profile_student_id_matches_email`
 3. **`full_name` มาจาก `raw_user_meta_data->>'full_name'`** — FlutterFlow ต้องส่ง meta data ตัวนี้ตอน Sign Up ไม่งั้น `full_name` เป็น NULL
 4. **ไม่มี `ON CONFLICT`** — ถ้าแถวใน `"Profile"` มีอยู่แล้วจะ error และทำให้สมัครไม่ผ่านทั้งรายการ
+5. **`phone` / `bio` / `avatar_url` ไม่มีใครใส่ให้** — `insert` แตะแค่ `id, email, full_name, role, student_id` ถ้าฟอร์มสมัครเก็บเบอร์ FlutterFlow ต้อง Update Row เพิ่มเอง
 
 ### `private.*` — helper สำหรับ RLS
 

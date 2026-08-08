@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป** · **ปิด D-10 (ยืนยันรูปแบบอีเมลจริง) + อุด regex ที่ไม่ anchor + normalize อีเมล** · **repo เป็น private (D-13)**
+> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป** · **ปิด D-10 (ยืนยันรูปแบบอีเมลจริง) + อุด regex ที่ไม่ anchor + normalize อีเมล** · **repo เป็น private (D-13)** · **เตรียม L1 ให้พร้อมลงมือ: `phone` ผ่าน meta data (D-14) + bucket `avatars` (D-15)**
 
 > 🔴 **บทเรียนของวันนี้:** เอกสารเดิมเขียนว่า "ยังไม่มี trigger/function เลย" ทั้งที่ **P-01 กับ P-02 apply อยู่ใน DB มาตลอด**
 > ต้นเหตุคือ `checks/_common.sql` [C7] กรองแค่ `nspname='public'` เลยมองไม่เห็นของใน schema `private` และ trigger บน `auth.users`
@@ -11,7 +11,8 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ)
+0. **🚧 เคลียร์ 4 ข้อก่อนแตะ FlutterFlow** → ตาราง "เคลียร์ก่อนกด" ใน `layers/L1-auth-profile.md` — ที่สำคัญสุดคือ **เปิด Confirm email อยู่หรือเปล่า** (ถ้าเปิด PT-07 ใช้ไม่ได้ทันทีหลังสมัคร) และ **FlutterFlow CLI/MCP ยังไม่มีในเครื่อง**
+1. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` + `phone` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ) · ต้องสมัคร**บัญชีใหม่** เท่านั้น บัญชีเดิม 4 คนมี `full_name` เติมมือ
 2. **ทำ upload รูปในหน้า `AddProduct` ตาม PT-08** → ปลดล็อกการยืนยัน Storage ที่เหลือ (ขนาดไฟล์ / mime / public URL) และได้ประกาศจริงไปด้วย
 3. **ลงประกาศทดสอบ 1–2 ชิ้น + สร้างห้องแชท 1 ห้อง 2 คน** → ปลดล็อกการตรวจ `products_review_view` / `chat_summary` ว่า `seller_name` / `member_names` ไม่เป็น NULL ([C8] ที่ยังค้าง) — เป็นสิ่งเดียวที่ปิด L4 ฝั่ง Supabase ได้
 
@@ -21,7 +22,7 @@
 
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
-| 1 | Auth & User Profiles | 🟨 **เหลือเส้นทาง `full_name`** | ⬜ ยังไม่สร้างหน้า | RLS + derive `student_id` ทดสอบผ่านครบ · แต่ดู 🔴 ด้านล่าง |
+| 1 | Auth & User Profiles | 🟨 **เหลือเส้นทาง `full_name`/`phone` ผ่านแอปจริง** | ⬜ ยังไม่สร้างหน้า | RLS + derive `student_id` ทดสอบผ่านครบ · trigger อ่าน `phone` แล้ว (D-14) · bucket `avatars` พร้อม (D-15) · แต่ดู 🔴 ด้านล่าง |
 | 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | 🟨 approve/reject ปุ่มเริ่มทำแล้วบางส่วน | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่ม | RLS เป็น allow-all ชั่วคราว · ดู 🔴 ด้านล่าง |
@@ -97,6 +98,7 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [ ] ข้อมูลทดสอบค้างอยู่ใน DB: user 4 คน + `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี (บุคลากร)`) — ต้องล้างก่อน production
       (`bio`/`phone` **ไม่ได้ค้าง** — ดูหมายเหตุเรื่อง auto-rollback ใน `checks/_common.sql`)
 - [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้ ถ้า L8 ให้ admin เพิ่มหมวดหมู่เองควรใส่
+- [ ] **ไฟล์กำพร้าใน `avatars`** — เปลี่ยนรูปโปรไฟล์แล้วไฟล์เก่าไม่ถูกลบ และ `avatar_url` ชี้ URL ที่ไฟล์อาจไม่มีแล้ว (D-15) — แก้พร้อมข้อถัดไป
 - [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
 - [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน
 - [ ] **`Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)`** — ตอนนี้ trigger `lower()` ให้ก่อน insert จึงยังไม่มีปัญหา แต่ถ้ามีเส้นทางเขียนอื่นที่ไม่ผ่าน trigger จะสมัครซ้ำด้วยอีเมลคนละตัวพิมพ์ได้ (ตรวจด้วย `checks/L1.sql` [1.9])

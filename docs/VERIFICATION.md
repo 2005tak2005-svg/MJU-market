@@ -209,3 +209,24 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 **ยืนยันก่อน apply CHECK `profile_email_domain`:** 4 แถวเดิมไม่มีแถวไหนขัด (`would_violate = 0`, `null_emails = 0`, `not_lowercase = 0`) จึงเพิ่ม constraint ได้โดยไม่ต้องแก้ข้อมูลก่อน
 
 > ⚠️ **ยังไม่ได้ทดสอบ:** เส้นทางสมัครจริงผ่าน GoTrue (`/auth/v1/signup`) หลังแก้ — ทดสอบนี้เขียนลง `auth.users` ตรง ๆ ซึ่งข้ามการ normalize ของ GoTrue ไป (จงใจ เพื่อดูว่า trigger เอาอยู่เอง) เส้นทางจริงยังต้องยืนยันตอนทำหน้า Sign Up
+
+---
+
+### V-10 · ทดสอบ `phone` ผ่าน meta data + bucket `avatars` ทันทีหลัง apply
+
+2 migration: `handle_new_user_read_phone_from_meta_data`, `create_avatars_bucket_and_policies`
+วิธีเดิม — `DO` block INSERT จริงแล้ว `RAISE EXCEPTION` ปิดท้ายเพื่อ rollback
+
+| # | ทดสอบ | คาดหวัง | ผลจริง |
+|---|---|---|---|
+| 1 | meta data มี `full_name` + `phone` | เข้า `"Profile"` ทั้งคู่ | ✅ `full_name=ทดสอบ เบอร์` `phone=0812345678` |
+| 2 | `full_name` เป็นช่องว่างล้วน `"   "`, ไม่ส่ง `phone` | ได้ `NULL` ทั้งคู่ ไม่ใช่ `''` | ✅ `full_name=NULL` `phone=NULL` |
+| 3 | อัป avatar เข้า `<uid ตัวเอง>/` | สำเร็จ | ✅ อัปได้ |
+| 4 | อัป avatar เข้า `<uid คนอื่น>/` | ถูกปฏิเสธ | ✅ ถูกบล็อก |
+
+**ยืนยันไม่มีข้อมูลค้าง:** `auth.users` = 4 · `"Profile"` = 4 · `storage.objects` = 0
+
+**สถานะ storage หลัง apply:** 2 bucket — `avatars` (public, 2 MB) · `product-images` (public, 5 MB) · **8 policy** บน `storage.objects`
+
+> ⚠️ **ยังไม่ได้ทดสอบ:** `file_size_limit` / `allowed_mime_types` ของ `avatars` (บังคับที่ Storage API เหมือน `product-images` ดู V-08) และเส้นทางสมัครจริงผ่าน GoTrue ที่ส่ง meta data มาจาก FlutterFlow
+> 🔴 **ยังไม่รู้:** โปรเจกต์เปิด **Confirm email** ไว้หรือเปล่า — เป็น setting ของ GoTrue ตรวจจาก DB ไม่ได้ ต้องเปิด Dashboard ดู ถ้าเปิดอยู่จะกระทบ PT-07 (ไม่มี session ให้ query `role` ทันทีหลังสมัคร)

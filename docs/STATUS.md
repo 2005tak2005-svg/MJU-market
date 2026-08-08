@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) + ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง
+> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป**
 
 > 🔴 **บทเรียนของวันนี้:** เอกสารเดิมเขียนว่า "ยังไม่มี trigger/function เลย" ทั้งที่ **P-01 กับ P-02 apply อยู่ใน DB มาตลอด**
 > ต้นเหตุคือ `checks/_common.sql` [C7] กรองแค่ `nspname='public'` เลยมองไม่เห็นของใน schema `private` และ trigger บน `auth.users`
@@ -11,8 +11,8 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **สร้าง Storage bucket `product-images`** + policy → ปลดล็อกอัปโหลดรูปใน L2
-2. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ)
+1. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ)
+2. **ทำ upload รูปในหน้า `AddProduct` ตาม PT-08** → ปลดล็อกการยืนยัน Storage ที่เหลือ (ขนาดไฟล์ / mime / public URL) และได้ประกาศจริงไปด้วย
 3. **ลงประกาศทดสอบ 1–2 ชิ้น + สร้างห้องแชท 1 ห้อง 2 คน** → ปลดล็อกการตรวจ `products_review_view` / `chat_summary` ว่า `seller_name` / `member_names` ไม่เป็น NULL ([C8] ที่ยังค้าง) — เป็นสิ่งเดียวที่ปิด L4 ฝั่ง Supabase ได้
 
 ---
@@ -22,7 +22,7 @@
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | 🟨 **เหลือเส้นทาง `full_name`** | ⬜ ยังไม่สร้างหน้า | RLS + derive `student_id` ทดสอบผ่านครบ · แต่ดู 🔴 ด้านล่าง |
-| 2 | Product Listings + Storage | 🟨 เหลือ Storage bucket | 🟨 approve/reject ปุ่มเริ่มทำแล้วบางส่วน | seed `CAT` 12 หมวดแล้ว · schema/RLS/view/realtime เสร็จ |
+| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | 🟨 approve/reject ปุ่มเริ่มทำแล้วบางส่วน | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่ม | RLS เป็น allow-all ชั่วคราว · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
@@ -42,6 +42,10 @@
 **L4 — ทำไมยังไม่ใช่ ✅** — `chat_summary.member_names` **ยังไม่เคยตรวจว่าไม่เป็น NULL** เพราะ `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถวทั้งหมด
 view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
 → ปิด L4 ฝั่ง Supabase ได้ต่อเมื่อ **สร้างห้องแชท 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดา เห็น `member_names` ครบ ไม่มี NULL**
+
+**L2 — ทำไมยังไม่ใช่ ✅** — bucket + policy + CHECK ครบและทดสอบด้วย user ธรรมดาผ่านแล้ว (`VERIFICATION.md` V-08) แต่ `storage.objects` ยังมี **0 object**
+`file_size_limit` (5 MB) กับ `allowed_mime_types` บังคับที่ **Storage API ไม่ใช่ที่ Postgres** — INSERT เข้า `storage.objects` ตรง ๆ ข้ามด่านนี้ไปเลย จึงทดสอบจาก DB แทนไม่ได้
+→ ปิดได้ต่อเมื่อ **อัปไฟล์จริงผ่านแอป** แล้วเห็นว่าไฟล์เกิน 5 MB / ไฟล์ผิดชนิดถูกตีกลับ และรูปเปิดดูได้ผ่าน public URL
 
 ---
 
@@ -93,6 +97,8 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [ ] ข้อมูลทดสอบค้างอยู่ใน DB: user 4 คน + `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี (บุคลากร)`) — ต้องล้างก่อน production
       (`bio`/`phone` **ไม่ได้ค้าง** — ดูหมายเหตุเรื่อง auto-rollback ใน `checks/_common.sql`)
 - [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้ ถ้า L8 ให้ admin เพิ่มหมวดหมู่เองควรใส่
+- [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
+- [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน
 
 ---
 

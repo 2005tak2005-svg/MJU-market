@@ -87,3 +87,26 @@ GROUP BY 1 HAVING count(*) > 1;
 -- [1.11] ❌ ตรวจจาก DB ไม่ได้: เส้นทางสมัครจริงผ่าน GoTrue (/auth/v1/signup)
 --        [1.10] เขียนลง auth.users ตรง ๆ ซึ่งข้าม GoTrue ไป — ต้องสมัครผ่านแอปจริงถึงจะยืนยัน
 --        ว่า full_name ถูกส่งมาใน raw_user_meta_data (ข้อที่ค้างปิด L1 อยู่ตอนนี้)
+
+-- [1.12] bucket avatars — คาดหวัง 1 แถว: public=true, 2097152, {jpeg,png,webp}
+SELECT id, public, file_size_limit, allowed_mime_types
+FROM storage.buckets WHERE id = 'avatars';
+
+-- [1.13] policy ของ avatars บน storage.objects — คาดหวัง 4 แถว
+SELECT policyname, cmd, roles, qual, with_check
+FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+  AND policyname LIKE 'avatars%' ORDER BY policyname;
+
+-- [1.14] trigger ต้องอ่าน phone จาก meta data (D-14) — คาดหวัง true ทั้งคู่
+SELECT pg_get_functiondef(p.oid) LIKE '%raw_user_meta_data->>''phone''%' AS reads_phone,
+       pg_get_functiondef(p.oid) LIKE '%nullif(trim(%'                  AS trims_blank
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname='public' AND p.proname='handle_new_user';
+
+-- [1.15] ค่าช่องว่างล้วนที่หลุดเข้ามา (ต้องเป็น NULL ไม่ใช่ '') — คาดหวัง 0 แถว
+SELECT id, email FROM public."Profile"
+WHERE full_name = '' OR phone = '' OR bio = '' OR avatar_url = '';
+
+-- [1.16] avatar_url ที่ชี้ไปนอก bucket avatars (ควรตรวจตาหลังมีข้อมูลจริง)
+SELECT id, avatar_url FROM public."Profile"
+WHERE avatar_url IS NOT NULL AND avatar_url NOT LIKE '%/storage/v1/object/public/avatars/%';

@@ -156,4 +156,32 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 | `products.seller_id` FK | เขียนแค่ `FK → "Profile".id` | มี `ON UPDATE CASCADE ON DELETE CASCADE` |
 | `products` ลำดับคอลัมน์ | เรียงตามที่จำ | `ordinal_position` ข้าม 7 (มีคอลัมน์ที่ถูก drop ไปแล้ว) — ลำดับจริงคือ id, created_at, seller_id, title, description, price, status, image_urls, condition, contact_phone, moderation_status, category_id, rejection_reason |
 
-**สิ่งที่ยืนยันว่า *ไม่* เปลี่ยนจาก 2026-08-07:** ตาราง 7 ตัว · view 4 ตัว · policy 9 ตัว · function 4 ตัว (`private.*` 3 + `public.handle_new_user`) · trigger `on_auth_user_created` (`tgenabled = 'O'`) · realtime 3 ตาราง · `"CAT"` 12 แถว id 1–12 · storage **0 bucket, 0 policy**
+**สิ่งที่ยืนยันว่า *ไม่* เปลี่ยนจาก 2026-08-07:** ตาราง 7 ตัว · view 4 ตัว · policy 9 ตัว · function 4 ตัว (`private.*` 3 + `public.handle_new_user`) · trigger `on_auth_user_created` (`tgenabled = 'O'`) · realtime 3 ตาราง · `"CAT"` 12 แถว id 1–12 · storage **0 bucket, 0 policy** ← เปลี่ยนแล้วใน V-08 ด้านล่าง
+
+---
+
+### V-08 · ทดสอบ Storage `product-images` + CHECK 3 รูป ทันทีหลัง apply
+
+**ท่าทดสอบ:** `DO` block ที่ลอง INSERT จริง แล้วปิดท้ายด้วย `RAISE EXCEPTION` เพื่อ abort ทั้ง block
+→ ได้ผลจริงจาก DB โดย **ไม่มีข้อมูลทดสอบค้าง** (ยืนยันหลังทดสอบ: `products` 0 แถว, `storage.objects` 0 แถว)
+
+**ก. CHECK `products_image_urls_max_3`**
+
+| ทดสอบ | คาดหวัง | ผลจริง |
+|---|---|---|
+| INSERT `image_urls` 3 รูป | ผ่าน | ✅ ผ่าน |
+| INSERT `image_urls` 4 รูป | ถูกปฏิเสธ | ✅ ถูกปฏิเสธ (`check_violation`) |
+
+**ข. Storage policy — ทดสอบในฐานะ `authenticated` ที่เป็น user ธรรมดา**
+
+เป็น `mju6598765432@mju.ac.th` ด้วย `SET LOCAL ROLE authenticated` + `request.jwt.claims`
+
+| ทดสอบ | คาดหวัง | ผลจริง |
+|---|---|---|
+| อัปเข้า `<uid ตัวเอง>/pic1.jpg` | สำเร็จ | ✅ สำเร็จ |
+| อัปเข้า `<uid คนอื่น>/hack.jpg` | ถูกปฏิเสธ | ✅ ถูกบล็อก (`insufficient_privilege`) |
+
+> ⚠️ **ยังไม่ได้ทดสอบ:** `file_size_limit` (5 MB) และ `allowed_mime_types` — สองอย่างนี้บังคับที่ **Storage API** ไม่ใช่ที่ Postgres การ INSERT เข้า `storage.objects` ตรง ๆ จึงข้ามไป ต้องอัปไฟล์จริงผ่าน FlutterFlow/REST ถึงจะยืนยันได้
+> ⚠️ **ยังไม่ได้ทดสอบ:** การอ่านผ่าน public URL จริง และ flow อัปครบ 3 รูปแล้วผูกเข้าประกาศ
+
+**สถานะ storage หลัง apply:** 1 bucket (`product-images`) · 4 policy บน `storage.objects` · 0 object

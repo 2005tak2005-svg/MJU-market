@@ -92,3 +92,29 @@ Action 3: Conditional
 - เทียบ string **case-sensitive** พิมพ์ `"admin"`/`"user"` ให้ตรงเป๊ะ
 - ถ้าต้องรองรับ **auto-login** (เปิดแอปตอนมี session ค้าง) ต้องทำ logic เดียวกันซ้ำที่ **on Page Load ของหน้า Splash/Initial** ไม่งั้นไม่ถูก route ตาม role
 - `role` มี CHECK constraint คุ้มครองค่าเพี้ยนอยู่แล้ว
+
+---
+
+## PT-08 — upload รูปเข้า Storage `product-images`
+
+**ใช้ที่:** `AddProduct` (L2) · แก้ไขประกาศ (L2/L5)
+
+**🔴 path ต้องขึ้นต้นด้วย `auth.uid()` เสมอ** — `<currentUserId>/<ชื่อไฟล์>`
+policy อ่าน `(storage.foldername(name))[1]` มาเทียบกับ `auth.uid()` ตั้งผิด = อัปไม่ผ่านทันที (ไม่ fail เงียบ)
+
+Action Flow:
+
+1. **Upload Media to Supabase** → bucket `product-images`, ตั้ง upload path ให้ขึ้นต้นด้วย `currentUserId`
+2. เก็บ URL ที่ได้สะสมไว้ใน **Page State** `List<String>` (เช่น `uploadedImageUrls`)
+3. ปุ่ม "ลงขายสินค้า" → Insert Row `products` ผูก `image_urls = uploadedImageUrls`
+
+**ข้อจำกัดที่ต้อง handle ใน UI ไม่ใช่ปล่อยให้ไปตายที่ DB:**
+
+| กติกา | บังคับที่ไหน | ถ้า UI ไม่กัน |
+|---|---|---|
+| สูงสุด **3 รูป** | CHECK `products_image_urls_max_3` | อัปครบ 4 ไฟล์เสียเน็ตฟรี แล้วโดนปฏิเสธตอนกดบันทึก + เหลือไฟล์กำพร้าใน bucket |
+| ไฟล์ ≤ **5 MB** | `file_size_limit` ของ bucket | Storage API ตีกลับตอนอัป |
+| เฉพาะ **jpeg / png / webp** | `allowed_mime_types` ของ bucket | Storage API ตีกลับตอนอัป |
+
+> ⚠️ **ยังไม่มีระบบเก็บกวาดไฟล์กำพร้า** — ถ้าผู้ใช้อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket (หนี้ใน `STATUS.md`)
+> รายละเอียดการตัดสินใจ: `DECISIONS.md` **D-12** · ค่าจริงของ bucket/policy: `SCHEMA.md` หัวข้อ Storage

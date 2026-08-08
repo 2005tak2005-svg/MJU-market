@@ -17,6 +17,8 @@
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-10 | RLS policy ของ `reports` | L7 | 🔴 ตอนนี้ deny-all ใช้งานไม่ได้เลย |
+| P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
+| P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 
 ---
 
@@ -148,3 +150,47 @@ CREATE POLICY "admin can read reports" ON public.reports
   FOR SELECT TO authenticated
   USING (EXISTS (SELECT 1 FROM public."Profile" WHERE id = auth.uid() AND role = 'admin'));
 ```
+
+---
+
+## P-11 — unique index บน `lower("Profile".email)` (L1)
+
+> 🚧 **ข้อเสนอของ Claude — pete ยังไม่ตอบรับ ห้ามถือว่าตกลงแล้ว**
+
+```sql
+CREATE UNIQUE INDEX profile_email_lower_unique
+  ON public."Profile" (lower(email));
+```
+
+**ที่มา:** `Profile_email_key` เป็น UNIQUE ธรรมดาบนคอลัมน์ดิบ ไม่ใช่ index บน `lower()`
+ตอนนี้ `handle_new_user()` `lower()` ให้ก่อน insert อยู่แล้ว (D-14) จึงยัง**ไม่มีปัญหาจริง** — ข้อเสนอนี้เป็นชั้นกันเผื่อเส้นทางเขียนอื่นที่ไม่ผ่าน trigger (`service_role` / SQL ตรง)
+
+**ที่ต้องตัดสินใจก่อน apply:**
+- คุ้มไหมที่จะเพิ่ม index อีกตัวเพื่อกันเคสที่ trigger กันอยู่แล้ว
+- ถ้าเอา ควรถอด `Profile_email_key` ตัวเดิมทิ้งไหม หรือเก็บทั้งคู่
+
+**ตรวจว่ายังไม่มีปัญหาอยู่หรือเปล่า:** `checks/L1.sql` [1.9]
+
+---
+
+## P-12 — เก็บกวาดไฟล์กำพร้าใน Storage (L1 / L2 / L5)
+
+> 🚧 **ข้อเสนอของ Claude — pete ยังไม่ตอบรับ และยังไม่ได้เลือกแนวทาง จึงยังไม่มี SQL ให้รัน**
+
+**ที่มา:** หนี้ที่รับไว้ตอน D-12 (`product-images`) และ D-15 (`avatars`) — ไฟล์ค้างใน bucket ได้ 3 ทาง
+
+| ทางที่เกิดไฟล์กำพร้า | bucket |
+|---|---|
+| อัปรูปแล้วไม่กดบันทึกประกาศ | `product-images` |
+| ลบประกาศทีหลัง รูปไม่ถูกลบตาม | `product-images` |
+| เปลี่ยนรูปโปรไฟล์ ไฟล์เก่าไม่ถูกลบ | `avatars` |
+
+**แนวทางที่ยังไม่ได้เลือก:**
+
+| แนวทาง | ข้อดี | ข้อเสีย |
+|---|---|---|
+| trigger `AFTER DELETE ON products` ลบไฟล์ตาม `image_urls` | ตรงจุด ทันที | ลบข้ามไป `storage.objects` จาก trigger ต้องใช้สิทธิ์สูง และ path ต้อง parse จาก URL |
+| Edge Function รันเป็นรอบ กวาดไฟล์ที่ไม่มีใครอ้างถึง | ปลอดภัยกว่า ย้อนดูได้ | ไฟล์ค้างอยู่ระหว่างรอบ · ต้องมีตัวตั้งเวลา |
+| ไม่ทำเลย ยอมให้ค้าง | ไม่ต้องเขียนอะไร | ค่าเก็บโตเรื่อย ๆ ไม่มีวันหด |
+
+🔴 **ห้ามเขียนตัวนี้ก่อนคุยกันจบ** — ของที่ลบไฟล์ผู้ใช้อัตโนมัติ ถ้าเงื่อนไขผิดคือลบรูปที่ยังใช้อยู่ กู้คืนไม่ได้

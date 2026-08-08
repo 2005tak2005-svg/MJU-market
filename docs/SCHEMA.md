@@ -48,9 +48,14 @@ CHECK (((student_id IS NULL)
         OR ((email IS NOT NULL)
             AND (lower((email)::text) = (('mju'::text || (student_id)::text)
                                          || '@mju.ac.th'::text)))))          -- profile_student_id_matches_email
+
+CHECK (((email IS NULL)
+        OR (lower((email)::text) ~ '^[^@]+@mju\.ac\.th$'::text)))            -- profile_email_domain
 ```
 
-> ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10** (ยังรอ pete ยืนยันรูปแบบอีเมลจริง)
+> ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10**
+>
+> 🔴 `profile_email_domain` anchor ทั้งสองด้าน (`^[^@]+@...$`) **จงใจ** — ถ้าใช้แค่ `@mju\.ac\.th$` อีเมลอย่าง `hacker@evil.com@mju.ac.th` จะผ่าน `[^@]+` บังคับให้มี `@` ตัวเดียว ยืนยันด้วยการทดสอบจริง `VERIFICATION.md` **V-09**
 
 ### `public.products`
 
@@ -328,16 +333,19 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
  SET search_path TO 'public'
 AS $function$
 declare
+  normalized_email varchar;
   derived_student_id varchar;
 begin
-  if new.email !~ '@mju\.ac\.th$' then
+  normalized_email := lower(new.email);
+
+  if normalized_email !~ '^[^@]+@mju\.ac\.th$' then
     raise exception 'Only @mju.ac.th email addresses are allowed';
   end if;
 
-  derived_student_id := substring(new.email from '^mju([0-9]{10})@mju\.ac\.th$');
+  derived_student_id := substring(normalized_email from '^mju([0-9]{10})@mju\.ac\.th$');
 
   insert into public."Profile" (id, email, full_name, role, student_id)
-  values (new.id, new.email, new.raw_user_meta_data->>'full_name', 'user', derived_student_id);
+  values (new.id, normalized_email, new.raw_user_meta_data->>'full_name', 'user', derived_student_id);
 
   return new;
 end;
@@ -351,7 +359,9 @@ CREATE TRIGGER on_auth_user_created
 สิ่งที่ต้องรู้ก่อนต่อ FlutterFlow:
 
 1. **บังคับโดเมน `@mju.ac.th`** — สมัครด้วยอีเมลอื่นจะ `raise exception` ทันที แต่ **error ที่ client ได้รับใช้ไม่ได้** ต้อง validate ฝั่ง client เอง (ผลตรวจ + log ดิบ: `VERIFICATION.md` V-03)
+   รับ**ทุก**อีเมล `@mju.ac.th` ไม่ใช่เฉพาะ `mju<10หลัก>` — บุคลากร/อาจารย์สมัครได้ โดย `student_id` เป็น NULL (เหตุผล: `DECISIONS.md` **D-10**)
 2. **`student_id` เป็นค่า derived** — trigger ดึงจากอีเมลเอง FlutterFlow **ห้าม**เขียนทับ จะชน CHECK `profile_student_id_matches_email`
+   ⚠️ **`"Profile".email` ถูก `lower()` เสมอ ส่วน `auth.users.email` เก็บตามที่ผู้ใช้พิมพ์** — โค้ดที่จับคู่สองที่นี้ด้วย `=` ตรง ๆ จะพลาดเมื่อผู้ใช้พิมพ์ตัวใหญ่ ให้ join ด้วย `id` เท่านั้น
 3. **`full_name` มาจาก `raw_user_meta_data->>'full_name'`** — FlutterFlow ต้องส่ง meta data ตัวนี้ตอน Sign Up ไม่งั้น `full_name` เป็น NULL
 4. **ไม่มี `ON CONFLICT`** — ถ้าแถวใน `"Profile"` มีอยู่แล้วจะ error และทำให้สมัครไม่ผ่านทั้งรายการ
 5. **`phone` / `bio` / `avatar_url` ไม่มีใครใส่ให้** — `insert` แตะแค่ `id, email, full_name, role, student_id` ถ้าฟอร์มสมัครเก็บเบอร์ FlutterFlow ต้อง Update Row เพิ่มเอง

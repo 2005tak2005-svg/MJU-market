@@ -55,8 +55,6 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 
 **Layer 2**
 - จะเปิดให้ browse ก่อนล็อกอินไหม — ถ้าเอา ต้องเพิ่ม policy ให้ `anon` ทั้ง `"CAT"` และ `products` (ตอนนี้ `anon` เห็น `"CAT"` เป็น 0 แถว)
-
-**Layer 2**
 - จะบังคับ `category_id` ห้าม null ไหม
 - ผู้ขายไม่ได้เปิดแอปตอน admin กด reject → รอ Layer 6 มาช่วย หรือปล่อยตามนี้
 

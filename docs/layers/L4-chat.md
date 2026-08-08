@@ -1,7 +1,9 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase ✅ 100% | FlutterFlow ⬜ ยังไม่เริ่ม**
+> **สถานะ: Supabase 🟨 schema เสร็จ แต่ยังไม่เคยตรวจ | FlutterFlow ⬜ ยังไม่เริ่ม**
+> `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถว → `chat_summary.member_names` ยังไม่เคยยืนยันว่าไม่เป็น NULL
+> ปิดได้เมื่อสร้างห้อง 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดาแล้วเห็นชื่อครบ
 
 ## 🎯 เป้าหมาย
 

@@ -8,7 +8,8 @@
 
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
-**✅ ไม่เหลืออะไรแล้ว — L1 ฝั่ง Supabase ปิดได้** (ทดสอบกับ user จริง 4 คน 2026-08-07 ผลเต็มอยู่ใน `../SCHEMA.md`)
+**🟨 เหลืออย่างเดียว: เส้นทาง `full_name` ยังไม่เคยรันสำเร็จ** — `handle_new_user()` อ่านจาก `raw_user_meta_data->>'full_name'` แต่ user 4 คนที่ทดสอบสมัครผ่าน Dashboard ซึ่งส่ง metadata ไม่ได้ ชื่อในตารางตอนนี้เป็นค่าเติมมือ
+→ ปิดได้เมื่อสมัครผ่านหน้า FlutterFlow Sign Up ที่ส่ง `full_name` แล้วเห็นชื่อโผล่เอง (ผลตรวจ: `../VERIFICATION.md` V-02 ข้อ 5)
 
 **ทำแล้ว:** คอลัมน์ครบ (`role`/`student_id`/`phone`/`bio` + constraints) · RLS ของ `"Profile"` มีอยู่แล้วจริง **ไม่ต้องเขียนใหม่** · view `public_profiles` สร้างแล้ว · **trigger auto-insert Profile (P-01) apply แล้ว** · **server-side validate โดเมน `@mju.ac.th` (P-02) apply แล้ว** — รวมอยู่ใน `handle_new_user()` ตัวเดียวกัน ดู `../SCHEMA.md`
 
@@ -36,7 +37,8 @@
 
 ## 🧪 Definition of Done
 
-**ฝั่ง Supabase — ✅ ผ่านครบแล้ว 2026-08-07**
+**ฝั่ง Supabase — ✅ ข้อด้านล่างผ่านครบ (ผลเต็ม: `../VERIFICATION.md` V-02 / V-04)**
+**แต่ L1 ยังไม่ปิด 🟨** — เส้นทาง `full_name` ของ trigger ตรวจได้เฉพาะฝั่ง FlutterFlow (ข้อแรกของหัวข้อถัดไป) ซึ่งยังไม่เคยรัน
 
 - [x] สมัครด้วยอีเมลนอกโดเมน `@mju.ac.th` ถูกปฏิเสธที่ระดับ DB — ยืนยันจาก auth log (`P0001`)
 - [x] สมัครสำเร็จ → มี row ใน `"Profile"` อัตโนมัติ พร้อม `role = 'user'`

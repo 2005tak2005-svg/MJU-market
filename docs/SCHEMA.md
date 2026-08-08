@@ -82,8 +82,11 @@ CHECK (((condition)::text = ANY ((ARRAY['new'::character varying,
 CHECK (((moderation_status)::text = ANY ((ARRAY['pending'::character varying,
                                                 'approved'::character varying,
                                                 'rejected'::character varying])::text[])))
+
+CHECK (((image_urls IS NULL) OR (array_length(image_urls, 1) <= 3)))   -- products_image_urls_max_3
 ```
 
+- `image_urls` เก็บได้ **สูงสุด 3 รูป** บังคับที่ระดับ DB — ยิง API ตรงก็เกินไม่ได้ (ดู `DECISIONS.md` D-12)
 - `status` = สถานะการขาย (available/reserved/sold) — **ไม่มี CHECK** ยังไม่บังคับค่า, Layer 5 จะมาใช้
 - `moderation_status` = สถานะตรวจสอบ — คนละเรื่องกับ `status` โดยตั้งใจ ดู `DECISIONS.md` D-04
 - `image_urls` เป็น array เดียว ไม่มีตาราง `product_images` แยก
@@ -392,7 +395,32 @@ AS $function$ SELECT student_id FROM public."Profile" WHERE id = auth.uid() $fun
 
 ## Storage
 
-**0 bucket · 0 policy บน `storage.objects`** — Layer 2 ต้องสร้าง `product-images` + policy
+### bucket `product-images`
+
+| ค่า | |
+|---|---|
+| `public` | **true** — อ่านผ่าน public URL ได้เลย ไม่ต้องทำ signed URL (ดู `DECISIONS.md` D-12) |
+| `file_size_limit` | `5242880` (5 MB ต่อไฟล์) |
+| `allowed_mime_types` | `{image/jpeg, image/png, image/webp}` |
+
+🔴 **โครงสร้าง path บังคับ: `<auth.uid()>/<ชื่อไฟล์>`** — policy ตัดสินสิทธิ์จาก `(storage.foldername(name))[1]` อัปเข้าโฟลเดอร์อื่นถูกปฏิเสธ
+
+**policy บน `storage.objects` — ค่าจริงจาก `pg_policies`**
+
+| policyname | cmd | roles | qual / with_check |
+|---|---|---|---|
+| product-images: public read | SELECT | `{public}` | qual: `(bucket_id = 'product-images'::text)` |
+| product-images: owner upload | INSERT | `{authenticated}` | with_check: ↓ |
+| product-images: owner update | UPDATE | `{authenticated}` | qual **และ** with_check: ↓ |
+| product-images: owner delete | DELETE | `{authenticated}` | qual: ↓ |
+
+```sql
+-- นิพจน์ ↓ ที่ใช้ร่วมกันทั้ง upload / update / delete (ค่าจริง คำต่อคำ)
+((bucket_id = 'product-images'::text)
+ AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text))
+```
+
+> 📌 **จำนวนรูปสูงสุด 3 บังคับที่ `products.image_urls` ไม่ใช่ที่ Storage** — policy บน `storage.objects` เห็นทีละไฟล์ นับรวมไม่ได้ ผลคืออัปไฟล์ที่ 4 เข้า bucket ได้ แต่ผูกกับประกาศไม่ได้ (กลายเป็นไฟล์กำพร้า) เหตุผลเต็ม: `DECISIONS.md` **D-12**
 
 ---
 

@@ -8,9 +8,13 @@
 
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
-- [ ] สร้าง Storage bucket `product-images` + policy (upload ได้ถ้า authenticated, ลบได้เฉพาะไฟล์ตัวเอง — แนะนำ path prefix = user id)
+- [x] สร้าง Storage bucket `product-images` + policy — **apply แล้ว 2026-08-08**
+      public · 5 MB/ไฟล์ · jpeg-png-webp · 🔴 **path บังคับ `<currentUserId>/<ชื่อไฟล์>`** ไม่งั้นอัปไม่ผ่าน
+      ค่าจริงทั้งหมด → `../SCHEMA.md` หัวข้อ Storage · เหตุผล → `../DECISIONS.md` **D-12** · วิธีทำใน FlutterFlow → `../PATTERNS.md` **PT-08**
 
-**ทำแล้ว:** schema ครบ · RLS allow-all · `products_review_view` · Realtime บน `products` · **seed `"CAT"` 12 หมวดหมู่แล้ว (id 1–12 ดู `../SCHEMA.md`)**
+**เหลืออย่างเดียว:** ยืนยันการอัปไฟล์จริงผ่านแอป — `file_size_limit` / `allowed_mime_types` บังคับที่ **Storage API** ทดสอบจาก DB แทนไม่ได้ (ดู `../VERIFICATION.md` V-08)
+
+**ทำแล้ว:** schema ครบ · RLS allow-all · `products_review_view` · Realtime บน `products` · **seed `"CAT"` 12 หมวดหมู่แล้ว (id 1–12 ดู `../SCHEMA.md`)** · CHECK จำกัด `image_urls` ที่ 3 รูป
 
 > ⚠️ dropdown หมวดหมู่ต้องอ่านตอน**ล็อกอินแล้ว**เท่านั้น — `anon` เห็น `"CAT"` เป็น 0 แถว (policy เป็น `TO authenticated`)
 
@@ -20,7 +24,7 @@
 
 | widget | → คอลัมน์ |
 |---|---|
-| Upload รูป (หลายรูป) | `image_urls` (text[]) |
+| Upload รูป **สูงสุด 3 รูป** — ทำตาม **PT-08** | `image_urls` (text[]) |
 | TextField ชื่อสินค้า | `title` |
 | TextField รายละเอียด | `description` |
 | TextField ราคา | `price` |
@@ -30,6 +34,7 @@
 
 **ปุ่ม "ลงขายสินค้า"** → Insert Row เข้า `products` + **ผูก `seller_id = currentUserId` เอง**
 ❗ **ไม่ต้องส่ง `moderation_status`** ปล่อยให้ default `'pending'` ทำงาน
+❗ **UI ต้องกันที่ 3 รูปเอง** — DB กันไว้ด้วย CHECK แต่ถ้าปล่อยให้อัปครบ 4 ไฟล์ก่อน ผู้ใช้จะเสียเน็ตฟรีแล้วโดนปฏิเสธตอนกดบันทึก + เหลือไฟล์กำพร้าใน bucket
 
 ## 🎨 B. หน้า `MyPost`
 
@@ -59,6 +64,9 @@ Backend Query ผูก `products_review_view` filter `seller_id = currentUserId
 
 ## 🧪 Definition of Done
 
+- [ ] อัปรูปแล้วได้ path `<currentUserId>/...` จริง และรูปเปิดดูได้ผ่าน public URL ที่เก็บลง `image_urls`
+- [ ] อัปไฟล์ **> 5 MB** และไฟล์ที่ไม่ใช่ jpeg/png/webp → ถูก Storage API ตีกลับ พร้อมข้อความที่ผู้ใช้เข้าใจ
+- [ ] เลือกรูปที่ 4 → **UI กันเอง** ไม่ปล่อยให้อัปแล้วไปตายตอนกดบันทึก
 - [ ] กด "ลงขายสินค้า" → row ใหม่ที่ `moderation_status = 'pending'` เสมอ และ `seller_id` ตรงกับคนที่ล็อกอิน
 - [ ] `MyPost` เห็นประกาศตัวเองครบทุกสถานะ
 - [ ] `Inspect` เห็นเฉพาะ pending พร้อม `seller_name` + `category_name` ถูกต้อง **ทุกแถว**

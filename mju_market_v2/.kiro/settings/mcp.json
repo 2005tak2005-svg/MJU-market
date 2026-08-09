@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "flutterflow_ai": {
+      "command": "dart",
+      "args": [
+        "run",
+        "/Users/passavee/Documents/ทักทาย 🤪/CLAUDE CODE/mju_market_v2/.flutterflow/sdk/flutterflow_ai/mcp/server.dart",
+        "--dir",
+        "/Users/passavee/Documents/ทักทาย 🤪/CLAUDE CODE/mju_market_v2"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -466,6 +466,24 @@ AS $function$ SELECT student_id FROM public."Profile" WHERE id = auth.uid() $fun
 
 > 📌 **`"Profile".avatar_url` เป็นแค่ text ไม่มีอะไรผูกกับไฟล์จริงใน bucket** — ลบไฟล์แล้วคอลัมน์ยังชี้ URL เดิม และเปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ (ไฟล์กำพร้าแบบเดียวกับ D-12)
 
+### bucket `static-pages`
+
+สร้างวันที่ 2026-08-09 สำหรับหน้าเว็บกลาง "ยืนยันอีเมลสำเร็จ" ของ D-19 (Site URL ชี้มาที่ไฟล์ในนี้แทน `localhost:3000`) — ไม่ใช่ bucket สำหรับ user upload
+
+| ค่า | |
+|---|---|
+| `public` | **true** |
+| `file_size_limit` | ไม่ได้ตั้ง (ไม่จำกัด) |
+| `allowed_mime_types` | ไม่ได้ตั้ง (ไม่จำกัด) |
+
+| policyname | cmd | roles | qual |
+|---|---|---|---|
+| `static-pages public read` | SELECT | `{public}` | `(bucket_id = 'static-pages'::text)` |
+
+🔴 **ไม่มี policy INSERT/UPDATE/DELETE เลย** — อัปโหลด/แก้ไขไฟล์ในนี้ได้เฉพาะผ่าน Dashboard (service_role bypass RLS) เท่านั้น ตั้งใจให้เป็นแบบนี้เพราะเป็นหน้าคงที่ ไม่ต้องการให้ใครแก้ได้จากแอป
+
+**ไฟล์ที่ต้องมี (ยังไม่ได้อัปโหลด ณ 2026-08-09):** `email-confirmed.html` — pete เตรียมอัปโหลดเองผ่าน Dashboard ตาม `DECISIONS.md` D-19
+
 ---
 
 ## 📎 ความจริงที่ไม่ได้อยู่ในไฟล์นี้

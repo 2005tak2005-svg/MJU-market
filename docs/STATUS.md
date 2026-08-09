@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-09** — **รีเซ็ตโปรเจกต์ FlutterFlow เป็น "MJU-Market-v2"** (`../DECISIONS.md` D-16) · **สร้างหน้า `SignUp`/`Login`/`Home`/`HomeAdmin` จริง ทดสอบผ่าน end-to-end ทั้ง user/admin path ด้วย server timestamp จริง** · พบว่า **Confirm Email เปิดอยู่จริง** — ยังไม่ตัดสินใจทางแก้ (D-17) · พบบั๊ก SDK 2 ตัวของ FlutterFlow AI เอง บันทึกเป็น `PATTERNS.md` **PT-09**/**PT-10**
+> อัปเดตล่าสุด: **2026-08-09** — **D-17 flow ยืนยันอีเมลสร้างเสร็จทั้ง 2 ฝั่ง** (Supabase: bucket `static-pages` + Site URL ตาม D-19 · FlutterFlow: `LoginWithEmailPassword` custom action ใหม่ + snackbar แจ้งเตือนหลังสมัคร) **แต่ยังไม่เคยทดสอบคลิกจริงบนแอปเลย** — สิ่งที่ยืนยันแล้วคือ compile ผ่าน + generated code ถูก + error message จริงจาก Supabase API ตรงกับที่โค้ดเช็ค (ผ่าน curl ไม่ใช่ผ่านแอป) · พบกับดัก SDK/framework เพิ่มอีก 1 ตัวระหว่างทำ บันทึกเป็น `PATTERNS.md` **PT-11** (auth stream ของแอปถูก debounce ไว้ ต้อง sync `AppStateNotifier` เองถ้าเลิกใช้ built-in sign-in action)
 
 > 🔴 **บทเรียนของวันนี้:** ระวังการ "เชื่อว่าปิดแล้ว" จากสิ่งที่ทดสอบผ่าน AI vision agent (Test Pilot) หรือ proto ที่ `inspect` เห็น — ทั้งคู่เคยดูเหมือนถูกทั้งที่โค้ด Dart จริงที่ generate ออกมาผิด (PT-09) ต้องเปิด `generated_code/` ดูโค้ดจริงเสมอก่อนเชื่อว่า action ทำงานถูก และ evidence ที่เชื่อถือได้ที่สุดคือ query ตรงจาก DB (เช่น `auth.users.last_sign_in_at`) ไม่ใช่รายงานจากคนอื่นหรือ AI agent
 
@@ -9,8 +9,8 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **D-19 ทำฝั่ง Supabase เสร็จแล้ว** → bucket `static-pages` + ไฟล์ `email-confirmed.txt` (ไม่ใช่ `.html` เจอกับดัก Storage บังคับ text/plain — ดู `CLAUDE.md`) + Site URL ตั้งชี้ไปที่ไฟล์นั้นแล้ว 2026-08-09 (ดู `DECISIONS.md` D-19)
-   **ค้างอยู่:** (1) **ยังไม่เคยทดสอบ end-to-end จริง** สมัครบัญชีใหม่แล้วดูว่าอีเมลพาไปหน้านั้นจริงไหม, (2) FlutterFlow: หน้าแจ้งเตือนหลังสมัคร + ดักเคส "email not confirmed" ที่ Login (D-17 ข้อ 1-2), (3) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสใหม่ผ่าน flow จริง — นี่คือสิ่งเดียวที่ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว
+0. **D-17 สร้างเสร็จทั้ง 2 ฝั่งแล้ว (Supabase D-19 + FlutterFlow) → เหลือแค่ "ทดสอบจริง"** ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" สำหรับรายละเอียดครบ
+   **ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว:** (1) **คลิกทดสอบจริงบนแอป** (มือถือ/simulator หรือ Test Pilot) — สมัครบัญชีใหม่ → เห็น snackbar แจ้งเตือนถูกไหม → เปิดอีเมลกดยืนยัน → ไปหน้า `email-confirmed.txt` จริงไหม → login แล้วเข้า Home/HomeAdmin ได้ลื่นไหลไม่เด้งกลับ Login ไหม (กังวลเรื่อง PT-11 เพราะ auth stream debounce — แก้ในโค้ดแล้วแต่ยังไม่เห็นผลจริงบนแอป), (2) ทดสอบเคส login ด้วยบัญชีที่ยังไม่ยืนยัน → ต้องเห็นข้อความไทยที่เข้าใจง่าย ไม่ใช่ raw error — มีบัญชีพร้อมเทสแล้ว `mju6500000099@mju.ac.th` (ไม่เคย patch SQL), (3) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น
 1. **เริ่ม L2 ใน v2** → AddProduct/MyPost/Inspect **ไม่มีอยู่ใน v2 เลย** (v1 archived ตาม D-16) ต้องสร้างใหม่ทั้งหมด — อ่าน `PATTERNS.md` PT-09/PT-10 **ก่อน** เขียน Action Flow เพราะจะเจอบั๊ก SDK ที่เจอตอน L1 ซ้ำแน่ (ดูคำเตือนใน `layers/L2-listings.md`)
 2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
 
@@ -37,7 +37,7 @@
 > เราตั้งกฎนี้ไว้ตอนตรวจ DB แล้วดันให้ ✅ ตัวเองทั้งที่เส้นทางจริงยังไม่เคยรัน — ลด L1/L4 กลับเป็น 🟨 เมื่อ 2026-08-08
 
 **L1 — ✅ ปิดฝั่ง Supabase แล้ว 2026-08-09** — สมัครผ่าน FlutterFlow Sign Up จริง (`mju6577778888@mju.ac.th`) ได้ `full_name`/`phone`/`student_id`/`role` ครบทุกช่อง ไม่มี NULL
-**FlutterFlow ยังไม่ปิด 🟨** — Login/SignUp/Home/HomeAdmin ทำงานถูกต้องและยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง user/admin path แล้ว แต่ **Confirm Email flow ยังไม่สร้าง** (D-17) — สมัครเสร็จไม่มีการบอกผู้ใช้ให้ไปยืนยันอีเมล และ login ก่อนยืนยันจะเจอ error ดิบจาก Supabase ตรง ๆ
+**FlutterFlow ยังไม่ปิด 🟨** — Login/SignUp/Home/HomeAdmin ทำงานถูกต้องและยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง user/admin path แล้ว **Confirm Email flow (D-17) สร้างเสร็จแล้ว 2026-08-09** (snackbar แจ้งเตือนหลังสมัคร + `LoginWithEmailPassword` ดักเคส email not confirmed) แต่ **ยังไม่เคยทดสอบคลิกจริงบนแอป** — ที่ยืนยันแล้วมีแค่: compile ผ่าน, generated Dart ถูกตามที่ตั้งใจ, error message จริงจาก Supabase ตรงกับที่โค้ดเช็ค (เช็คผ่าน curl) ยังไม่เห็นว่า router navigate ลื่นไหลจริงไหมตอนคลิกบนแอป (กังวลเรื่อง PT-11)
 
 **L4 — ทำไมยังไม่ใช่ ✅** — `chat_summary.member_names` **ยังไม่เคยตรวจว่าไม่เป็น NULL** เพราะ `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถวทั้งหมด
 view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
@@ -114,9 +114,10 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [x] ~~ชื่อหน้า/State ฝั่ง FlutterFlow ยังไม่เคยเทียบกับโปรเจกต์จริง~~ → **ปิดแล้วสำหรับ L1** 2026-08-09 (มี CLI แล้ว, ชื่อ v2 ยืนยันจริงหมดแล้วดู `layers/L1-auth-profile.md`) — **แต่ L2 ขึ้นไปยังไม่เคยตั้งชื่อใน v2 เลย** ต้องตรวจใหม่ทุก layer ที่เริ่ม
 - [ ] **repo เป็น private แล้ว (D-13) แต่นั่นไม่ใช่การปิดช่องโหว่** — ของจริงที่ต้องปิดคือ 3 ข้อบนสุดของรายการนี้ อย่าให้ private กลายเป็นข้ออ้างเลื่อนออกไป
 - [ ] 🔴 **บัญชีทดสอบ 2 บัญชีถูกแก้ credential ตรงด้วย SQL — ไม่ใช่สภาพที่ user จริงไปถึงได้ ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว** (2026-08-09):
-      - `mju6577778888@mju.ac.th` — `email_confirmed_at` ถูก patch ด้วย SQL ตรง ๆ (`UPDATE auth.users SET email_confirmed_at = now() ...`) เพื่อปลดล็อกเทส login หลังเจอ "Email not confirmed" — บัญชีนี้**ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงของ Supabase เลย** ต้องแก้เมื่อทำ D-17 เสร็จ (ถ้าเลือกทางสร้าง flow ยืนยัน ให้ล้างบัญชีนี้ทิ้งแล้วเทสใหม่ผ่าน flow จริง)
+      - `mju6577778888@mju.ac.th` — `email_confirmed_at` ถูก patch ด้วย SQL ตรง ๆ (`UPDATE auth.users SET email_confirmed_at = now() ...`) เพื่อปลดล็อกเทส login หลังเจอ "Email not confirmed" — บัญชีนี้**ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงของ Supabase เลย** **ยังไม่ได้ล้าง** ณ 2026-08-09 แม้ D-17 จะสร้าง flow เสร็จแล้ว — เป็นงานค้างข้อสุดท้ายก่อนปิด L1 ดู `layers/L1-auth-profile.md`
       - `mju6512345678@mju.ac.th` — `encrypted_password` ถูกเขียนทับด้วย SQL (`crypt('TestPilot!2026', gen_salt('bf'))`) เพื่อให้มีรหัสผ่านที่รู้ค่าไว้เทส Test Pilot login — **รหัสผ่านเดิมของบัญชีนี้ (ถ้าเคยมีคนตั้งไว้) ใช้ไม่ได้แล้ว** และ `email_confirmed_at` ก็ถูกแตะด้วย (แม้จะเป็น no-op เพราะเดิมน่าจะ confirmed อยู่แล้วจากการสร้างผ่าน Dashboard)
       ทั้งสองบัญชีปลอดภัยสำหรับ**เทส auth/role routing ต่อ**เท่านั้น — **ห้ามใช้เทส "สมัครสมาชิกแล้วต้องยืนยันอีเมล" เพราะสภาพถูกลัดผ่านไปแล้ว**
+      🟢 **มีบัญชีสดสำหรับเทส confirm-flow แล้ว:** `mju6500000099@mju.ac.th` / รหัสผ่าน `TestPT17verify!` — สมัครผ่าน REST API ตรง ๆ 2026-08-09 ไม่เคย patch SQL เลย ตั้งใจปล่อยไว้ไม่ยืนยันอีเมล ใช้เทส D-17/D-19 ต่อได้ทันที
 
 ---
 

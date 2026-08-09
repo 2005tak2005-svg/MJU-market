@@ -1,20 +1,17 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-08** — ลีน `SCHEMA.md` ให้ re-derive จาก catalog ได้ทุกบรรทัด (ผลตรวจย้ายไป `VERIFICATION.md`) · ลดสถานะ L1/L4 ที่ให้ ✅ เกินจริง · **สร้าง Storage bucket `product-images` + policy + CHECK จำกัด 3 รูป** · **ปิด D-10 (ยืนยันรูปแบบอีเมลจริง) + อุด regex ที่ไม่ anchor + normalize อีเมล** · **repo เป็น private (D-13)** · **เตรียม L1 ให้พร้อมลงมือ: `phone` ผ่าน meta data (D-14) + bucket `avatars` (D-15)**
+> อัปเดตล่าสุด: **2026-08-09** — **รีเซ็ตโปรเจกต์ FlutterFlow เป็น "MJU-Market-v2"** (`../DECISIONS.md` D-16) · **สร้างหน้า `SignUp`/`Login`/`Home`/`HomeAdmin` จริง ทดสอบผ่าน end-to-end ทั้ง user/admin path ด้วย server timestamp จริง** · พบว่า **Confirm Email เปิดอยู่จริง** — ยังไม่ตัดสินใจทางแก้ (D-17) · พบบั๊ก SDK 2 ตัวของ FlutterFlow AI เอง บันทึกเป็น `PATTERNS.md` **PT-09**/**PT-10**
 
-> 🔴 **บทเรียนของวันนี้:** เอกสารเดิมเขียนว่า "ยังไม่มี trigger/function เลย" ทั้งที่ **P-01 กับ P-02 apply อยู่ใน DB มาตลอด**
-> ต้นเหตุคือ `checks/_common.sql` [C7] กรองแค่ `nspname='public'` เลยมองไม่เห็นของใน schema `private` และ trigger บน `auth.users`
-> → **ห้ามเชื่อเอกสารโดยไม่ query จริง** และ query ที่ใช้ตรวจก็ต้องตรวจด้วยว่าครอบคลุมจริงไหม
+> 🔴 **บทเรียนของวันนี้:** ระวังการ "เชื่อว่าปิดแล้ว" จากสิ่งที่ทดสอบผ่าน AI vision agent (Test Pilot) หรือ proto ที่ `inspect` เห็น — ทั้งคู่เคยดูเหมือนถูกทั้งที่โค้ด Dart จริงที่ generate ออกมาผิด (PT-09) ต้องเปิด `generated_code/` ดูโค้ดจริงเสมอก่อนเชื่อว่า action ทำงานถูก และ evidence ที่เชื่อถือได้ที่สุดคือ query ตรงจาก DB (เช่น `auth.users.last_sign_in_at`) ไม่ใช่รายงานจากคนอื่นหรือ AI agent
 
 ---
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **🚧 เคลียร์ 4 ข้อก่อนแตะ FlutterFlow** → ตาราง "เคลียร์ก่อนกด" ใน `layers/L1-auth-profile.md` — ที่สำคัญสุดคือ **เปิด Confirm email อยู่หรือเปล่า** (ถ้าเปิด PT-07 ใช้ไม่ได้ทันทีหลังสมัคร) และ **FlutterFlow CLI/MCP ยังไม่มีในเครื่อง**
-1. **ทำหน้า Sign Up ใน FlutterFlow ที่ส่ง `full_name` + `phone` ใน user meta data** → เป็นสิ่งเดียวที่ปิด L1 ฝั่ง Supabase ได้ (ตอนนี้เส้นทางนั้นยังไม่เคยรันสำเร็จ) · ต้องสมัคร**บัญชีใหม่** เท่านั้น บัญชีเดิม 4 คนมี `full_name` เติมมือ
-2. **ทำ upload รูปในหน้า `AddProduct` ตาม PT-08** → ปลดล็อกการยืนยัน Storage ที่เหลือ (ขนาดไฟล์ / mime / public URL) และได้ประกาศจริงไปด้วย
-3. **ลงประกาศทดสอบ 1–2 ชิ้น + สร้างห้องแชท 1 ห้อง 2 คน** → ปลดล็อกการตรวจ `products_review_view` / `chat_summary` ว่า `seller_name` / `member_names` ไม่เป็น NULL ([C8] ที่ยังค้าง) — เป็นสิ่งเดียวที่ปิด L4 ฝั่ง Supabase ได้
+0. **ตัดสินใจ D-17 (Confirm Email) แล้วสร้างของที่ขาด** → `layers/L1-auth-profile.md` หัวข้อ "🔴 งานค้าง" — เลือกทางเดียวจาก 2 ทางเลือกใน `DECISIONS.md` D-17 (สร้างหน้ายืนยันอีเมล vs ปิด Confirm Email ใน Dashboard) นี่คือสิ่งเดียวที่ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว
+1. **เริ่ม L2 ใน v2** → AddProduct/MyPost/Inspect **ไม่มีอยู่ใน v2 เลย** (v1 archived ตาม D-16) ต้องสร้างใหม่ทั้งหมด — อ่าน `PATTERNS.md` PT-09/PT-10 **ก่อน** เขียน Action Flow เพราะจะเจอบั๊ก SDK ที่เจอตอน L1 ซ้ำแน่ (ดูคำเตือนใน `layers/L2-listings.md`)
+2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
 
 ---
 
@@ -22,10 +19,10 @@
 
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
-| 1 | Auth & User Profiles | 🟨 **เหลือเส้นทาง `full_name`/`phone` ผ่านแอปจริง** | ⬜ ยังไม่สร้างหน้า | RLS + derive `student_id` ทดสอบผ่านครบ · trigger อ่าน `phone` แล้ว (D-14) · bucket `avatars` พร้อม (D-15) · แต่ดู 🔴 ด้านล่าง |
-| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | 🟨 approve/reject ปุ่มเริ่มทำแล้วบางส่วน | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป |
+| 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin ทำงานจริง เหลือ Confirm Email flow (D-17)** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · Edit Profile ยังไม่สร้าง |
+| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | ⬜ **ยังไม่เริ่มใน v2** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
-| 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่ม | RLS เป็น allow-all ชั่วคราว · ดู 🔴 ด้านล่าง |
+| 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | ⬜ ยังไม่มีตาราง | ⬜ | |
 | 7 | Reviews & Reports | 🟨 `reports` มีแล้ว (ไม่มี policy) / `reviews` ยังไม่มี | ⬜ | |
@@ -33,12 +30,13 @@
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม
 
+> 🔄 **2026-08-09 — รีเซ็ตโปรเจกต์ FlutterFlow (D-16):** คอลัมน์ "FlutterFlow" ของทุก layer ด้านบนคือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น — งานฝั่ง FlutterFlow ของ v1 (โปรเจกต์เก่า ตอนนี้ชื่อ "MJU-market-v1-archive") **ไม่นับรวมแล้ว** ต่อให้เคยทำไว้ก็ตาม
+
 > 🔴 **กฎการให้ ✅ (ใช้กับตัวเราเองด้วย): "ตารางว่าง 0 แถว = ยังไม่ PASS"**
 > เราตั้งกฎนี้ไว้ตอนตรวจ DB แล้วดันให้ ✅ ตัวเองทั้งที่เส้นทางจริงยังไม่เคยรัน — ลด L1/L4 กลับเป็น 🟨 เมื่อ 2026-08-08
 
-**L1 — ทำไมยังไม่ใช่ ✅** — เส้นทาง `full_name` ของ `handle_new_user()` **ยังไม่เคยรันสำเร็จเลยสักครั้ง**
-`insert ... new.raw_user_meta_data->>'full_name'` ไม่เคยได้ค่าที่ไม่ใช่ NULL เพราะสมัคร 4 คนผ่าน Dashboard > Add user ซึ่ง**ไม่มีช่องใส่ user metadata** ชื่อที่เห็นในตารางตอนนี้เป็นค่าที่เติมมือทีหลัง ไม่ใช่ผลจาก trigger
-→ ปิด L1 ฝั่ง Supabase ได้ต่อเมื่อ **สมัครผ่าน FlutterFlow Sign Up ที่ส่ง `full_name` ใน meta data แล้วเห็นชื่อโผล่ใน `"Profile"` เอง** (ผลตรวจที่ทำให้รู้: `VERIFICATION.md` V-02 ข้อ 5)
+**L1 — ✅ ปิดฝั่ง Supabase แล้ว 2026-08-09** — สมัครผ่าน FlutterFlow Sign Up จริง (`mju6577778888@mju.ac.th`) ได้ `full_name`/`phone`/`student_id`/`role` ครบทุกช่อง ไม่มี NULL
+**FlutterFlow ยังไม่ปิด 🟨** — Login/SignUp/Home/HomeAdmin ทำงานถูกต้องและยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง user/admin path แล้ว แต่ **Confirm Email flow ยังไม่สร้าง** (D-17) — สมัครเสร็จไม่มีการบอกผู้ใช้ให้ไปยืนยันอีเมล และ login ก่อนยืนยันจะเจอ error ดิบจาก Supabase ตรง ๆ
 
 **L4 — ทำไมยังไม่ใช่ ✅** — `chat_summary.member_names` **ยังไม่เคยตรวจว่าไม่เป็น NULL** เพราะ `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถวทั้งหมด
 view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
@@ -58,12 +56,14 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - `handle_new_user()` ยังไม่มี `ON CONFLICT` — ถ้าแถวใน `"Profile"` ซ้ำจะ error ทั้งรายการ ต้องกันไหม
 - ~~จะทำ server-side validate โดเมน (P-02) ไหม~~ → **ตกไป apply แล้วและทดสอบผ่านแล้ว**
 
-**🔴 รอ pete ตอบ — ค้างจากรอบวางแผน 2026-08-08 (บล็อกการเริ่ม L1 ฝั่ง FlutterFlow)**
+**🔴 รอ pete ตอบ**
 
-1. **เปิด Confirm email อยู่ไหม** — ตรวจจาก DB ไม่ได้ ต้องเปิด Dashboard → Auth → Email ดู · ถ้าเปิดอยู่ **PT-07 ใช้ทันทีหลังสมัครไม่ได้** เพราะยังไม่มี session ให้ query `role` · ทางรับมือยังไม่ตกลง ดู `layers/L1-auth-profile.md` ❓ ค้างอยู่
-2. **จะติดตั้ง FlutterFlow CLI + `FLUTTERFLOW_API_TOKEN` ไหม** — ตอนนี้ไม่มีในเครื่อง Claude จึง inspect ชื่อจริงในโปรเจกต์ไม่ได้ กฎข้อ 3 ตรวจได้แค่ฝั่ง Supabase และ `ui-checker` ยังใช้ไม่ได้ · ถ้าไม่ติดตั้ง Claude ทำได้แค่เขียนสเปคให้ pete กดเอง 🔴 token ห้าม commit
-3. **ตั้งใครเป็น admin คนแรก** — ยังไม่มี admin ในระบบเลย (0 คน) ต้องมีก่อนถึงเทสสาขา `role == "admin"` ของ PT-07 ได้ (ตั้งด้วยมือตาม **D-02**)
-4. **จะรับข้อเสนอ P-11 / P-12 ไหม** — unique index บน `lower(email)` และระบบเก็บกวาดไฟล์กำพร้า ทั้งคู่เป็นข้อเสนอของ Claude ที่ยังไม่ตอบรับ อยู่ใน `PROPOSED_SQL.md`
+1. **D-17 — Confirm Email เปิดอยู่จริง (ยืนยันแล้ว ไม่ใช่คำถามอีกต่อไป) แต่ยังไม่เลือกทางรับมือ** — สร้าง flow ยืนยันอีเมล vs ปิด Confirm Email ใน Dashboard ดูตารางเปรียบเทียบเต็มที่ `DECISIONS.md` **D-17** · บล็อกการปิด L1 ฝั่ง FlutterFlow อยู่
+2. **จะรับข้อเสนอ P-11 / P-12 ไหม** — unique index บน `lower(email)` และระบบเก็บกวาดไฟล์กำพร้า ทั้งคู่เป็นข้อเสนอของ Claude ที่ยังไม่ตอบรับ อยู่ใน `PROPOSED_SQL.md`
+
+~~เปิด Confirm email อยู่ไหม~~ → ✅ ตอบแล้ว 2026-08-09 (เปิดอยู่) ย้ายเป็นข้อ 1 ด้านบน
+~~จะติดตั้ง FlutterFlow CLI ไหม~~ → ✅ ติดตั้งแล้ว ใช้งานได้เต็มรูปแบบ
+~~ตั้งใครเป็น admin คนแรก~~ → ✅ ตั้งแล้ว 2026-08-09 (`mju6577778888@mju.ac.th`)
 
 **Layer 2**
 - จะเปิดให้ browse ก่อนล็อกอินไหม — ถ้าเอา ต้องเพิ่ม policy ให้ `anon` ทั้ง `"CAT"` และ `products` (ตอนนี้ `anon` เห็น `"CAT"` เป็น 0 แถว)
@@ -109,8 +109,12 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
 - [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน
 - [ ] **`Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)`** — ตอนนี้ trigger `lower()` ให้ก่อน insert จึงยังไม่มีปัญหา แต่ถ้ามีเส้นทางเขียนอื่นที่ไม่ผ่าน trigger จะสมัครซ้ำด้วยอีเมลคนละตัวพิมพ์ได้ (ตรวจด้วย `checks/L1.sql` [1.9])
-- [ ] **ชื่อหน้า/State ฝั่ง FlutterFlow ยังไม่เคยเทียบกับโปรเจกต์จริงเลยสักตัว** — ทำเครื่องหมาย **[ยังไม่ยืนยันชื่อ]** ไว้ใน `layers/L1-auth-profile.md` แล้ว · กฎข้อ 3 ยังตรวจได้แค่ครึ่งเดียวจนกว่าจะมี CLI/token
+- [x] ~~ชื่อหน้า/State ฝั่ง FlutterFlow ยังไม่เคยเทียบกับโปรเจกต์จริง~~ → **ปิดแล้วสำหรับ L1** 2026-08-09 (มี CLI แล้ว, ชื่อ v2 ยืนยันจริงหมดแล้วดู `layers/L1-auth-profile.md`) — **แต่ L2 ขึ้นไปยังไม่เคยตั้งชื่อใน v2 เลย** ต้องตรวจใหม่ทุก layer ที่เริ่ม
 - [ ] **repo เป็น private แล้ว (D-13) แต่นั่นไม่ใช่การปิดช่องโหว่** — ของจริงที่ต้องปิดคือ 3 ข้อบนสุดของรายการนี้ อย่าให้ private กลายเป็นข้ออ้างเลื่อนออกไป
+- [ ] 🔴 **บัญชีทดสอบ 2 บัญชีถูกแก้ credential ตรงด้วย SQL — ไม่ใช่สภาพที่ user จริงไปถึงได้ ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว** (2026-08-09):
+      - `mju6577778888@mju.ac.th` — `email_confirmed_at` ถูก patch ด้วย SQL ตรง ๆ (`UPDATE auth.users SET email_confirmed_at = now() ...`) เพื่อปลดล็อกเทส login หลังเจอ "Email not confirmed" — บัญชีนี้**ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงของ Supabase เลย** ต้องแก้เมื่อทำ D-17 เสร็จ (ถ้าเลือกทางสร้าง flow ยืนยัน ให้ล้างบัญชีนี้ทิ้งแล้วเทสใหม่ผ่าน flow จริง)
+      - `mju6512345678@mju.ac.th` — `encrypted_password` ถูกเขียนทับด้วย SQL (`crypt('TestPilot!2026', gen_salt('bf'))`) เพื่อให้มีรหัสผ่านที่รู้ค่าไว้เทส Test Pilot login — **รหัสผ่านเดิมของบัญชีนี้ (ถ้าเคยมีคนตั้งไว้) ใช้ไม่ได้แล้ว** และ `email_confirmed_at` ก็ถูกแตะด้วย (แม้จะเป็น no-op เพราะเดิมน่าจะ confirmed อยู่แล้วจากการสร้างผ่าน Dashboard)
+      ทั้งสองบัญชีปลอดภัยสำหรับ**เทส auth/role routing ต่อ**เท่านั้น — **ห้ามใช้เทส "สมัครสมาชิกแล้วต้องยืนยันอีเมล" เพราะสภาพถูกลัดผ่านไปแล้ว**
 
 ---
 

@@ -9,7 +9,9 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **D-18 ตัดสินใจแล้ว (ทางเลือก 3 — OTP 6 หลักแทนลิงก์)** → ดู `DECISIONS.md` D-17/D-18 — Site URL ยังเป็น `localhost:3000` default, Redirect URLs ว่าง (ยืนยันแล้วว่าลิงก์เดิมพังจริง) ต่อไป: (1) แก้ email template Supabase ให้ใช้ `{{ .Token }}`, (2) สร้างหน้า OTP input ใหม่ใน FlutterFlow, (3) ดักเคส "email not confirmed" ที่ Login, (4) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสใหม่ผ่าน flow จริง — นี่คือสิ่งเดียวที่ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว
+0. **D-19 ตัดสินใจแล้ว (OTP ของ D-18 ถูกยกเลิก — กลับไปใช้หน้าเว็บกลาง)** → ดู `DECISIONS.md` D-17/D-18/D-19 — เหตุผล: แก้ email template ต้องตั้ง custom SMTP ก่อนเสมอ (ทุก plan) pete ไม่ต้องการตั้งเพิ่ม
+   สร้าง bucket `static-pages` แล้ว (ดู `SCHEMA.md`) เตรียมไฟล์ `email-confirmed.html` ไว้ที่ `~/Desktop/email-confirmed.html` ให้ pete แล้ว
+   **ค้างอยู่:** (1) pete อัปโหลดไฟล์เข้า bucket ผ่าน Dashboard แล้วเอา public URL มา, (2) ตั้ง Site URL ใน Authentication → URL Configuration ให้ชี้ URL นั้น, (3) FlutterFlow: หน้าแจ้งเตือนหลังสมัคร + ดักเคส "email not confirmed" ที่ Login (D-17 ข้อ 1-2), (4) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสใหม่ผ่าน flow จริง — นี่คือสิ่งเดียวที่ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว
 1. **เริ่ม L2 ใน v2** → AddProduct/MyPost/Inspect **ไม่มีอยู่ใน v2 เลย** (v1 archived ตาม D-16) ต้องสร้างใหม่ทั้งหมด — อ่าน `PATTERNS.md` PT-09/PT-10 **ก่อน** เขียน Action Flow เพราะจะเจอบั๊ก SDK ที่เจอตอน L1 ซ้ำแน่ (ดูคำเตือนใน `layers/L2-listings.md`)
 2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
 

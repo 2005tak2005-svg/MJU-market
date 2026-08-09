@@ -321,6 +321,8 @@ nullif(trim(new.raw_user_meta_data->>'phone'), '')
 
 ## D-18 — รูปแบบ flow ยืนยันอีเมล: OTP 6 หลัก แทนลิงก์ (2026-08-09)
 
+> 🔴 **ถูกยกเลิกแล้ว 2026-08-09 เย็น → ดู D-19** — เจอว่าแก้ email template ต้องตั้ง custom SMTP ก่อนเสมอ (banner ใน Dashboard: "Set up custom SMTP to edit templates") ไม่ใช่ข้อจำกัดเฉพาะ Free plan แต่เป็นกติกาของ Supabase ทุก plan pete ไม่ต้องการตั้ง SMTP เพิ่ม จึงเปลี่ยนไปทางเลือก (2) แทน
+
 **บริบท:** ต่อจาก D-17 — ก่อนออกแบบ flow ต้องตรวจ Site URL / Redirect URL ของจริงก่อนตามที่ D-17 กำหนดไว้
 
 **ตรวจแล้ว (execute_sql + get_project ทาง MCP หา `auth.config` ไม่เจอ — ค่านี้ไม่ได้อยู่ใน Postgres schema เลย เป็น platform config ต้องดูจาก Dashboard เท่านั้น):**
@@ -345,3 +347,24 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - FlutterFlow: สร้างหน้ารับ OTP หลังสมัคร (input 6 หลัก + ปุ่ม resend) เรียก `verifyOtp` (type: signup)
 - Login: ยังต้องดักเคส "email not confirmed" เหมือนเดิมตามข้อ 2 ใน D-17 — เผื่อ user ปิดแอปก่อนกรอก OTP แล้วกลับมา login ทีหลัง
 - บัญชีทดสอบ `mju6577778888@mju.ac.th` ที่ patch `email_confirmed_at` ด้วย SQL ต้องล้างแล้วเทสใหม่ผ่าน OTP flow จริงตามที่ D-17 ระบุไว้
+
+---
+
+## D-19 — เปลี่ยนจาก OTP กลับมาเป็นหน้าเว็บกลาง (D-18 ถูกยกเลิก) (2026-08-09)
+
+**บริบท:** ลงมือทำ D-18 (OTP) จริง แล้วเจอ banner ในหน้า Authentication → Emails → Templates ของ Dashboard:
+> "Set up custom SMTP to edit templates — Emails will be sent using the default templates. Set up custom SMTP to edit their subject and body."
+
+แปลว่าการแก้ "Confirm signup" template ให้ใช้ `{{ .Token }}` **ต้องตั้ง custom SMTP ก่อนเสมอ** — เป็นกติกาของ Supabase ทุก plan ไม่ใช่ข้อจำกัดเฉพาะ Free plan (pete เคยเข้าใจว่าเป็นเพราะ Free plan — ไม่ถูกต้องเป๊ะ แต่ผลลัพธ์เหมือนกันคือทำไม่ได้โดยไม่ตั้ง SMTP เพิ่ม)
+
+**ตัดสินใจแล้ว (pete, 2026-08-09): กลับไปใช้ทางเลือก (2) จาก D-18 — หน้าเว็บกลางง่าย ๆ** แทน OTP เพราะ pete ไม่ต้องการตั้ง custom SMTP เพิ่ม ("ไม่เน้นแฟนซี") ทางนี้ใช้ default email template เดิม (มี `{{ .ConfirmationURL }}`) ได้เลย ไม่ต้องแตะ template
+
+**สิ่งที่ทำไปแล้วฝั่ง Supabase:**
+- สร้าง bucket `static-pages` (public read, ไม่มี public insert — อัปโหลดได้เฉพาะทาง Dashboard) — ดู `SCHEMA.md`
+- เตรียมไฟล์ `email-confirmed.html` หน้ายืนยันสำเร็จง่าย ๆ ไว้ให้ pete อัปโหลดเอง
+
+**งานที่ต้องทำต่อ (ยังไม่ได้เริ่ม):**
+- pete อัปโหลด `email-confirmed.html` เข้า bucket `static-pages` ผ่าน Dashboard แล้วเอา public URL มา
+- ตั้ง Site URL ใน Authentication → URL Configuration ให้ชี้ไปที่ public URL นั้น (แทน `localhost:3000`)
+- FlutterFlow: หน้า/ข้อความหลังสมัครที่บอกผู้ใช้ให้ไปยืนยันอีเมล (ข้อ 1 ใน D-17) + ดักเคส "email not confirmed" ที่ Login (ข้อ 2 ใน D-17) — ยังต้องทำเหมือนเดิมไม่ว่าจะเลือกทางไหน
+- บัญชีทดสอบ `mju6577778888@mju.ac.th` ต้องล้างแล้วเทสใหม่ผ่าน flow จริงตามที่ D-17 ระบุไว้

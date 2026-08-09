@@ -28,6 +28,8 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 | FlutterFlow เทียบ string | **case-sensitive** — `"admin"` ≠ `"Admin"` |
 | Realtime บน view | ทำงานที่ table level (Postgres replication) — ยังไม่ยืนยันว่า FlutterFlow listen บน view ได้จริง |
 | plugin hook เป็น POSIX shell | Windows ต้องมี bash บน PATH (Git Bash / WSL) |
+| Supabase Storage public bucket เสิร์ฟ `.html` | บังคับ `content-type: text/plain` เสมอ (anti-XSS) ต่อให้ `metadata.mimetype` ใน `storage.objects` บอกว่า `text/html` ก็ไม่ช่วย — เจอกับ `static-pages/email-confirmed.html` (D-19) แก้ด้วยการเปลี่ยนเป็น `.txt` ล้วนแทน อย่าพยายามโฮสต์หน้าเว็บ HTML ผ่าน Storage bucket |
+| Site URL / Redirect URL / Email Templates ของ Auth | ไม่อยู่ใน Postgres เลย (`auth.config` ไม่มีจริง) เป็น platform config เข้าได้แค่ Dashboard หรือ Management API token (ไม่มีให้ผ่าน MCP) — แก้ email template ต้องเปิด custom SMTP ก่อนเสมอทุก plan (ดู D-19) |
 
 **คำสั่ง `flutterflow ai` ที่ใช้ได้จริง:** `status <id>` / `inspect <id>` / `validate <file>` / `run <file>`
 (`plan` / `trace` เป็นชื่อเก่า เลิกใช้แล้ว)

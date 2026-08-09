@@ -6,21 +6,25 @@
 
 ผู้ใช้สมัคร/ล็อกอินด้วย `@mju.ac.th` ได้ ข้อมูลโปรไฟล์ถูกต้อง และเป็นฐานให้ RLS ของทุกตารางอื่นอ้าง `auth.uid()` ได้
 
+> 🔄 **2026-08-09 — รีเซ็ตโปรเจกต์ FlutterFlow เป็น "MJU-Market-v2"** (`m-j-u-market-v2-0xhjhg`) ดู `../DECISIONS.md` **D-16** — Supabase เชื่อมโปรเจกต์เดิม (`rooydbxgcsybyanwsewv`) ไม่เปลี่ยน
+
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
-**🟨 เหลืออย่างเดียว: เส้นทาง `full_name` ยังไม่เคยรันสำเร็จ** — `handle_new_user()` อ่านจาก `raw_user_meta_data->>'full_name'` แต่ user 4 คนที่ทดสอบสมัครผ่าน Dashboard ซึ่งส่ง metadata ไม่ได้ ชื่อในตารางตอนนี้เป็นค่าเติมมือ
-→ ปิดได้เมื่อสมัครผ่านหน้า FlutterFlow Sign Up ที่ส่ง `full_name` แล้วเห็นชื่อโผล่เอง (ผลตรวจ: `../VERIFICATION.md` V-02 ข้อ 5)
+**✅ ปิดแล้ว 2026-08-09 — เส้นทาง `full_name`/`phone` รันสำเร็จผ่านแอปจริง**
+สมัครด้วย `mju6577778888@mju.ac.th` ผ่าน Sign Up page จริง ได้ `full_name = 'ทดสอบ ผ่านแอป'`, `phone = '0812345678'`, `student_id = '6577778888'` (derive อัตโนมัติ), `role = 'user'` ครบทุกช่อง ยืนยันด้วย SQL ตรงหลังสมัคร
 
 **ทำแล้ว:** คอลัมน์ครบ (`role`/`student_id`/`phone`/`bio` + constraints) · RLS ของ `"Profile"` มีอยู่แล้วจริง **ไม่ต้องเขียนใหม่** · view `public_profiles` สร้างแล้ว · **trigger auto-insert Profile (P-01) apply แล้ว** · **server-side validate โดเมน `@mju.ac.th` (P-02) apply แล้ว** — รวมอยู่ใน `handle_new_user()` ตัวเดียวกัน ดู `../SCHEMA.md`
 
-## 🚧 เคลียร์ก่อนกดใน FlutterFlow (ตรวจแล้ว 2026-08-08)
+**🔴 พบใหม่ระหว่างทำ — DSL/SDK ของ FlutterFlow AI มีบั๊ก 2 ตัว ไม่ใช่เรื่อง schema แต่กระทบวิธีเขียน Action Flow ทุก layer ถัดไป** ดู `../PATTERNS.md` **PT-09** (custom action argument เสีย) และ **PT-10** (`PostgresQuery` type เป็น list เสมอ, `FieldAccess` ดึงฟิลด์เดียวไม่ได้)
+
+## 🚧 เคลียร์ก่อนกดใน FlutterFlow
 
 | # | เรื่อง | สถานะ |
 |---|---|---|
-| 1 | **เปิด "Confirm email" อยู่ไหม** (Dashboard → Auth → Email) | ❓ ตรวจจาก DB ไม่ได้ **ต้องเปิดดูเอง** — ถ้าเปิดอยู่ สมัครเสร็จจะยังไม่มี session → **PT-07 query `role` ไม่ได้** · จะรับมือยังไงยัง**ไม่ได้ตกลง** ดู ❓ ค้างอยู่ ท้ายไฟล์ |
-| 2 | **ยังไม่มี admin ในระบบเลย (0 คน)** | ต้องตั้งด้วยมือตาม **D-02** ก่อน ไม่งั้นสาขา `role == "admin"` ของ PT-07 เทสไม่ได้ |
-| 3 | **ห้ามเทสด้วย 4 บัญชีเดิม** | `full_name` ของทั้ง 4 คน**ถูกเติมมือไปแล้ว** เทสแล้วจะเห็นชื่อขึ้นแล้วนึกว่าผ่าน — ต้องสมัคร**บัญชีที่ 5 ใหม่เอี่ยม** (อีเมลซ้ำไม่ได้ ติด `Profile_email_key`) |
-| 4 | **FlutterFlow CLI / MCP** | ❌ ยังไม่มีในเครื่อง (`flutterflow` not found · ไม่มี `FLUTTERFLOW_API_TOKEN` · ไม่มี `.mcp.json`) → Claude **inspect ชื่อจริงในโปรเจกต์ไม่ได้** กฎข้อ 3 ต้องตรวจด้วยตาไปก่อน และ `ui-checker` ยังใช้ไม่ได้ 🔴 token ห้าม commit |
+| 1 | **เปิด "Confirm email" อยู่ไหม** | ✅ **ตอบแล้ว 2026-08-09 — เปิดอยู่จริง** ยืนยันด้วยการสมัครจริงแล้ว login ทันทีเจอ "Email not confirmed" ตรง ๆ จาก Supabase · **แต่ทางรับมือยังไม่ตัดสินใจ** ดู `../DECISIONS.md` **D-17** (2 ทางเลือก) และ 🔴 งานค้างท้ายไฟล์นี้ |
+| 2 | **ยังไม่มี admin ในระบบ** | ✅ **ปิดแล้ว** — `mju6577778888@mju.ac.th` ตั้งเป็น `role='admin'` แล้วตาม D-02 (2026-08-09) |
+| 3 | **ห้ามเทสด้วย 4 บัญชีเดิม (v1)** | ⚠️ **ไม่เกี่ยวแล้ว** — v2 เป็นโปรเจกต์ใหม่ (D-16) ทดสอบสมัคร**บัญชีที่ 5** สำเร็จจริงผ่านแอปแล้ว (`mju6577778888@mju.ac.th`) |
+| 4 | **FlutterFlow CLI / MCP** | ✅ **มีแล้ว ใช้งานได้** (`flutterflow ai run/validate/inspect/status` + MCP) — กฎข้อ 3 ตรวจได้เต็มรูปแบบแล้ว |
 
 ## 🎨 ขั้นตอน FlutterFlow
 
@@ -29,31 +33,37 @@
 > ยิงค่าไปเองเมื่อไหร่ = constraint violation ทันที (ดู D-10)
 > **ห้ามมีช่อง `student_id` ในฟอร์ม Sign Up และในฟอร์ม Edit Profile**
 
-1. **หน้า Sign Up** — ฟอร์ม email / password / full_name / `phone` + validate อีเมลก่อน submit
-   🔴 **ห้าม validate ด้วย "ลงท้ายด้วย `@mju.ac.th`" เฉย ๆ** — `hacker@evil.com@mju.ac.th` ลงท้ายถูกจริง
-   ใช้ regex เต็ม `^[^@]+@mju\.ac\.th$` ให้ตรงกับที่ DB บังคับ (ดู D-10 หัวข้อช่องโหว่)
-   ❌ **ไม่มีช่อง `student_id`** — ถ้าอยากโชว์ให้ผู้ใช้เห็น ให้แสดงเป็น read-only หลังสมัครเสร็จ
-2. **Action Flow ตอน submit** — Supabase Auth → Sign Up **แล้วจบ ไม่ต้องมี Action ที่สอง**
-   - ส่ง **user meta data 2 key: `full_name` และ `phone`** (สะกดเป๊ะ ๆ ทั้งคู่ — กฎข้อ 3)
-     trigger อ่านจาก `raw_user_meta_data->>'...'` **สะกดผิดจะไม่ error แค่ได้ NULL เงียบ ๆ**
-   - trigger สร้างแถวใน `"Profile"` ให้ครบ `id`/`email`/`full_name`/`role`/`student_id`/`phone` ในคราวเดียว
-   - ❌ **ห้ามมี Action "Update Row" ตามหลังเพื่อใส่ `phone`** — ถ้าเปิด Confirm email ไว้จะยังไม่มี session แล้ว update ล้มเงียบ (เหตุผลเต็ม: **D-14**)
-   - 🔴 **validate โดเมน `@mju.ac.th` ฝั่ง client ให้ผ่านก่อน submit เสมอ — บังคับ ไม่ใช่ทางเลือก**
-     trigger ปฏิเสธได้จริงก็จริง แต่ error ที่กลับมาถึง client คือ **HTTP 500 body ว่าง** (`Failed to create user: {}`)
-     ข้อความ `Only @mju.ac.th email addresses are allowed` ถูกกลบหายไประหว่างทาง (ดู `../SCHEMA.md` หัวข้อ P-02)
-     → เอามาโชว์ผู้ใช้ไม่ได้เลย ถ้าไม่ validate ฝั่ง client ผู้ใช้จะเจอ error ปริศนาแล้วไปต่อไม่ถูก
-3. **หน้า Log In** — ใช้ **PT-07** (role-based navigation) ใน `../PATTERNS.md`
-4. **หน้า Edit Profile** — Backend Query อ่าน/เขียน `"Profile"` ของ `auth.uid()` แก้ได้แค่ `full_name` / `avatar_url` / `phone` / `bio`
+1. **✅ หน้า `SignUp`** — ฟอร์ม email / password / full_name / `phone` + validate โดเมนฝั่ง client (regex `^[^@]+@mju\.ac\.th$`) ก่อน submit — **ทำแล้ว**
+   🔴 **ห้าม validate ด้วย "ลงท้ายด้วย `@mju.ac.th`" เฉย ๆ** — `hacker@evil.com@mju.ac.th` ลงท้ายถูกจริง (ดู D-10 หัวข้อช่องโหว่)
+   ❌ ไม่มีช่อง `student_id` — ตามสเปคเดิม
+   **ต่างจากสเปคเดิมที่ร่างไว้ตรงนี้:** built-in action "Supabase Auth → Sign Up" **ส่ง user meta data ไม่ได้จริง** (ไม่มี field ให้ผูกเลยในเวอร์ชัน SDK นี้) จึงใช้ **custom action `SignUpWithProfile`** (0 argument, อ่านค่าจาก App State แล้วเรียก `Supabase.instance.client.auth.signUp(..., data: {...})` ตรง ๆ) แทน — ดูสาเหตุเต็มที่ `../PATTERNS.md` **PT-09**
+   สมัครสำเร็จ → snackbar "สมัครสมาชิกสำเร็จ" → Navigate ไป `Login` (มีลิงก์ "ยังไม่มีบัญชี? สมัครสมาชิก" ย้อนกลับด้วย)
+   🔴 **งานค้าง (D-17):** ตอนนี้ไม่มีการบอกผู้ใช้เลยว่าต้องไปยืนยันอีเมลก่อนถึงจะ login ได้ — ดู 🔴 ท้ายไฟล์
+2. **✅ Action Flow ตอน submit** — เรียก `SignUpWithProfile` (ไม่ใช่ built-in Sign Up action ตามเหตุผลข้อ 1) แล้วเช็ค return value ว่างหรือไม่ว่างเพื่อรู้ผลสำเร็จ/error
+   - trigger สร้างแถวใน `"Profile"` ให้ครบ `id`/`email`/`full_name`/`role`/`student_id`/`phone` ในคราวเดียว — **ยืนยันด้วยการสมัครจริงแล้ว**
+   - 🔴 **validate โดเมน `@mju.ac.th` ฝั่ง client ก่อน submit เสมอ — บังคับ** เหตุผลเดิม (error จาก server อ่านไม่ได้ ดู `../SCHEMA.md` หัวข้อ P-02)
+3. **✅ หน้า `Login`** — email/password → `LoginEmailPassword` → custom action `IsCurrentUserAdmin` (0 argument, query `"Profile".role` ตรง ๆ คืน `bool`) → Navigate `HomeAdmin`/`Home`
+   **ต่างจาก PT-07 เดิมที่ร่างไว้ (Backend Query + Conditional เทียบ string):** `PostgresQuery` + `FieldAccess` ดึงฟิลด์เดียวจากแถวเดียวไม่ได้จริงในเวอร์ชัน SDK นี้ (compile error) จึงใช้ custom action แทน — เหตุผลเต็มที่ `../PATTERNS.md` **PT-10** (PT-07 เองก็แก้ไขให้ตรงกับของจริงแล้ว)
+   ยืนยันด้วย server timestamp จริง (`auth.users.last_sign_in_at`) ว่าทั้ง 2 เส้นทางทำงาน: user → `Home`, admin → `HomeAdmin`
+   🔴 **งานค้าง (D-17):** login ด้วยบัญชีที่ยังไม่ยืนยันอีเมล **ไม่ถูกดักเลย** — ผู้ใช้จะเห็น error ดิบจาก Supabase ("Email not confirmed") ตรง ๆ
+4. **⬜ หน้า Edit Profile — ยังไม่ได้ทำ** — Backend Query อ่าน/เขียน `"Profile"` ของ `auth.uid()` แก้ได้แค่ `full_name` / `avatar_url` / `phone` / `bio`
    ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่ ใส่ลง Update Row เมื่อไหร่ทั้ง statement fail
    - **อัปรูปโปรไฟล์** → bucket **`avatars`** (public · 2 MB · jpeg/png/webp) path `<currentUserId>/<ชื่อไฟล์>` — ใช้ **PT-08** ท่าเดียวกับรูปสินค้า ต่างแค่ชื่อ bucket
    - เอา URL ที่ได้ไปใส่ `avatar_url` ใน Update Row เดียวกับ `full_name`/`phone`/`bio`
    - ⚠️ เปลี่ยนรูปแล้ว**ไฟล์เก่าไม่ถูกลบ** — `avatar_url` เป็นแค่ text ไม่ผูกกับไฟล์จริง (หนี้ใน D-15)
-5. **App State** — `currentUserId` (จาก Auth), `currentUserRole` (จาก `Profile.role`)
+5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
+
+## 🔴 งานค้าง — Confirm Email (D-17) ต้องทำก่อนถึงจะปิด L1 ฝั่ง FlutterFlow ได้
+
+ไม่ใช่แค่หมายเหตุ เป็นสิ่งที่ **ยังไม่ได้สร้าง**:
+
+- [ ] หน้า/ข้อความหลังสมัครสำเร็จบอกผู้ใช้ให้ไปกดยืนยันในอีเมลก่อน (แทนที่จะ Navigate ไป Login ทันทีเฉย ๆ เหมือนตอนนี้)
+- [ ] ดักเคส login แล้วเจอ "email not confirmed" ที่ปุ่ม `Login` แล้วพากลับไปหน้าแจ้งเตือน/ปุ่ม resend แทนที่จะปล่อยให้ error ดิบโผล่
+- [ ] **หรือ** ถ้า pete เลือกทางเลือก (ข) ใน D-17 (ปิด Confirm Email ใน Dashboard) — 2 ข้อบนไม่ต้องทำเลย แต่ต้องตัดสินใจก่อน ไม่ใช่ปล่อยค้าง
 
 ## 🧪 Definition of Done
 
 **ฝั่ง Supabase — ✅ ข้อด้านล่างผ่านครบ (ผลเต็ม: `../VERIFICATION.md` V-02 / V-04)**
-**แต่ L1 ยังไม่ปิด 🟨** — เส้นทาง `full_name` ของ trigger ตรวจได้เฉพาะฝั่ง FlutterFlow (ข้อแรกของหัวข้อถัดไป) ซึ่งยังไม่เคยรัน
 
 - [x] สมัครด้วยอีเมลนอกโดเมน `@mju.ac.th` ถูกปฏิเสธที่ระดับ DB — ยืนยันจาก auth log (`P0001`)
 - [x] อีเมล `@` ซ้อน (`hacker@evil.com@mju.ac.th`) ถูกปฏิเสธ — เคสที่ regex เดิมปล่อยผ่าน (V-09)
@@ -64,50 +74,45 @@
 - [x] แก้โปรไฟล์คนอื่นไม่ได้ / เปลี่ยน `role` ตัวเองไม่ได้ / เปลี่ยน `student_id` ตัวเองไม่ได้ — ทดสอบด้วย user ธรรมดาจริง
 - [x] `checks/L1.sql` ผ่านครบทุกข้อ
 
-**ฝั่ง FlutterFlow — ยังไม่เริ่ม**
+**ฝั่ง FlutterFlow — 🟨 ผ่านบางส่วน ยังปิด L1 ไม่ได้**
 
-- [ ] `full_name` **และ `phone`** ไม่เป็น NULL หลังสมัคร**บัญชีใหม่**ผ่านแอปจริง (ทั้งคู่มาจาก user meta data — D-14)
-- [ ] กรอกช่องเบอร์เป็นช่องว่างล้วนแล้วสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''`
-- [ ] อัปรูปโปรไฟล์เข้า `avatars` แล้วรูปโผล่จริงจาก public URL ที่เก็บใน `avatar_url`
-- [ ] validate โดเมนฝั่ง client แล้วขึ้นข้อความที่ผู้ใช้เข้าใจ (server ส่งกลับแค่ 500 เปล่า)
-- [ ] `role = admin` → ไป `HomeAdmin`, `role = user` → ไป `home` ถูกทุกครั้ง
+- [x] `full_name` **และ `phone`** ไม่เป็น NULL หลังสมัคร**บัญชีใหม่**ผ่านแอปจริง — ยืนยันแล้ว 2026-08-09 (`mju6577778888@mju.ac.th`)
+- [x] validate โดเมนฝั่ง client แล้วขึ้นข้อความที่ผู้ใช้เข้าใจ — ทำใน `SignUpWithProfile` แล้ว
+- [x] `role = admin` → ไป `HomeAdmin`, `role = user` → ไป `Home` ถูกทุกครั้ง — ยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง 2 เส้นทาง 2026-08-09
+- [ ] กรอกช่องเบอร์เป็นช่องว่างล้วนแล้วสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` — ยังไม่ได้เทสเคสนี้ผ่านแอปจริง (trigger รองรับแล้วตาม D-14 แต่ path ผ่าน UI ยังไม่เทส)
+- [ ] อัปรูปโปรไฟล์เข้า `avatars` แล้วรูปโผล่จริงจาก public URL — Edit Profile ยังไม่ได้สร้าง
+- [ ] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — งานใหม่จาก D-17 ยังไม่ทำ (บล็อกการปิด L1)
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 
-## 🧪 บัญชีทดสอบที่มีอยู่ (2026-08-07)
+## 🧪 บัญชีทดสอบที่มีอยู่ (อัปเดต 2026-08-09)
 
-| อีเมล | `student_id` | ใช้ทำอะไร |
-|---|---|---|
-| `mju6512345678@mju.ac.th` | `6512345678` | เจ้าของข้อมูลตอนเทส RLS |
-| `mju6598765432@mju.ac.th` | `6598765432` | **user ธรรมดาที่ไม่ใช่เจ้าของ** — ใช้เป็น UID ใน `checks/_common.sql` [C8] |
-| `somchai.j@mju.ac.th` | `NULL` | เคสบุคลากร |
-| `mju6511112222@mju.ac.th` | `6511112222` | สำรอง |
+| อีเมล | `student_id` | `role` | ใช้ทำอะไร |
+|---|---|---|---|
+| `mju6512345678@mju.ac.th` | `6512345678` | `user` | เจ้าของข้อมูลตอนเทส RLS · 🔴 **`encrypted_password` ถูกเขียนทับด้วย SQL 2026-08-09** เพื่อเทส Test Pilot — รหัสเดิม (ถ้ามี) ใช้ไม่ได้แล้ว รายละเอียด `../STATUS.md` หนี้ทางเทคนิค |
+| `mju6598765432@mju.ac.th` | `6598765432` | `user` | **user ธรรมดาที่ไม่ใช่เจ้าของ** — ใช้เป็น UID ใน `checks/_common.sql` [C8] · ใช้ยืนยัน user-path login → `Home` สำเร็จ 2026-08-09 |
+| `somchai.j@mju.ac.th` | `NULL` | `user` | เคสบุคลากร |
+| `mju6511112222@mju.ac.th` | `6511112222` | `user` | สำรอง |
+| `mju6577778888@mju.ac.th` | `6577778888` | **`admin`** | สร้างผ่านแอปจริง 2026-08-09 (`full_name`/`phone` มาจาก meta data จริง) ตั้งเป็น admin ตาม D-02 เพื่อเทส `HomeAdmin` · 🔴 **`email_confirmed_at` ถูก patch ด้วย SQL** — บัญชีนี้ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงเลย รายละเอียด `../STATUS.md` หนี้ทางเทคนิค |
 
-`full_name` เป็นชื่อปลอมที่เติมด้วยมือทีหลัง ทั้ง 4 คนยังเป็น `role = 'user'` — **ยังไม่มี admin ในระบบเลย** ต้องตั้งด้วยมือตาม D-02 ก่อนเทส L8
+`full_name` ของ 4 บัญชีแรกยังเป็นชื่อปลอมที่เติมด้วยมือ (มาจากรอบทดสอบผ่าน Dashboard เมื่อ 2026-08-07) — คนละเรื่องกับ `mju6577778888` ที่ชื่อมาจาก meta data จริง
 
 ## ❓ ค้างอยู่
 
-- จะทำ role-based redirect ซ้ำที่หน้า Splash/Initial (auto-login) ด้วยไหม
-- ~~รูปแบบอีเมลจริงของแม่โจ้เป็นยังไง~~ ✅ **pete ยืนยันแล้ว 2026-08-08: `mju<10หลัก>@mju.ac.th`** ตรงกับ constraint เดิมพอดี ไม่ต้องแก้ (ปิดใน D-10)
+- จะทำ role-based redirect ซ้ำที่หน้า Splash/Initial (auto-login) ด้วยไหม — ยังไม่มีหน้า Splash ใน v2
 - `handle_new_user()` ยังไม่มี `ON CONFLICT` — ถ้าแถวใน `"Profile"` มีอยู่แล้วจะ error ทั้งรายการ ต้องกันไหม
-
-### ค้างเพิ่มจากรอบวางแผน 2026-08-08 — 🚧 ทั้งหมดนี้ยังไม่ตกลง
-
-- **ถ้า Confirm email เปิดอยู่ จะให้ Sign Up จบยังไง** — ข้อเสนอของ Claude (ยังไม่ตอบรับ) คือพาไปหน้าแจ้ง "ไปยืนยันอีเมลก่อน" แล้วให้ PT-07 ทำงานตอน Log In แทน
-  ทางเลือกอื่นที่ยังไม่ได้ชั่งน้ำหนัก: ปิด Confirm email ไปเลย (สมัครง่ายขึ้น แต่ใครก็พิมพ์อีเมล `@mju.ac.th` ของคนอื่นได้ — **การยืนยันตัวตนด้วยอีเมลมหาลัยจะไม่เหลือความหมาย**)
+- **Confirm Email รับมือยังไง** → ✅ ย้ายไปเป็นงานค้างชัดเจนที่ `../DECISIONS.md` **D-17** แล้ว ไม่ใช่คำถามลอย ๆ อีกต่อไป
 - **`avatar_url` ไม่ผูกกับไฟล์จริงใน bucket** — เปลี่ยนรูปแล้วไฟล์เก่าค้าง / ลบไฟล์แล้วคอลัมน์ยังชี้ URL เดิม (รูปแตก) จะแก้ทางไหนยังไม่เลือก ดู **P-12**
 - **จะเพิ่ม unique index บน `lower(email)` ไหม** — ดู **P-11** (ตอนนี้ trigger กันให้อยู่แล้ว จึงยังไม่เร่ง)
-- **ตั้งใครเป็น admin คนแรก** — ต้องมีก่อนถึงจะเทสสาขา `role == "admin"` ของ PT-07 ได้ (D-02 ตั้งด้วยมือ)
 
-## 🔤 ชื่อที่ยังไม่ยืนยันกับโปรเจกต์จริง
+## 🔤 ชื่อที่ยืนยันกับโปรเจกต์จริงแล้ว (v2, 2026-08-09)
 
-🔴 **[ยังไม่ยืนยันชื่อ]** — Claude **inspect โปรเจกต์ FlutterFlow ไม่ได้** (ไม่มี CLI/token ดูตารางเคลียร์ก่อนกด ข้อ 4) ชื่อด้านล่างจึงเป็นชื่อที่**เอกสารเขียนไว้ ยังไม่เคยเทียบกับของจริง** — ห้ามถือเป็นความจริงจนกว่าจะเปิดโปรเจกต์ดู แล้วค่อยลบเครื่องหมายนี้ทีละรายการ
+ตรวจผ่าน `flutterflow ai status` / `inspect` / generated code จริง — ไม่ใช่ชื่อที่เดาไว้อีกต่อไป
 
-| ที่ใช้ในเอกสาร | ประเภท |
-|---|---|
-| `home` · `HomeAdmin` | ชื่อหน้า (PT-07) |
-| `MyPost` · `Inspect` · `AddProduct` | ชื่อหน้า (L2) |
-| หน้า Sign Up · หน้า Log In · หน้า Edit Profile | **ยังไม่มีชื่อเลย** — เอกสารเรียกเป็นภาษาไทย ยังไม่ได้ตั้งชื่อจริง |
-| `currentUserId` · `currentUserRole` | App State |
-| `uploadedImageUrls` | Page State (PT-08) |
+| ที่ใช้ในเอกสาร | ประเภท | หมายเหตุ |
+|---|---|---|
+| `SignUp` · `Login` · `Home` · `HomeAdmin` | ชื่อหน้า | ทั้ง 4 หน้าเดียวที่มีอยู่ใน v2 ตอนนี้ |
+| `SignUpWithProfile` · `IsCurrentUserAdmin` | Custom Action | ทั้งคู่รับ 0 argument ตามเหตุผลใน PT-09 |
+| `email` · `password` · `fullName` · `phone` | App State | ใช้โดย `SignUpWithProfile` |
+| `loginEmail` · `loginPassword` | Page State ของ `Login` | คนละชุดกับ App State ด้านบน — ตั้งใจแยก ไม่ได้ผิดพลาด |
 
-> ⚠️ กฎข้อ 3 ใน `CLAUDE.md` บังคับให้ชื่อตรงกัน 3 จุด — ตราบใดที่ยังตรวจฝั่ง FlutterFlow ไม่ได้ **กฎข้อนี้ยังตรวจได้แค่ครึ่งเดียว**
+**ชื่อของ L2 ขึ้นไปที่เคยร่างไว้ (`home` lowercase, `MyPost`, `Inspect`, `AddProduct`, `currentUserId`, `currentUserRole`, `uploadedImageUrls`) เป็นชื่อจาก v1 (archived) ทั้งหมด — ยังไม่มีใน v2 เลยสักตัว** ต้องตั้งใหม่ตอนเริ่ม L2 ตามกติกาใน D-16 (PascalCase, ไม่มีเว้นวรรค) ห้ามสมมติว่ายังใช้ชื่อเดิมได้

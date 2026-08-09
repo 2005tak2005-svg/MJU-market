@@ -9,6 +9,8 @@
 
 ผู้ซื้อ–ผู้ขายแชทกันแบบเรียลไทม์ รองรับ group chat (หลายคนในห้อง) แสดงชื่อห้องจากสมาชิกอัตโนมัติ
 
+> 🔴 **ก่อนเริ่มฝั่ง FlutterFlow อ่านนี่ก่อน:** `chat_summary.member_names`/`user_ids` เป็น array column — คำถามค้างข้างล่าง ("array contains currentUserId" รองรับไหม) มีโอกาสสูงที่จะชนบั๊ก SDK ตัวเดียวกับที่เจอตอน L1 อ่าน `../PATTERNS.md` **PT-09** (custom action argument เสีย) และ **PT-10** (`PostgresQuery`/`FieldAccess` ดึงฟิลด์เดียวจากแถวไม่ได้ — อาจเป็นคำตอบว่าทำไมต้องทำ RPC `get_my_chats(uid)` แทน query builder ธรรมดา) ก่อนเขียน Action Flow
+
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
 - [ ] (ก่อน production) เปลี่ยน RLS allow-all → restrictive ตาม `chat_user` membership — `DECISIONS.md` D-03

@@ -6,6 +6,8 @@
 
 ผู้ขายลงประกาศพร้อมรูปที่หน้า **`AddProduct`** · ดูของตัวเองที่ **`MyPost`** · ทุกประกาศต้องผ่าน Admin ที่ **`Inspect`** ก่อนเผยแพร่
 
+> 🔴 **ก่อนเริ่มฝั่ง FlutterFlow อ่านนี่ก่อน:** `image_urls` เป็น array column — ถ้าจะเช็คเงื่อนไขจากมันหรือฟิลด์เดียวอื่นของ `products` ใน action chain (ไม่ใช่แค่แสดงผลทั้งแถวแบบ PT-03) มีบั๊ก SDK ที่เจอมาแล้วตอน L1 ที่จะเจอซ้ำแน่ ๆ — อ่าน `../PATTERNS.md` **PT-09** (custom action argument เสีย) และ **PT-10** (`PostgresQuery`/`FieldAccess` ดึงฟิลด์เดียวจากแถวไม่ได้) ก่อนเขียน Action Flow ไม่ใช่หลังชนบั๊กแล้วมางง
+
 ## 🧩 ขั้นตอน Supabase ที่เหลือ
 
 - [x] สร้าง Storage bucket `product-images` + policy — **apply แล้ว 2026-08-08**

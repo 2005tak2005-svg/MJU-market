@@ -316,3 +316,32 @@ nullif(trim(new.raw_user_meta_data->>'phone'), '')
 **ก่อนลงมือสร้าง flow:** ต้องตรวจ Site URL / Redirect URL ใน Supabase Dashboard (Authentication → URL Configuration) ของจริงก่อนว่าลิงก์ยืนยันในอีเมลกดแล้วพาไปที่ไหน (deep link เข้าแอปได้จริงไหม หรือไปหน้าเว็บกลาง) แล้วเสนอทางเลือกการออกแบบ flow ให้ pete เลือก — ยังไม่ลงมือสร้างอะไรจนกว่าจะตอบข้อนี้
 
 **Testing workaround ที่ใช้อยู่ตอนนี้ (ไม่ใช่ทางแก้ถาวร):** SQL patch `auth.users.email_confirmed_at` ตรงบัญชีทดสอบเป็นรายตัว — ดูรายชื่อบัญชีที่โดน patch ใน `STATUS.md` หัวข้อหนี้ทางเทคนิค **ห้ามเข้าใจผิดว่านี่คือทางแก้จริง** — บัญชี `mju6577778888@mju.ac.th` ต้องล้างทิ้งแล้วเทสใหม่ผ่าน flow จริงตอนทำ D-17 เสร็จ
+
+---
+
+## D-18 — รูปแบบ flow ยืนยันอีเมล: OTP 6 หลัก แทนลิงก์ (2026-08-09)
+
+**บริบท:** ต่อจาก D-17 — ก่อนออกแบบ flow ต้องตรวจ Site URL / Redirect URL ของจริงก่อนตามที่ D-17 กำหนดไว้
+
+**ตรวจแล้ว (execute_sql + get_project ทาง MCP หา `auth.config` ไม่เจอ — ค่านี้ไม่ได้อยู่ใน Postgres schema เลย เป็น platform config ต้องดูจาก Dashboard เท่านั้น):**
+pete เปิด Dashboard → Authentication → URL Configuration แล้วรายงานว่า
+- **Site URL = `http://localhost:3000`** (ยังเป็นค่า default ไม่เคยตั้ง)
+- **Redirect URLs allow list = ว่าง**
+
+**ผลคือ:** ลิงก์ยืนยันตอนนี้กดแล้วพา user ไปที่ `localhost:3000` — หน้าเว็บตายบนมือถือ ไม่มีทางกลับเข้าแอป (ยืนยันปัญหาที่ D-17 สงสัยไว้ว่าอาจเป็นแบบนี้)
+
+**ทางเลือกที่เสนอ:**
+
+| ทางเลือก | ข้อดี | ข้อเสีย |
+|---|---|---|
+| (1) Deep link เข้าแอปจริง (ตั้ง custom URL scheme) | UX ดีที่สุด กดลิงก์แล้วเด้งกลับแอปทันที | ต้อง config ทั้ง Supabase + FlutterFlow และยังไม่เคยเช็คว่า FlutterFlow SDK รองรับ custom scheme deep link จริงไหม |
+| (2) หน้าเว็บกลางง่าย ๆ ("ยืนยันแล้ว กลับไปเปิดแอป") | ทำเร็ว ไม่ต้องพิสูจน์ deep link | ต้องหาที่ host หน้าเว็บ, UX ขาดตอน 1 จังหวะ |
+| **(3) เปลี่ยนเป็น OTP 6 หลักแทนลิงก์ ← เลือกทางนี้** | ไม่พึ่ง Site URL/Redirect URL เลย หลีกเลี่ยงปัญหานี้ทั้งหมด ไม่ต้องพิสูจน์ deep link | ต้องเปลี่ยน email template (`{{ .Token }}` แทน `{{ .ConfirmationURL }}`) + สร้างหน้า OTP input ใหม่ใน FlutterFlow |
+
+**ตัดสินใจแล้ว (pete, 2026-08-09): ทางเลือก (3) OTP 6 หลัก**
+
+**งานที่ต้องทำต่อ (ยังไม่ได้เริ่ม):**
+- Supabase: แก้ email template "Confirm signup" ให้ใช้ `{{ .Token }}` แทนลิงก์
+- FlutterFlow: สร้างหน้ารับ OTP หลังสมัคร (input 6 หลัก + ปุ่ม resend) เรียก `verifyOtp` (type: signup)
+- Login: ยังต้องดักเคส "email not confirmed" เหมือนเดิมตามข้อ 2 ใน D-17 — เผื่อ user ปิดแอปก่อนกรอก OTP แล้วกลับมา login ทีหลัง
+- บัญชีทดสอบ `mju6577778888@mju.ac.th` ที่ patch `email_confirmed_at` ด้วย SQL ต้องล้างแล้วเทสใหม่ผ่าน OTP flow จริงตามที่ D-17 ระบุไว้

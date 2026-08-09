@@ -161,3 +161,34 @@ Action Flow:
 
 - **L2** (`AddProduct`/`Inspect`) — ถ้าจะมี action chain ที่เช็คเงื่อนไขจาก `image_urls` หรือฟิลด์เดียวอื่นของ `products` แบบ programmatic (ไม่ใช่แค่ผูกแสดงผลทั้งแถวแบบ PT-03) จะเจอบั๊กนี้ ดู `layers/L2-listings.md`
 - **L4** (`chat`/`chat messages`) — ถ้าจะเช็คเงื่อนไขจาก `chat_summary.member_names` / `user_ids` แบบ programmatic เช่น "array contains currentUserId" (คำถามค้างใน `layers/L4-chat.md`) จะเจอบั๊กนี้แน่ — นี่อาจเป็นเหตุผลเพิ่มที่สนับสนุนให้ทำ RPC `get_my_chats(uid)` แทน query builder ธรรมดา ดู `layers/L4-chat.md`
+
+---
+
+## PT-11 — 🔴 แทนที่ built-in Sign In/Sign Up action ด้วย custom action ต้อง sync `AppStateNotifier` เอง เพราะ auth stream ของแอปถูก `debounce` ไว้ (พบ 2026-08-09 ทำ D-17)
+
+**บริบท:** ทำ D-17 (ดัก "email not confirmed" ที่ Login) ต้องเลิกใช้ built-in action `LoginEmailPassword` เพราะมันไม่มี output ให้เช็คว่า error คืออะไร (แค่คืน `user == null`) และ error message ดิบจาก Supabase ("Email not confirmed") ถูกโชว์เป็น snackbar ของ framework เองไปแล้วก่อนที่โค้ดเราจะรู้ตัวด้วยซ้ำ (อยู่ใน `_signInOrCreateAccount` ของ `SupabaseAuthManager` — ไฟล์ `generated_code/lib/auth/supabase_auth/supabase_auth_manager.dart` ซึ่งเป็นโค้ด framework แก้ผ่าน DSL ไม่ได้) ทางแก้เดียวคือเปลี่ยนไปเรียก `Supabase.instance.client.auth.signInWithPassword(...)` ตรง ๆ เองในนั้น custom action (pattern เดียวกับ PT-09)
+
+**กับดักที่เจอ:** ทำแบบนั้นแล้ว login สำเร็จ (มี session จริงใน Supabase) แต่ **บางครั้ง navigate ไป `Home`/`HomeAdmin` แล้วโดนเด้งกลับ `Login` ทันที** — สาเหตุ: `generated_code/lib/auth/supabase_auth/supabase_user_provider.dart` มีบรรทัด
+```dart
+final supabaseAuthStream = SupaFlow.client.auth.onAuthStateChange.debounce(...)
+```
+stream นี้เป็นตัวป้อนค่าเข้า `AppStateNotifier.instance.update(user)` ใน `main.dart` — **มี debounce delay อยู่จริง** ทำให้ `AppStateNotifier.instance.loggedIn` (ที่ GoRouter `redirect:` ใช้เช็คว่าเข้าหน้าที่ต้อง auth ได้ไหม) ยังเป็น `false` อยู่ชั่วขณะหลัง sign-in สำเร็จจริง — ต่างจาก built-in action ที่ sync ค่านี้เองแบบ synchronous (`currentUser = authUser; AppStateNotifier.instance.update(authUser);` ใน `_signInOrCreateAccount` — มี comment ในซอร์สยอมรับตรง ๆ ว่านี่คือการกัน race condition ของ stream)
+
+**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง:** custom action ที่แทนที่ built-in sign-in action **ต้อง sync ค่านี้เอง** หลัง sign-in สำเร็จ ก่อน return:
+```dart
+import '/auth/supabase_auth/auth_util.dart';       // ให้ authManager
+import '/auth/supabase_auth/supabase_user_provider.dart'; // ให้ <ProjectName>SupabaseUser (ชื่อ class derive จากชื่อโปรเจกต์)
+import '/flutter_flow/nav/nav.dart';                // ให้ AppStateNotifier
+
+final response = await Supabase.instance.client.auth.signInWithPassword(...);
+if (response.user != null) {
+  final authUser = MJUMarketV2SupabaseUser(response.user!); // ชื่อ class เช็คจาก generated_code จริงก่อนใช้ (rule ข้อ 3)
+  authManager.currentUser = authUser;
+  AppStateNotifier.instance.update(authUser);
+}
+```
+ตรวจพบก่อน push จริงด้วยการ**อ่าน `generated_code/lib/auth/supabase_auth/supabase_user_provider.dart` และ `main.dart` โดยตรง** (ไม่ใช่เดาจาก behavior ที่สังเกตในแอป) ตามกฎ PT-09 ที่ต้องเปิด generated code ดูก่อนเชื่อว่า action ทำงานถูก
+
+**ใช้แล้วที่:** `LoginWithEmailPassword` (L1, Login page)
+
+**ต้องเช็คก่อนทำ layer อื่นที่แทนที่ built-in auth action ด้วย custom action** (เช่นถ้าทำ social login เอง หรือ sign-out เอง) — เจอกับดักเดียวกันแน่

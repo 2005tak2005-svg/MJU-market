@@ -480,6 +480,9 @@ AS $function$ SELECT student_id FROM public."Profile" WHERE id = auth.uid() $fun
 |---|---|---|---|
 | `static-pages public read` | SELECT | `{public}` | `(bucket_id = 'static-pages'::text)` |
 
+**ไฟล์ที่มีอยู่จริง:** `email-confirmed.txt` (**ไม่ใช่** `.html` — ดูเหตุผลกับดักใน `CLAUDE.md` ตาราง "กับดัก tool") — plain text ล้วน อัปโหลดสำเร็จแล้ว
+public URL: `https://rooydbxgcsybyanwsewv.supabase.co/storage/v1/object/public/static-pages/email-confirmed.txt` — ตั้งเป็น **Site URL** ใน Authentication → URL Configuration แล้ว 2026-08-09 (ดู `DECISIONS.md` D-19)
+
 🔴 **ไม่มี policy INSERT/UPDATE/DELETE เลย** — อัปโหลด/แก้ไขไฟล์ในนี้ได้เฉพาะผ่าน Dashboard (service_role bypass RLS) เท่านั้น ตั้งใจให้เป็นแบบนี้เพราะเป็นหน้าคงที่ ไม่ต้องการให้ใครแก้ได้จากแอป
 
 **ไฟล์ที่ต้องมี (ยังไม่ได้อัปโหลด ณ 2026-08-09):** `email-confirmed.html` — pete เตรียมอัปโหลดเองผ่าน Dashboard ตาม `DECISIONS.md` D-19

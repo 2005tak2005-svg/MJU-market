@@ -16,7 +16,10 @@ FLUTTERFLOW_API_TOKEN*
 
 # FlutterFlow export (ถ้ามีคนเผลอ export ลงโฟลเดอร์นี้)
 # repo นี้เก็บเอกสารอย่างเดียว โค้ดที่ export มาไม่ควรอยู่ที่นี่
+# ต้องอยู่ที่ ~/Documents/flutterflow-export/ นอก repo เท่านั้น (ดูกฎ git workflow ใน CLAUDE.md)
 export/
+mju_market_v2/
+mju_market/
 build/
 .dart_tool/
 pubspec.lock

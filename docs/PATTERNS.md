@@ -126,3 +126,38 @@ Action Flow:
 > ⚠️ **ยังไม่มีระบบเก็บกวาดไฟล์กำพร้า** — ถ้าผู้ใช้อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket (หนี้ใน `STATUS.md`)
 > ใช้กับ `avatars` ด้วย — เปลี่ยนรูปโปรไฟล์แล้วไฟล์เก่าไม่ถูกลบ
 > รายละเอียดการตัดสินใจ: `DECISIONS.md` **D-12** / **D-15** · ค่าจริงของ bucket/policy: `SCHEMA.md` หัวข้อ Storage
+
+---
+
+## PT-09 — 🔴 `CallCustomAction` argument เสียในเวอร์ชัน FlutterFlow AI SDK นี้ (พบ 2026-08-09 ทำ L1)
+
+**อาการ:** custom action ที่รับ argument ผ่าน `CallCustomAction` / `.named(...)` — ไม่ว่าจะผูกค่าจาก page state (`State(...)`) หรือ `WidgetState(...)` (ทั้งแบบชื่อ string ตรง ๆ และแบบ typed handle จาก `ff.Pages.x.widgets.byKey(...)`) — **ทุก argument compile ออกมาผิด/ว่างเปล่าเสมอ** โค้ด Dart ที่ generate จริงเรียก action ด้วย argument ว่างเปล่าหมด (`''`, `''`, ...) แม้ `flutterflow ai validate` จะผ่านและ proto ที่ `flutterflow ai inspect` เห็นจะดูถูกต้องสมบูรณ์ก็ตาม ลองมาแล้ว 3 วิธีต่างกัน (page state, `WidgetState` ชื่อ string, `WidgetState` typed handle) — พังเหมือนกันหมด ทั้ง 3 ครั้ง
+
+**🔴 กฎ: ห้ามเชื่อ `flutterflow ai inspect` ว่า argument ผูกถูกแล้ว** — proto ที่เห็นดูสมบูรณ์ได้ทั้งที่ codegen จริงพัง ต้องเปิด `generated_code/lib/custom_code/actions/<action>.dart` และไฟล์หน้าที่เรียก action นั้น (เช่น `generated_code/lib/pages/<page>/<page>_widget.dart`) ไปดูว่า argument ที่ generate ออกมาเป็นค่าจริงหรือ literal ว่าง — นี่คือวิธีเดียวที่จับบั๊กนี้ได้ก่อน push จริงไปเทสแล้วงง
+
+**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง (ทดสอบผ่าน end-to-end):** อย่าส่ง argument เข้า custom action เลย — ให้ custom action **รับ 0 argument** แล้วอ่านค่าที่ต้องการ**เอง**จากข้างในโค้ด Dart:
+
+- ค่าจาก TextField/ฟอร์ม → ให้ TextField เขียนลง **App State** (ไม่ใช่ page state) ผ่าน `UpdateAppState.set('field', const TextValue())` แล้วให้ custom action อ่าน `FFAppState().field` ตรง ๆ
+- ค่าจาก Supabase (current user, แถวในตาราง) → เรียก `Supabase.instance.client` ตรง ๆ ในโค้ด action เลย ไม่ต้อง query แล้วส่งผลเป็น argument
+- **ค่าที่ action ส่ง _กลับ_ (return value / `outputAs`) ใช้งานได้ปกติ ไม่มีบั๊ก** — เอาไปเทียบด้วย `Equals(ActionOutput('x'), ...)` ได้ตามปกติ ปัญหามีแค่ฝั่ง**ขาเข้า** (argument) เท่านั้น
+
+**ใช้แล้วที่ (L1):** `SignUpWithProfile` (0 arg, อ่าน `FFAppState()` 4 ตัว: email/password/fullName/phone) · `IsCurrentUserAdmin` (0 arg, query Supabase ตรง ๆ คืน `bool`)
+
+**ต้องเจออีกแน่ในทุก layer ที่จะใช้ custom action รับ argument จาก UI** — เช็คด้วยวิธีข้างบนก่อนเชื่อว่า action ทำงานถูก ก่อนไป debug ที่อื่น
+
+---
+
+## PT-10 — 🔴 `PostgresQuery` output type เป็น list เสมอ แม้ `isSingleRow: true` — `FieldAccess` ดึงค่าฟิลด์เดียวไม่ได้ (พบ 2026-08-09 ทำ L1)
+
+**อาการ:** `PostgresQuery(table, outputAs: 'x', query: PostgresQuerySpec(isSingleRow: true, ...))` — `x` มี type เป็น `List<table>` เสมอไม่ว่า `isSingleRow` จะ true หรือไม่ (`outputType => listOf(table)` ถูก hardcode ไว้ในตัว SDK เอง ไม่ใช่ปัญหาที่วิธีเขียนของเรา) ทำให้ `FieldAccess(ActionOutput('x'), 'someColumn')` compile **ไม่ผ่านเลย** — error ตรง ๆ ว่า `Field access requires a struct or document target, got ListType(...)` และ DSL นี้**ไม่มีวิธี index เข้า list** (ไม่มี `[0]`/`.first`) ที่ใช้ได้นอก `ForEach`/`ListView`
+
+**กระทบทุกกรณีที่ต้องการ "ดึงค่าฟิลด์เดียวจากแถวเดียวมาเช็คเงื่อนไขใน action chain"** ไม่ใช่แค่คอลัมน์ array (`text[]`/`uuid[]`) — แต่คอลัมน์ array มีความเสี่ยงเพิ่มอีกชั้นที่ยังไม่ได้ทดสอบ เพราะตัว value เองก็เป็น list ซ้อนอยู่แล้ว **ยังไม่ยืนยันว่า `FieldAccess` อ่านคอลัมน์ array ออกมาได้ปกติไหมแม้จะอยู่ในบริบทที่ target เป็น struct ถูกต้อง**
+
+**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง:** ถ้าต้องการแค่ **เช็คเงื่อนไขจากฟิลด์เดียวของแถวเดียว** (เช่น "ของ user คนนี้ role คืออะไร") — อย่าใช้ `PostgresQuery` + `FieldAccess` เลย ใช้ custom action 0 argument ที่ query Supabase ตรง ๆ แล้ว return ค่า scalar ที่ต้องการแทน (pattern เดียวกับ **PT-09** — ดูตัวอย่าง `IsCurrentUserAdmin`)
+
+ถ้าต้องการ**แสดงข้อมูลทั้งแถว/หลายแถวในหน้าจอ** (DataTable, ListView, popup ที่ผูกทั้ง row แบบ **PT-03**) **ไม่กระทบ** — นั่นคือการใช้งานปกติของ `PostgresQuery` ที่ FlutterFlow ผูก UI กับทั้ง row ให้เองโดยไม่ผ่าน `FieldAccess`
+
+**ต้องเช็คก่อนเริ่มลงมือ:**
+
+- **L2** (`AddProduct`/`Inspect`) — ถ้าจะมี action chain ที่เช็คเงื่อนไขจาก `image_urls` หรือฟิลด์เดียวอื่นของ `products` แบบ programmatic (ไม่ใช่แค่ผูกแสดงผลทั้งแถวแบบ PT-03) จะเจอบั๊กนี้ ดู `layers/L2-listings.md`
+- **L4** (`chat`/`chat messages`) — ถ้าจะเช็คเงื่อนไขจาก `chat_summary.member_names` / `user_ids` แบบ programmatic เช่น "array contains currentUserId" (คำถามค้างใน `layers/L4-chat.md`) จะเจอบั๊กนี้แน่ — นี่อาจเป็นเหตุผลเพิ่มที่สนับสนุนให้ทำ RPC `get_my_chats(uid)` แทน query builder ธรรมดา ดู `layers/L4-chat.md`

@@ -361,10 +361,11 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 **สิ่งที่ทำไปแล้วฝั่ง Supabase:**
 - สร้าง bucket `static-pages` (public read, ไม่มี public insert — อัปโหลดได้เฉพาะทาง Dashboard) — ดู `SCHEMA.md`
-- เตรียมไฟล์ `email-confirmed.html` หน้ายืนยันสำเร็จง่าย ๆ ไว้ให้ pete อัปโหลดเอง
+- ⚠️ **พบกับดัก:** อัปโหลด `email-confirmed.html` ครั้งแรก → `pg_policies`/`storage.objects.metadata` บอกว่า `mimetype: text/html` ถูกต้อง แต่ตัว public URL จริง **เสิร์ฟเป็น `content-type: text/plain` เสมอ** (เช็คซ้ำ 3 ครั้งด้วย curl ยืนยันไม่ใช่ cache fluke) — Supabase Storage บังคับ downgrade `.html` เป็น text/plain โดยเจตนา (anti-XSS/phishing ป้องกันไม่ให้ใช้ subdomain `*.supabase.co` โฮสต์ HTML ที่ execute ได้) แก้ไม่ได้ด้วยการแก้ metadata → **เปลี่ยนไฟล์เป็น `email-confirmed.txt` (plain text ล้วน ไม่มี HTML tag)** แทน เพราะยังไงก็โดนเสิร์ฟเป็น text/plain อยู่ดี ให้เนื้อในเป็น text อ่านง่ายไปเลย — บันทึกกับดักนี้ไว้ใน `CLAUDE.md` แล้วกันเจอซ้ำ
+- อัปโหลด `email-confirmed.txt` สำเร็จ verify แล้วด้วย curl: `content-type: text/plain`, body เป็นข้อความไทยล้วนไม่มี tag หลงเหลือ
+- **pete ตั้ง Site URL ใน Authentication → URL Configuration สำเร็จแล้ว 2026-08-09** ชี้ไปที่ `https://rooydbxgcsybyanwsewv.supabase.co/storage/v1/object/public/static-pages/email-confirmed.txt`
 
-**งานที่ต้องทำต่อ (ยังไม่ได้เริ่ม):**
-- pete อัปโหลด `email-confirmed.html` เข้า bucket `static-pages` ผ่าน Dashboard แล้วเอา public URL มา
-- ตั้ง Site URL ใน Authentication → URL Configuration ให้ชี้ไปที่ public URL นั้น (แทน `localhost:3000`)
-- FlutterFlow: หน้า/ข้อความหลังสมัครที่บอกผู้ใช้ให้ไปยืนยันอีเมล (ข้อ 1 ใน D-17) + ดักเคส "email not confirmed" ที่ Login (ข้อ 2 ใน D-17) — ยังต้องทำเหมือนเดิมไม่ว่าจะเลือกทางไหน
+**งานที่ต้องทำต่อ:**
+- ยังไม่เคยทดสอบ end-to-end จริง (สมัครบัญชีใหม่ → เช็คว่าอีเมลที่ได้มีลิงก์ที่กดแล้วพาไปหน้านี้จริง) — แค่ตั้งค่าไว้ ยังไม่ได้พิสูจน์
+- FlutterFlow: หน้า/ข้อความหลังสมัครที่บอกผู้ใช้ให้ไปยืนยันอีเมล (ข้อ 1 ใน D-17) + ดักเคส "email not confirmed" ที่ Login (ข้อ 2 ใน D-17)
 - บัญชีทดสอบ `mju6577778888@mju.ac.th` ต้องล้างแล้วเทสใหม่ผ่าน flow จริงตามที่ D-17 ระบุไว้

@@ -55,6 +55,24 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 
 ## 📤 Git workflow
 
+### 🔴 repo นี้มี clone เดียวเท่านั้น
+
+```
+~/Documents/ทักทาย 🤪/CLAUDE CODE      ← clone เดียวของ repo เอกสาร (Cowork mount ที่นี่)
+~/Documents/flutterflow-export/        ← export ของ FlutterFlow อยู่ "นอก" repo
+```
+
+**ห้าม clone repo นี้ซ้ำที่อื่นบนเครื่องเดียวกัน** และ **ห้ามเอา export ของ FlutterFlow มาไว้ในโฟลเดอร์ repo**
+
+เหตุผล (เกิดขึ้นจริง 2026-08-09): เคยมี clone ที่ 2 อยู่ที่ `~/MJU-market` แล้ว session หนึ่งไป commit+push จากตรงนั้น ส่วนอีก session ทำงานในโฟลเดอร์นี้ที่ยังตามหลังอยู่ 4 commit โดยไม่รู้ตัว — เอกสารที่อ่านอยู่ไม่ใช่ความจริงล่าสุด และเกือบเขียนทับกัน
+`export-code` เป็น diagnostic (กฎข้อ 6) สร้างใหม่ได้เสมอ จึงไม่มีเหตุผลให้อยู่ใน repo
+
+**ถ้าเจอ clone ที่ 2 โผล่มาอีก:** ตรวจ `git log origin/main..HEAD` ในอันนั้นก่อนว่าว่าง (= ไม่มี commit ค้าง) แล้วค่อยลบทิ้ง ย้ายเข้า Trash ไม่ใช่ `rm -rf`
+
+⚠️ **ถ้า `git pull` ขึ้น `Unable to create .git/index.lock: File exists`** — เป็น lock ค้างจาก process ที่ตายไปแล้ว (เคยเกิดจาก agent รัน git ใน sandbox) เช็คว่าไม่มี git รันอยู่จริง แล้ว `rm .git/index.lock` ได้เลย
+
+---
+
 repo นี้เก็บเอกสารอย่างเดียว **commit ตรงเข้า `main`** ไม่ต้องทำ branch/PR
 
 **Claude ต้อง commit เองทุกครั้งที่แก้เอกสารเสร็จเป็นก้อน** ไม่ต้องรอให้สั่ง — แต่**ต้องบอกสรุปว่า commit อะไรไปทุกครั้ง**

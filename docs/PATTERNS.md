@@ -131,93 +131,64 @@ Action Flow:
 
 ## PT-09 — 🔴 `CallCustomAction` argument เสียในเวอร์ชัน FlutterFlow AI SDK นี้ (พบ 2026-08-09 ทำ L1)
 
-**อาการ:** custom action ที่รับ argument ผ่าน `CallCustomAction` / `.named(...)` — ไม่ว่าจะผูกค่าจาก page state (`State(...)`) หรือ `WidgetState(...)` (ทั้งแบบชื่อ string ตรง ๆ และแบบ typed handle จาก `ff.Pages.x.widgets.byKey(...)`) — **ทุก argument compile ออกมาผิด/ว่างเปล่าเสมอ** โค้ด Dart ที่ generate จริงเรียก action ด้วย argument ว่างเปล่าหมด (`''`, `''`, ...) แม้ `flutterflow ai validate` จะผ่านและ proto ที่ `flutterflow ai inspect` เห็นจะดูถูกต้องสมบูรณ์ก็ตาม ลองมาแล้ว 3 วิธีต่างกัน (page state, `WidgetState` ชื่อ string, `WidgetState` typed handle) — พังเหมือนกันหมด ทั้ง 3 ครั้ง
+**อาการ:** custom action ที่รับ argument ผ่าน `CallCustomAction` — ไม่ว่าจะผูกจาก `State(...)` หรือ `WidgetState(...)` — **compile ออกมาว่างเปล่าเสมอ** (`''`) แม้ `validate` ผ่านและ `inspect` ดูสมบูรณ์
 
-**🔴 กฎ: ห้ามเชื่อ `flutterflow ai inspect` ว่า argument ผูกถูกแล้ว** — proto ที่เห็นดูสมบูรณ์ได้ทั้งที่ codegen จริงพัง ต้องเปิด `generated_code/lib/custom_code/actions/<action>.dart` และไฟล์หน้าที่เรียก action นั้น (เช่น `generated_code/lib/pages/<page>/<page>_widget.dart`) ไปดูว่า argument ที่ generate ออกมาเป็นค่าจริงหรือ literal ว่าง — นี่คือวิธีเดียวที่จับบั๊กนี้ได้ก่อน push จริงไปเทสแล้วงง
+🔴 **กฎ: ห้ามเชื่อ `inspect` ว่า argument ผูกถูก** — ต้องเปิด `generated_code/lib/custom_code/actions/<action>.dart` ดูว่า argument ที่ generate เป็นค่าจริงหรือ literal ว่าง
 
-**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง (ทดสอบผ่าน end-to-end):** อย่าส่ง argument เข้า custom action เลย — ให้ custom action **รับ 0 argument** แล้วอ่านค่าที่ต้องการ**เอง**จากข้างในโค้ด Dart:
+**ทางแก้:** custom action **รับ 0 argument** แล้วอ่านเอง — TextField/ฟอร์ม → เขียนลง **App State** ก่อน (`UpdateAppState.set`) แล้วอ่าน `FFAppState()` ในโค้ด action, ค่าจาก Supabase → เรียก `Supabase.instance.client` ตรง ๆ ในโค้ด action เลย (return value/`outputAs` ไม่มีบั๊ก ปัญหามีแค่ฝั่งขาเข้า)
 
-- ค่าจาก TextField/ฟอร์ม → ให้ TextField เขียนลง **App State** (ไม่ใช่ page state) ผ่าน `UpdateAppState.set('field', const TextValue())` แล้วให้ custom action อ่าน `FFAppState().field` ตรง ๆ
-- ค่าจาก Supabase (current user, แถวในตาราง) → เรียก `Supabase.instance.client` ตรง ๆ ในโค้ด action เลย ไม่ต้อง query แล้วส่งผลเป็น argument
-- **ค่าที่ action ส่ง _กลับ_ (return value / `outputAs`) ใช้งานได้ปกติ ไม่มีบั๊ก** — เอาไปเทียบด้วย `Equals(ActionOutput('x'), ...)` ได้ตามปกติ ปัญหามีแค่ฝั่ง**ขาเข้า** (argument) เท่านั้น
-
-**ใช้แล้วที่ (L1):** `SignUpWithProfile` (0 arg, อ่าน `FFAppState()` 4 ตัว: email/password/fullName/phone) · `IsCurrentUserAdmin` (0 arg, query Supabase ตรง ๆ คืน `bool`)
-
-**ต้องเจออีกแน่ในทุก layer ที่จะใช้ custom action รับ argument จาก UI** — เช็คด้วยวิธีข้างบนก่อนเชื่อว่า action ทำงานถูก ก่อนไป debug ที่อื่น
+**ใช้แล้วที่ (L1):** `SignUpWithProfile`, `IsCurrentUserAdmin` (0 arg ทั้งคู่) — **เจอซ้ำได้ทุก layer ที่ใช้ custom action รับ argument จาก UI**
 
 ---
 
 ## PT-10 — 🔴 `PostgresQuery` output type เป็น list เสมอ แม้ `isSingleRow: true` — `FieldAccess` ดึงค่าฟิลด์เดียวไม่ได้ (พบ 2026-08-09 ทำ L1)
 
-**อาการ:** `PostgresQuery(table, outputAs: 'x', query: PostgresQuerySpec(isSingleRow: true, ...))` — `x` มี type เป็น `List<table>` เสมอไม่ว่า `isSingleRow` จะ true หรือไม่ (`outputType => listOf(table)` ถูก hardcode ไว้ในตัว SDK เอง ไม่ใช่ปัญหาที่วิธีเขียนของเรา) ทำให้ `FieldAccess(ActionOutput('x'), 'someColumn')` compile **ไม่ผ่านเลย** — error ตรง ๆ ว่า `Field access requires a struct or document target, got ListType(...)` และ DSL นี้**ไม่มีวิธี index เข้า list** (ไม่มี `[0]`/`.first`) ที่ใช้ได้นอก `ForEach`/`ListView`
+**อาการ:** `outputAs: 'x'` มี type เป็น `List<table>` เสมอไม่ว่า `isSingleRow` จะ true หรือไม่ (hardcode ในตัว SDK) → `FieldAccess(ActionOutput('x'), 'col')` compile ไม่ผ่าน (`Field access requires a struct or document target, got ListType(...)`) และ DSL ไม่มีวิธี index เข้า list นอก `ForEach`/`ListView`
 
-**กระทบทุกกรณีที่ต้องการ "ดึงค่าฟิลด์เดียวจากแถวเดียวมาเช็คเงื่อนไขใน action chain"** ไม่ใช่แค่คอลัมน์ array (`text[]`/`uuid[]`) — แต่คอลัมน์ array มีความเสี่ยงเพิ่มอีกชั้นที่ยังไม่ได้ทดสอบ เพราะตัว value เองก็เป็น list ซ้อนอยู่แล้ว **ยังไม่ยืนยันว่า `FieldAccess` อ่านคอลัมน์ array ออกมาได้ปกติไหมแม้จะอยู่ในบริบทที่ target เป็น struct ถูกต้อง**
+**กระทบ:** ทุกกรณีที่ต้องการ "ดึงค่าฟิลด์เดียวจากแถวเดียวมาเช็คเงื่อนไขใน action chain" (ไม่กระทบการผูกแสดงผลทั้งแถว/หลายแถวแบบ **PT-03**)
 
-**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง:** ถ้าต้องการแค่ **เช็คเงื่อนไขจากฟิลด์เดียวของแถวเดียว** (เช่น "ของ user คนนี้ role คืออะไร") — อย่าใช้ `PostgresQuery` + `FieldAccess` เลย ใช้ custom action 0 argument ที่ query Supabase ตรง ๆ แล้ว return ค่า scalar ที่ต้องการแทน (pattern เดียวกับ **PT-09** — ดูตัวอย่าง `IsCurrentUserAdmin`)
+**ทางแก้:** ใช้ custom action 0 argument query Supabase ตรง ๆ คืนค่า scalar แทน (เหมือน **PT-09** — ตัวอย่าง `IsCurrentUserAdmin`)
 
-ถ้าต้องการ**แสดงข้อมูลทั้งแถว/หลายแถวในหน้าจอ** (DataTable, ListView, popup ที่ผูกทั้ง row แบบ **PT-03**) **ไม่กระทบ** — นั่นคือการใช้งานปกติของ `PostgresQuery` ที่ FlutterFlow ผูก UI กับทั้ง row ให้เองโดยไม่ผ่าน `FieldAccess`
-
-**ต้องเช็คก่อนเริ่มลงมือ:**
-
-- **L2** (`AddProduct`/`Inspect`) — ถ้าจะมี action chain ที่เช็คเงื่อนไขจาก `image_urls` หรือฟิลด์เดียวอื่นของ `products` แบบ programmatic (ไม่ใช่แค่ผูกแสดงผลทั้งแถวแบบ PT-03) จะเจอบั๊กนี้ ดู `layers/L2-listings.md`
-- **L4** (`chat`/`chat messages`) — ถ้าจะเช็คเงื่อนไขจาก `chat_summary.member_names` / `user_ids` แบบ programmatic เช่น "array contains currentUserId" (คำถามค้างใน `layers/L4-chat.md`) จะเจอบั๊กนี้แน่ — นี่อาจเป็นเหตุผลเพิ่มที่สนับสนุนให้ทำ RPC `get_my_chats(uid)` แทน query builder ธรรมดา ดู `layers/L4-chat.md`
+**ต้องเช็คก่อน:** L2 (`products.image_urls` หรือฟิลด์เดี่ยวอื่นแบบ programmatic) · L4 (`chat_summary.member_names`/`user_ids` แบบ "array contains" — อาจต้องทำ RPC `get_my_chats(uid)` แทน)
 
 ---
 
 ## PT-11 — 🔴 แทนที่ built-in Sign In/Sign Up action ด้วย custom action ต้อง sync `AppStateNotifier` เอง เพราะ auth stream ของแอปถูก `debounce` ไว้ (พบ 2026-08-09 ทำ D-17)
 
-**บริบท:** ทำ D-17 (ดัก "email not confirmed" ที่ Login) ต้องเลิกใช้ built-in action `LoginEmailPassword` เพราะมันไม่มี output ให้เช็คว่า error คืออะไร (แค่คืน `user == null`) และ error message ดิบจาก Supabase ("Email not confirmed") ถูกโชว์เป็น snackbar ของ framework เองไปแล้วก่อนที่โค้ดเราจะรู้ตัวด้วยซ้ำ (อยู่ใน `_signInOrCreateAccount` ของ `SupabaseAuthManager` — ไฟล์ `generated_code/lib/auth/supabase_auth/supabase_auth_manager.dart` ซึ่งเป็นโค้ด framework แก้ผ่าน DSL ไม่ได้) ทางแก้เดียวคือเปลี่ยนไปเรียก `Supabase.instance.client.auth.signInWithPassword(...)` ตรง ๆ เองในนั้น custom action (pattern เดียวกับ PT-09)
+**บริบท:** ต้องเลิกใช้ built-in `LoginEmailPassword` (ไม่มี output บอก error, snackbar ของ framework โชว์ error ดิบไปแล้วก่อนโค้ดเรารู้ตัว) → เรียก `Supabase.instance.client.auth.signInWithPassword(...)` เองในนั้น custom action (pattern เดียวกับ PT-09)
 
-**กับดักที่เจอ:** ทำแบบนั้นแล้ว login สำเร็จ (มี session จริงใน Supabase) แต่ **บางครั้ง navigate ไป `Home`/`HomeAdmin` แล้วโดนเด้งกลับ `Login` ทันที** — สาเหตุ: `generated_code/lib/auth/supabase_auth/supabase_user_provider.dart` มีบรรทัด
-```dart
-final supabaseAuthStream = SupaFlow.client.auth.onAuthStateChange.debounce(...)
-```
-stream นี้เป็นตัวป้อนค่าเข้า `AppStateNotifier.instance.update(user)` ใน `main.dart` — **มี debounce delay อยู่จริง** ทำให้ `AppStateNotifier.instance.loggedIn` (ที่ GoRouter `redirect:` ใช้เช็คว่าเข้าหน้าที่ต้อง auth ได้ไหม) ยังเป็น `false` อยู่ชั่วขณะหลัง sign-in สำเร็จจริง — ต่างจาก built-in action ที่ sync ค่านี้เองแบบ synchronous (`currentUser = authUser; AppStateNotifier.instance.update(authUser);` ใน `_signInOrCreateAccount` — มี comment ในซอร์สยอมรับตรง ๆ ว่านี่คือการกัน race condition ของ stream)
+**กับดัก:** login สำเร็จจริง (มี session) แต่บางครั้ง navigate ไป `Home`/`HomeAdmin` แล้วโดนเด้งกลับ `Login` ทันที — สาเหตุ: `supabase_user_provider.dart` มี `onAuthStateChange.debounce(...)` ป้อนค่าเข้า `AppStateNotifier` ทำให้ `loggedIn` (ที่ GoRouter `redirect:` เช็ค) ยังเป็น `false` ชั่วขณะหลัง sign-in — built-in action sync ค่านี้ synchronous แต่ custom action ไม่ทำให้อัตโนมัติ
 
-**ทางแก้ที่ยืนยันแล้วว่าใช้ได้จริง:** custom action ที่แทนที่ built-in sign-in action **ต้อง sync ค่านี้เอง** หลัง sign-in สำเร็จ ก่อน return:
+**ทางแก้:** sync เองหลัง sign-in สำเร็จ ก่อน return:
 ```dart
-import '/auth/supabase_auth/auth_util.dart';       // ให้ authManager
-import '/auth/supabase_auth/supabase_user_provider.dart'; // ให้ <ProjectName>SupabaseUser (ชื่อ class derive จากชื่อโปรเจกต์)
-import '/flutter_flow/nav/nav.dart';                // ให้ AppStateNotifier
+import '/auth/supabase_auth/auth_util.dart';
+import '/auth/supabase_auth/supabase_user_provider.dart';
+import '/flutter_flow/nav/nav.dart';
 
 final response = await Supabase.instance.client.auth.signInWithPassword(...);
 if (response.user != null) {
-  final authUser = MJUMarketV2SupabaseUser(response.user!); // ชื่อ class เช็คจาก generated_code จริงก่อนใช้ (rule ข้อ 3)
+  final authUser = MJUMarketV2SupabaseUser(response.user!); // ชื่อ class เช็คจาก generated_code ก่อนใช้ (กฎข้อ 3)
   authManager.currentUser = authUser;
   AppStateNotifier.instance.update(authUser);
 }
 ```
-ตรวจพบก่อน push จริงด้วยการ**อ่าน `generated_code/lib/auth/supabase_auth/supabase_user_provider.dart` และ `main.dart` โดยตรง** (ไม่ใช่เดาจาก behavior ที่สังเกตในแอป) ตามกฎ PT-09 ที่ต้องเปิด generated code ดูก่อนเชื่อว่า action ทำงานถูก
 
-**ใช้แล้วที่:** `LoginWithEmailPassword` (L1, Login page)
-
-**ต้องเช็คก่อนทำ layer อื่นที่แทนที่ built-in auth action ด้วย custom action** (เช่นถ้าทำ social login เอง หรือ sign-out เอง) — เจอกับดักเดียวกันแน่
+**ใช้แล้วที่:** `LoginWithEmailPassword` (L1) — **เช็คก่อนทำ layer อื่นที่แทนที่ built-in auth action** (social login, sign-out เอง ฯลฯ)
 
 ---
 
-## PT-12 — 🔴 9 กับดักของ `flutterflow ai run` DSL ที่เจอตอนต่อ backend หน้า `addproduct` (พบ 2026-08-10 ทำ L2)
+## PT-12 — 🔴 กับดัก `flutterflow ai run` DSL (พบทำ L2 `addproduct`)
 
-พบตอนเขียน `dsl/edit.dart` ใน `flutterflow-export/mju_market_v2/` เพื่อผูกหน้า `addproduct` เข้ากับตาราง `products` — ทุกข้อยืนยันจริงจากการอ่าน `generated_code/` หลัง push ไม่ใช่แค่ `flutterflow ai validate` ผ่าน (validate/run **ไม่ได้รัน Dart analyzer** กับ `generated_code/` เลย เพราะ `flutter` ไม่อยู่บน PATH ในเครื่องนี้ — เห็นจาก log `Skipped flutter pub get in generated_code/: flutter was not found on PATH` — ดังนั้น validate ผ่าน **ไม่ได้แปลว่า Dart compile ผ่าน** ต้องอ่านโค้ดจริงเสมอ)
+🔴 `validate`/`run` ไม่รัน Dart analyzer จริง (`flutter` ไม่อยู่บน PATH) — ผ่านไม่ได้แปลว่า Dart compile ผ่าน ต้องอ่าน `generated_code/` เสมอ
 
-**1. `UploadData` ไม่มีช่องตั้ง Supabase bucket/folder path ใน DSL ระดับสูงเลย** — ตรวจซอร์ส `lib/src/dsl/*.dart` ทั้งไฟล์แล้วไม่มีคำว่า `bucket` อยู่เลยนอกจาก schema ดิบ ทางแก้คือ `app.raw((project) { ... })` + `findByKey` หา node ของ widget ที่มี `triggerActions` แล้วเซ็ต `rootAction.action.uploadData.supabase.storageBucket`/`storageFolderPath` ตรง ๆ เป็น `FFValue` — สำหรับ path ที่ต้องผูกกับ `auth.uid()` ให้สร้าง `FFVariable(source: FFVariableSource.SUPABASE_AUTH_USER, baseVariable: FFBaseVariable(auth: FFAuthVariable(property: FFAuthVariable_AuthProperty.USER_ID)))` (ก็อปจากฟังก์ชัน `varFromSupabaseAuthUser` ใน `lib/src/helpers/variable_helpers.dart` ตรง ๆ ไม่ต้อง import ไฟล์นั้นด้วยซ้ำเพราะ type ทั้งหมด export ผ่าน schema barrel อยู่แล้ว)
+1. **`UploadData` ไม่มีช่องตั้ง Supabase bucket/path** → `app.raw` + `findByKey` เซ็ต `rootAction.action.uploadData.supabase.storageBucket`/`storageFolderPath` ตรง ๆ เป็น `FFValue` (path ผูก `auth.uid()`: `FFVariable(source: SUPABASE_AUTH_USER, baseVariable: FFBaseVariable(auth: FFAuthVariable(property: USER_ID)))`)
+2. **อ่าน URL ไฟล์ที่เพิ่งอัป** → `var_helpers.varFromWidgetState(type: UPLOAD_DATA_URL, actionKeyRef: ...)` **ต้องเซ็ต `.nodeKeyRef` ด้วยเสมอ** ไม่งั้น validate ผ่านแต่ fail semantic validation (`update value that is not properly set`)
+3. **DropDown label ต้องใช้ `FFParameterValue.translatableText` ไม่ใช่ `serializedValue`** — ใช้ `serializedValue` แล้ว generate เป็น `options: ['', '', ...]` ว่างเปล่า
+4. **`FlutterFlowDropDown<String>` ไม่มี value list แยกจาก label** — `_model.dropDownValue` เป็นค่า label เสมอ ต้อง map label→id เองผ่าน custom function (ห้าม parse label เป็นเลข)
+5. **`ChoiceChips` ไม่รองรับ `WidgetState(..., .value)`** (รองรับแค่ Toggle/Checkbox/Dropdown/Slider/RadioGroup/PinCode) → prepend action ผ่าน `app.raw` คัด live value เข้า page state ด้วย `varFromWidgetValue(nodeKey, stringType)` ก่อน แล้วให้ chain หลักอ่านจาก `State(...)`
+6. **`addCustomFunction`'s `code:` คือเนื้อฟังก์ชันเท่านั้น ไม่ใช่ signature เต็ม** (ตรงข้าม `addCustomAction`) — ใส่ signature เต็มผิด จะได้ฟังก์ชันซ้อนฟังก์ชันที่คืน `null` เสมอ ทั้งที่ compile ผ่าน
+7. **parameter ของ custom function generate เป็น `String?` เสมอ** ไม่ว่าประกาศ type อะไร — ต้อง `?? ''` ก่อนเรียก method เสมอ ไม่งั้นไม่ compile
+8. **`EditWidgetPatch.visible(false)` เซ็ต proto flag ถูก แต่ไม่ทำให้ widget หายจาก generated code** (ต่าง `bindVisible` ที่ compile เป็น `if(...)` จริง) — ต้องการซ่อนถาวรใช้ `page.ensureRemoved(selector)` แทน (ระวัง: ไม่ rerun-safe เอง ต้องลบบรรทัดออกหลังรันสำเร็จครั้งแรก)
+9. 🔴 **`if (rootAction.hasFollowUpAction()) continue;` ทำให้แก้ follow-up chain ทีหลังไม่ถูกเขียนเลย ทั้งที่ validate/run ผ่าน** — `app.raw` ต้อง converge ไปที่ desired state ปัจจุบันทุกครั้งที่รัน ไม่ใช่ตั้งครั้งเดียวแล้วข้าม → เขียนทับ (`rootAction.followUpAction = ...`) ใหม่ทุกครั้งแทน guard ด้วย "เคยมีมาก่อนไหม"
 
-**2. อยากได้ URL ของไฟล์ที่เพิ่งอัปโหลด ต้องใช้ `varFromWidgetState` + `nodeKeyRef` ไม่ใช่แค่ `actionKeyRef`** — `WidgetStateProperty` (public enum) ไม่มีตัวเลือกสำหรับผลอัปโหลดเลย ต้อง deep-import `package:flutterflow_ai/src/helpers/variable_helpers.dart` แล้วเรียก `varFromWidgetState(type: FFWidgetStateVariable_ActionVariableType.UPLOAD_DATA_URL, actionKeyRef: FFActionKeyReference(key: rootAction.action.key))` **แล้วต้องเซ็ต `.nodeKeyRef = FFNodeKeyReference(key: <key ของ widget ที่มี triggerActions>)` ต่อท้ายด้วยเสมอ** — ไม่งั้น `flutterflow ai validate` ผ่าน compile แต่ fail semantic validation ด้วย error `Field "X" has an update value that is not properly set` (เจอจริง ลบออกแล้ว error หาย) ต่อ action chain ใหม่นี้เข้ากับ `rootAction.followUpAction` เพื่อให้รันเฉพาะตอนอัปโหลดสำเร็จ (ไม่ใช่รันทันทีตอนกด)
-
-**3. `DropDown` label ต้องใช้ `FFParameterValue.translatableText` ไม่ใช่ `serializedValue`** — ถ้าตั้ง label ด้วย `FFParameterValue(serializedValue: 'ข้อความ')` (แบบเดียวกับที่ `_applyDropdownOptionsPatch` ใน SDK เองใช้) โค้ดที่ generate ออกมาจะเป็น `options: ['', '', ...]` (string ว่างล้วน) — ต้องใช้ `FFParameterValue(translatableText: FFText(textValue: FFStringValue(inputValue: 'ข้อความ')))` แทน (`serializedValue`/`translatableText`/`color`/`icon` เป็น `oneof` เดียวกัน เลือกได้ทีละอัน)
-
-**4. 🔴 `FlutterFlowDropDown<String>` ที่ generate ออกมาไม่มี value list แยกจาก label list เลย** — ต่อให้ proto มี `optionsLabels`/`optionsValues` แยกกันจริง (`node.props.dropDown.optionsLabels`/`optionsValues`) โค้ด Dart ที่ generate มีแค่ `options: [...]` ตัวเดียวและ `onChanged` เซ็ต `_model.dropDownValue` เป็น**ค่า label ที่เลือกตรง ๆ** — แปลว่า "value" ที่ widget คืนมาจริงคือ label เสมอ ไม่ใช่ id ที่ตั้งไว้ใน `optionsValues` เลย ถ้าต้องการ map label → id (เช่น category_id เป็น bigint) ต้องทำผ่าน custom function ที่ map label string → id ตรง ๆ (ดูตัวอย่าง `parseCategoryId` ใน `dsl/edit.dart`) ห้าม parse label เป็นตัวเลขเด็ดขาด
-
-**5. `ChoiceChips` ไม่อยู่ใน widget type ที่ `WidgetState(..., .value)` รองรับ** — error ตรง ๆ ตอน validate: `WidgetState(, value) requires a Toggle, Checkbox, Dropdown, Slider, RadioGroup, or PinCode target` ทางแก้ที่ใช้ได้จริง: prepend action chain ผ่าน `app.raw` ให้ก็อป live value ของ ChoiceChips เข้า page state ก่อน (ด้วย `varFromWidgetValue(nodeKey, stringType)` — เป็น general-purpose ตัวเดียวกับที่ TextField ใช้ ไม่ผูกกับ widget type เฉพาะเหมือน enum สาธารณะ) แล้วให้ action chain หลัก (ที่เขียนผ่าน typed DSL ปกติ) อ่านจาก `State('...')` แทน — โครงสร้างคือ `trigger.rootAction = FFActionNode(key: ..., action: captureAction, followUpAction: existingRootAction)` (เก็บ `existingRootAction` ไว้ก่อนสลับ)
-
-**6. `addCustomFunction`'s `code:` คือ**เนื้อฟังก์ชันเท่านั้น**ไม่ใช่ signature เต็ม — ตรงข้ามกับ `addCustomAction`** ที่ใช้ signature เต็ม (ดู `LoginWithEmailPassword`/`VerifyOtp` ใน `dsl/edit.dart` เป็นตัวอย่างที่ถูกสำหรับ action) ถ้าใส่ signature เต็มให้ `addCustomFunction` โค้ดที่ออกมาจะเป็นฟังก์ชันซ้อนฟังก์ชัน (wrapper ว่างเปล่าไม่มี `return`) — ทุก call คืน `null` เสมอ ทั้งที่ compile ผ่านสนิท ต้องอ่าน `generated_code/lib/flutter_flow/custom_functions.dart` เท่านั้นถึงจะจับได้
-
-**7. parameter ของ custom function ที่ generate ออกมาเป็น nullable (`String?`) เสมอ** ไม่ว่าจะประกาศ type เป็นอะไรก็ตาม (`FFDataTypeV2(scalarType: FFBaseDataType.String)` ไม่ได้แปลว่า non-null) — เขียน body ที่เรียก `.trim()`/method อื่นบน parameter ตรง ๆ โดยไม่มี `?? ''` กันไว้ก่อน จะ**ไม่ compile** ภายใต้ Dart sound null safety (แต่ `flutterflow ai validate`/`run` ไม่จับ เพราะไม่ได้รัน Dart analyzer จริงในเครื่องนี้)
-
-**8. `EditWidgetPatch.visible(bool value)` (static/literal) เซ็ต proto flag ถูกต้อง แต่**ไม่ทำให้ widget หายไปจาก generated code** — ยืนยันจากการอ่าน `generated_code/` ตรง ๆ: `visible(false)` ทำให้ `inspect` เห็น `visibility.visibleValue.inputValue: false` แต่ widget ยัง render แบบ unconditional เหมือนเดิมทุกประการ (ต่างจาก `bindVisible(selector, expression)` ที่ compile เป็น `if (...)` ครอบ widget จริง ๆ) ถ้าต้องการซ่อนถาวรแบบไม่มีเงื่อนไข ให้ใช้ `page.ensureRemoved(selector)` แทน — แต่ระวัง: `ensureRemoved` ไม่ rerun-safe เอง ถ้า rerun script เดิมซ้ำหลัง widget หายไปแล้ว `byKey(...)` จะหา node ไม่เจอและ throw ต้องลบ/comment บรรทัดนั้นออกหลังรันสำเร็จครั้งแรก
-
-**9. 🔴 `if (rootAction.hasFollowUpAction()) continue;` (skip-if-already-set idempotency guard ใน `app.raw`) ทำให้ field ใหม่ที่เพิ่มเข้า follow-up chain ทีหลังไม่ถูกเขียนเลย ทั้งที่ `validate`/`run` ผ่านสนิท** — เจอจริงตอนเพิ่ม preview รูป (`image1Url`/`image2Url`/`image3Url`) เข้า follow-up action เดิม (ที่เดิมมีแค่ `addToList` + `set uploaded flag`) — script เพิ่ม `setFromVariable(previewField, ...)` เข้าไปถูกต้อง แต่เพราะรันครั้งที่ 2 ขึ้นไป `rootAction.hasFollowUpAction()` เป็น `true` อยู่แล้วจาก run ก่อนหน้า โค้ดส่วนสร้าง follow-up ใหม่เลย**ไม่ทำงานเลยทั้งบล็อก** ผลคือ `image1Url` ไม่เคยถูก set จริง (ค่ายังเป็น `''` ค่า default ตลอด) ทำให้รูปที่ preview ขึ้นเป็นค่าว่างเปล่า (ดูเหมือน "หน้าขาวบล็อก" ให้ผู้ใช้)
-🔴 **บทเรียน: `app.raw` ต้อง converge ไปที่ desired state ปัจจุบันของ script ทุกครั้งที่รัน ไม่ใช่ "ตั้งครั้งเดียวแล้วข้าม"** — ถ้าจะกัน error จากการรัน operation ที่ throw เมื่อมีอยู่แล้ว (เช่น `ensureRemoved`/`addCustomFunction`) ให้ guard เฉพาะจุดนั้นแยก ไม่ใช่ guard ทั้งบล็อกด้วยการเช็คว่า "เคยมีมาก่อนไหม" เพราะ script จะแก้ไข/เพิ่มอะไรเข้า block เดิมทีหลังไม่ได้อีกเลยตลอดไป ทางที่ปลอดภัยกว่าคือ**เขียน `rootAction.followUpAction = ...` ทับใหม่ทุกครั้งไปเลย** (ไม่มีอะไรเสียหายเพราะเป็นการ derive จาก state เดิมที่แน่นอนอยู่แล้ว)
-
-**ใช้แล้วที่:** L2 (`addproduct` — upload wiring, dropdown categories, ChoiceChips condition capture, custom function insert)
-
-**ต้องเช็คก่อนทำ layer อื่นที่มี:** DropDown/ChoiceChips ที่ต้องอ่านค่าไปเก็บ DB, widget upload รูปที่ยังไม่เคยตั้ง bucket, หรือ custom function ใหม่ — โดยเฉพาะ item 6/7 ที่เจอได้ทุกครั้งที่เพิ่ม custom function ใหม่ไม่ว่าจะ layer ไหน
+**ใช้แล้วที่:** L2 (`addproduct`) **เช็คก่อนทำ layer อื่นที่มี** DropDown/ChoiceChips ที่ต้องอ่านค่า, widget upload รูปใหม่, หรือ custom function ใหม่ (ข้อ 6/7 เจอทุกครั้ง)

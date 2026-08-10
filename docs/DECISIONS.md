@@ -369,3 +369,38 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - ยังไม่เคยทดสอบ end-to-end จริง (สมัครบัญชีใหม่ → เช็คว่าอีเมลที่ได้มีลิงก์ที่กดแล้วพาไปหน้านี้จริง) — แค่ตั้งค่าไว้ ยังไม่ได้พิสูจน์
 - FlutterFlow: หน้า/ข้อความหลังสมัครที่บอกผู้ใช้ให้ไปยืนยันอีเมล (ข้อ 1 ใน D-17) + ดักเคส "email not confirmed" ที่ Login (ข้อ 2 ใน D-17)
 - บัญชีทดสอบ `mju6577778888@mju.ac.th` ต้องล้างแล้วเทสใหม่ผ่าน flow จริงตามที่ D-17 ระบุไว้
+
+---
+
+## D-20 — OTP กลับมาอีกครั้ง (ยกเลิก D-19) เพราะ Microsoft Safe Links prefetch ลิงก์ยืนยัน แล้วหยุดงาน L1 ไว้ตรงนี้เพราะ deliverability ฝั่ง tenant (2026-08-09 → 2026-08-10)
+
+**บริบท:** ทำตาม D-19 (หน้าเว็บกลาง + ลิงก์ยืนยัน) เสร็จแล้ว ตั้ง Site URL ชี้ไปที่ `email-confirmed.txt` ใน bucket `static-pages` ทดสอบสมัครจริงหลายรอบ
+
+**พบว่า:** `auth.users.email_confirmed_at` ไม่เคยขยับเป็นค่าจริงเลย แม้จะ "กดยืนยัน" แล้วก็ตาม — `get_logs` (auth) โชว์ `GET /verify` คืน `400: Invalid email verification type` และเกิดขึ้นเร็วผิดปกติ **~17 วินาทีหลังสมัครทุกครั้ง** (เร็ว/สม่ำเสมอเกินกว่ามนุษย์จะเปิดอีเมลจริง) ตรวจ `whois` ของ IP ที่ยิง `/verify` พบ `mnt-by: MICROSOFT-MAINT` — สรุปได้ว่า **Microsoft 365 Education Safe Links / Defender for Office 365 ของ tenant มหาลัยดึงลิงก์ในอีเมลไปสแกนเองอัตโนมัติก่อนผู้ใช้จะกด** ทำให้ one-time token ถูกใช้ไปแล้วตั้งแต่ก่อนคนจะเห็นอีเมลด้วยซ้ำ
+
+**ผลคือ: การยืนยันอีเมลแบบ "ลิงก์" ใช้กับโดเมนนี้ไม่ได้เลยในทางเทคนิค** ไม่ว่าจะ host หน้าเว็บกลางไว้ที่ไหนก็ตาม — ปัญหาไม่ได้อยู่ที่ D-19 เลือกผิด แต่อยู่ที่ "ลิงก์" เป็นกลไกที่ผิดตั้งแต่ต้นสำหรับผู้ใช้ที่อยู่หลัง Safe Links
+
+**ตัดสินใจ (pete, 2026-08-09 ตอนเย็น): กลับไปทางเลือก (3) OTP จาก D-18** เพราะ OTP ไม่มีลิงก์ให้ Safe Links prefetch เลย — คราวนี้ยอมตั้ง custom SMTP แล้ว (เดิม D-19 หลีกเลี่ยงไว้เพราะ "ไม่เน้นแฟนซี" แต่สุดท้ายต้องตั้งอยู่ดีเพราะโดนบล็อกด้วย rate limit 2 อีเมล/ชั่วโมงของ default mailer ระหว่างเทสสมัครรัว ๆ) ใช้ Gmail ส่วนตัว + App Password เป็น custom SMTP provider
+
+**สิ่งที่สร้างเสร็จแล้วฝั่ง FlutterFlow (2026-08-09, ยืนยันจาก generated code จริงแล้ว ไม่ใช่แค่ compile ผ่าน):**
+- custom action `VerifyOtp` — เรียก `auth.verifyOTP(type: OtpType.signup)` sync `AppStateNotifier` เองตาม PT-11
+- custom action `ResendSignupOtp` — เรียก `auth.resend(type: OtpType.signup)`
+- หน้าใหม่ `ConfirmEmail` (route `/confirm-email`) — ช่องกรอกรหัส 6 หลัก + ปุ่ม "ยืนยัน" + ปุ่ม "ส่งรหัสใหม่อีกครั้ง"
+- `SignUpButton` เปลี่ยนปลายทางจาก Navigate `Login` → Navigate `ConfirmEmail`
+- App State ใหม่ `otpCode`
+- แก้ email template "Confirm signup" ให้โชว์ `{{ .Token }}` เป็นตัวเลขข้อความล้วน (ไม่ใช่ลิงก์) — ระหว่างแก้เจอ syntax bug (`href={{ .Token }}"` ขาด quote เปิด) ทำให้ Supabase render template ไม่ผ่านเลยตอนสมัคร (`html/template: "\"" in unquoted attr`, error `unexpected_failure` ที่หน้าแอป) แก้แล้วโดยตัด `<a href>` ออกทั้งหมด เหลือแค่ตัวเลข OTP ในกรอบใหญ่ ๆ
+
+**บล็อกใหม่ที่เจอระหว่างทดสอบ — เป็นเรื่อง deliverability ของอีเมล ไม่ใช่บั๊กโค้ดของเรา:**
+สมัครสำเร็จ → auth log ยืนยัน `POST /signup` status 200 ไม่มี error → เช็ค Gmail โฟลเดอร์ "ส่งแล้ว" (Sent) เจอเมลจริงที่ส่งออกไปหา `mju6606105382@mju.ac.th` พร้อมรหัส OTP จริง (เช่น `80240827`) — **แต่อีเมลไม่เคยไปถึงกล่องผู้รับเลย**: ไม่อยู่ Inbox, ไม่อยู่ Junk, ไม่มี bounce-back กลับมาที่ Gmail (ต่างจากอีกบัญชีทดสอบ `mju6500000101@mju.ac.th` ที่ bounce ชัดเจนด้วย `550 5.4.1 Recipient address rejected: Access denied`), และไม่อยู่ใน Microsoft 365 Defender quarantine portal ด้วย
+
+**ข้อสรุปที่เป็นไปได้มากที่สุด:** พฤติกรรมนี้ตรงกับ **Zero-hour Auto Purge (ZAP)** ของ Microsoft Defender — เมลถูกตอบรับ (accept) ไว้ช่วงหนึ่ง แต่ถูกดึงกลับไปลบทีหลังแบบเงียบ ๆ ตาม threat-intelligence ที่ประเมินใหม่ได้ ไม่แจ้งทั้งผู้ส่งและผู้รับ พบได้บ่อยกับ**ผู้ส่งหน้าใหม่ที่ไม่มี sending reputation กับ tenant นั้นมาก่อน** ซึ่งตรงกับ custom SMTP ที่เพิ่งตั้ง (Gmail ส่วนตัว) ที่ไม่เคยส่งเข้า tenant นี้มาก่อนเลย
+
+**ยังไม่ได้ลอง (การทดลองถัดไปถ้ากลับมาทำต่อ):** ปิด custom SMTP ชั่วคราวแล้วทดสอบ 1 รอบด้วย mailer เริ่มต้นของ Supabase เอง เพื่อแยกว่าเป็นปัญหาที่ตัว Gmail relay เจาะจง หรือเป็นนโยบายที่ tenant บล็อกอีเมลลักษณะนี้ทั้งหมดไม่ว่าใครส่ง — Site URL/Redirect URL ไม่เกี่ยวแล้วเพราะ OTP ไม่มีลิงก์
+
+**ตัดสินใจ (pete, 2026-08-10): หยุดงาน L1 confirm-email ไว้ตรงนี้ ย้ายไปทำ layer อื่นก่อน** เหตุผล: ปัญหาที่เจอเป็นเรื่อง deliverability ฝั่ง Microsoft tenant ซึ่งอยู่นอกเหนือสิ่งที่แก้ได้จาก config ของ Supabase/FlutterFlow ล้วน ๆ — ทางแก้จริงน่าจะต้องใช้เวลาสร้าง sending reputation, ให้ทีม IT ของมหาลัยช่วย whitelist, หรือเปลี่ยนไปใช้ transactional email provider ที่มีชื่อเสียงกับ Microsoft อยู่แล้ว (เช่น SendGrid/Postmark/Resend) แทน Gmail ส่วนตัว — ไม่ใช่สิ่งที่ลองผิดลองถูกต่อในเซสชันนี้ได้อีก
+
+**ผลกระทบต่อ L1:** ฝั่ง FlutterFlow ของ Confirm Email flow **สร้างโค้ดเสร็จแล้วทั้งหมด** (หน้า `ConfirmEmail`, custom action `VerifyOtp`/`ResendSignupOtp`, ปุ่มต่าง ๆ ผูกถูกตามที่ตรวจจาก generated code จริง) **แต่ยังไม่เคยทดสอบ end-to-end สำเร็จแม้แต่ครั้งเดียว** เพราะไม่เคยมี OTP code ไปถึงผู้ทดสอบเลยสักครั้ง — L1 ฝั่ง FlutterFlow ยังคง 🟨 ค้างอยู่ที่ขั้นตอนนี้จนกว่าจะแก้ deliverability ได้
+
+**เก็บกวาดที่ทำไปพร้อมกัน:** ลบบัญชีทดสอบเก่า 4 บัญชีที่ค้างจากรอบทดสอบ D-19/D-20 (`mju6500000099@mju.ac.th`, `mju6500000101@mju.ac.th`, `mju6606105382@mju.ac.th`, `mju6606105383@mju.ac.th`) — ลบ `"Profile"` ก่อนแล้วค่อยลบ `auth.users` (ต้องเรียงลำดับนี้เสมอเพราะ `Profile_id_fkey` ไม่มี `ON DELETE CASCADE`) เหลือบัญชี admin (`mju6577778888@mju.ac.th`) และบัญชีทดสอบ RLS เดิม 4 บัญชีไว้ตามเดิม ไม่แตะ
+
+**คำแนะนำสำหรับ session ถัดไปที่ทำ layer อื่น:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` ถูก patch ด้วย SQL ไว้แล้วจาก D-17) ทดสอบ layer อื่นที่ต้อง login ได้ เพราะเป็นบัญชีเดียวตอนนี้ที่เข้า Home/HomeAdmin ได้จริงโดยไม่ติดปัญหา confirm-email — **ห้ามใช้บัญชีนี้เทสเรื่อง confirm-email เองอีก** (สภาพถูกลัดผ่านไปแล้ว ดู `STATUS.md` หนี้ทางเทคนิค)

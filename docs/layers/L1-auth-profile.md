@@ -53,16 +53,27 @@
    - ⚠️ เปลี่ยนรูปแล้ว**ไฟล์เก่าไม่ถูกลบ** — `avatar_url` เป็นแค่ text ไม่ผูกกับไฟล์จริง (หนี้ใน D-15)
 5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
 
-## 🔴 งานค้าง — Confirm Email (D-17) ต้องทำก่อนถึงจะปิด L1 ฝั่ง FlutterFlow ได้
+## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราว 2026-08-10 ต้องแก้ email deliverability ก่อนถึงจะปิด L1 ฝั่ง FlutterFlow ได้
 
-**สร้างแล้ว 2026-08-09 (ดู `DECISIONS.md` D-17/D-18/D-19, กับดัก build ดู `PATTERNS.md` PT-11) — ยังไม่ได้ทดสอบผ่านอุปกรณ์/Test Pilot จริง:**
+> 🟡 **สถานะ: หยุดงานนี้ไว้ตรงนี้ ย้ายไปทำ L2/L4 ก่อน** — ไม่ใช่ปิดเรื่องนี้ทิ้ง แค่ไม่ใช่คิวด่วนแล้วเพราะติดปัญหาที่แก้จาก Supabase/FlutterFlow config ไม่ได้ตรง ๆ อ่าน `../DECISIONS.md` **D-20** ให้ครบก่อนแตะเรื่องนี้ต่อ
 
-- [x] หน้า/ข้อความหลังสมัครสำเร็จบอกผู้ใช้ให้ไปกดยืนยันในอีเมลก่อน — เปลี่ยนข้อความ snackbar ปุ่ม `SignUpButton` เป็น "สมัครสำเร็จ! กรุณาตรวจสอบอีเมลเพื่อยืนยันตัวตนก่อนเข้าสู่ระบบ" (แสดง 6 วิ) ยืนยันจาก `generated_code/lib/pages/sign_up/sign_up_widget.dart` แล้ว
-- [x] ดักเคส login แล้วเจอ "email not confirmed" ที่ปุ่ม `Login` — สร้าง custom action `LoginWithEmailPassword` (0 arg ตาม PT-09) แทน built-in `LoginEmailPassword` เพราะตัวเดิมไม่มี output ให้เช็ค error และโชว์ raw message ของ Supabase เองผ่าน framework snackbar ที่แก้ไม่ได้ — ยืนยันข้อความจริงจาก Supabase ตรง ๆ ด้วย curl (`signInWithPassword` บนบัญชี unconfirmed คืน `{"error_code":"email_not_confirmed","msg":"Email not confirmed"}`) ตรงกับที่โค้ดเช็ค
-- [x] **แก้กับดัก PT-11:** custom action ตัวใหม่ sync `AppStateNotifier.instance.update(...)` เอง เพราะ auth stream ของแอปถูก debounce ไว้ (`supabase_user_provider.dart`) ไม่งั้น login สำเร็จแล้วโดนเด้งกลับ Login — ยืนยันจาก generated code ว่าโค้ดที่ push ตรงกับที่เขียนเป๊ะ
-- [ ] **ยังไม่ทดสอบ end-to-end ผ่านแอปจริง** (คลิกจริงบนอุปกรณ์/simulator หรือ Test Pilot) — ที่ทำไปคือ: compile ผ่าน + อ่าน generated Dart ยืนยันโค้ดถูก + ยืนยัน error message จริงจาก Supabase API ตรง ๆ (ไม่ใช่ผ่าน FlutterFlow UI) **ยังไม่เห็นว่า router/navigation จริงทำงานลื่นไหลไหมตอนคลิกบนแอป**
+**ลิงก์ (D-19) สร้างเสร็จแล้วแต่ใช้งานจริงไม่ได้** — Microsoft 365 Education Safe Links ของ tenant มหาลัยดึงลิงก์ยืนยันไปสแกน/ใช้ token ทิ้งอัตโนมัติก่อนผู้ใช้จะกด (ยืนยันด้วย WHOIS ของ IP ที่ยิง `/verify` เจอ `mnt-by: MICROSOFT-MAINT` + `/verify` คืน `400: Invalid email verification type` เร็ว ~17 วินาทีหลังสมัครทุกครั้ง) — ปัญหาเชิงโครงสร้าง ไม่ใช่ตั้งค่าผิด ดู `../DECISIONS.md` **D-19**/**D-20**
+
+**เปลี่ยนกลับเป็น OTP (D-20) — สร้างเสร็จแล้ว 2026-08-09 (ยืนยันจาก generated code จริง, กับดัก build ดู `PATTERNS.md` PT-11) แต่ทดสอบจริงแล้วติด email deliverability:**
+
+- [x] หน้า/ข้อความหลังสมัครสำเร็จบอกผู้ใช้ให้ไปกดยืนยันในอีเมลก่อน — snackbar ปุ่ม `SignUpButton` ยืนยันจาก `generated_code/lib/pages/sign_up/sign_up_widget.dart` แล้ว
+- [x] ดักเคส login แล้วเจอ "email not confirmed" ที่ปุ่ม `Login` — custom action `LoginWithEmailPassword` (0 arg ตาม PT-09) แทน built-in `LoginEmailPassword` — ยืนยันข้อความจริงจาก Supabase ตรง ๆ ด้วย curl
+- [x] **แก้กับดัก PT-11:** custom action sync `AppStateNotifier.instance.update(...)` เอง เพราะ auth stream ของแอปถูก debounce ไว้ — ยืนยันจาก generated code
+- [x] **สร้างหน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`** — ยืนยันจาก `generated_code/lib/confirm_email/confirm_email_widget.dart` ว่าตรงกับที่ตั้งใจเป๊ะ (ปุ่มยืนยันเรียก `verifyOtp()` แล้ว route ตาม `isCurrentUserAdmin`, ปุ่ม resend เรียก `resendSignupOtp()`)
+- [x] **แก้ email template "Confirm signup"** ให้โชว์ `{{ .Token }}` เป็นตัวเลขล้วน ไม่ใช่ลิงก์ — เจอ syntax bug ระหว่างแก้ (`href={{ .Token }}"` ขาด quote เปิด ทำให้ Supabase render template fail ตอนสมัครจริง, error `unexpected_failure`) แก้แล้วโดยตัด `<a href>` ออกทั้งหมด
+- [x] ยืนยันแล้วว่า Supabase **ส่งอีเมลออกจริง** — `POST /signup` status 200, เจอเมลจริงใน Gmail "ส่งแล้ว" (Sent) พร้อมรหัส OTP จริง (เช่น `80240827`)
+- [ ] 🔴 **บล็อกอยู่ตรงนี้: อีเมล OTP ไปไม่ถึงกล่องผู้รับ `@mju.ac.th` เลย** — เช็คครบ 4 จุดแล้วไม่เจอ: ไม่อยู่ Inbox, ไม่อยู่ Junk, ไม่มี bounce-back กลับ Gmail, ไม่อยู่ Microsoft 365 Defender quarantine — เข้าข่าย **Zero-hour Auto Purge (ZAP)** เพราะ custom SMTP (Gmail ส่วนตัว) ไม่มี sending reputation กับ tenant นี้มาก่อนเลย รายละเอียดเต็ม `../DECISIONS.md` **D-20**
+- [ ] **ยังไม่ได้ลอง:** ปิด custom SMTP ชั่วคราว กลับไปใช้ default mailer ของ Supabase เทส 1 รอบ เพื่อแยกว่าปัญหาอยู่ที่ Gmail relay เจาะจง หรือ tenant บล็อกอีเมลลักษณะนี้ทั้งหมด
+- [ ] **ยังไม่ทดสอบ end-to-end ผ่านแอปจริงเลยสักครั้ง** เพราะไม่เคยมี OTP ไปถึงผู้ทดสอบ — ต้องแก้ deliverability ก่อนถึงจะเทสต่อได้
 - [ ] **บัญชีทดสอบ `mju6577778888@mju.ac.th` ยังไม่ถูกล้าง** — ตาม D-17 ต้องล้างแล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น ก่อนปิด L1 ได้เต็มตัว
-- [x] มีบัญชีทดสอบสด (ไม่เคย patch SQL) พร้อมใช้แล้ว: `mju6500000099@mju.ac.th` / รหัสผ่าน `TestPT17verify!` — สมัครผ่าน REST API ตรง ๆ ยังไม่ยืนยันอีเมล เหมาะสำหรับเทส confirm flow ต่อ
+- [ ] 🔴 **ไม่มีบัญชีทดสอบสดพร้อมใช้แล้ว** — `mju6500000099@mju.ac.th` (บัญชีที่เคยเตรียมไว้เทส confirm flow) **ถูกลบไปแล้ว 2026-08-10** พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี (`mju6500000101`, `mju6606105382`, `mju6606105383`) เพื่อเคลียร์ข้อมูลค้างระหว่างเทส D-19/D-20 — ต้องสมัครใหม่เมื่อกลับมาทำต่อ
+
+**คำแนะนำระหว่างพัก:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL ไว้แล้ว เข้า Home/HomeAdmin ได้จริง) ทดสอบ layer อื่น — **ห้ามใช้บัญชีนี้เทส confirm-email เอง** สภาพถูกลัดผ่านไปแล้ว
 
 ## 🧪 Definition of Done
 
@@ -84,7 +95,7 @@
 - [x] `role = admin` → ไป `HomeAdmin`, `role = user` → ไป `Home` ถูกทุกครั้ง — ยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง 2 เส้นทาง 2026-08-09
 - [ ] กรอกช่องเบอร์เป็นช่องว่างล้วนแล้วสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` — ยังไม่ได้เทสเคสนี้ผ่านแอปจริง (trigger รองรับแล้วตาม D-14 แต่ path ผ่าน UI ยังไม่เทส)
 - [ ] อัปรูปโปรไฟล์เข้า `avatars` แล้วรูปโผล่จริงจาก public URL — Edit Profile ยังไม่ได้สร้าง
-- [x] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — สร้างแล้ว 2026-08-09 (ดูหัวข้อ "งานค้าง — Confirm Email" ด้านบน) แต่ยังไม่ผ่านการทดสอบคลิกจริงบนแอป — **บล็อกการปิด L1 อยู่จนกว่าจะเทสจริง**
+- [x] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — โค้ดสร้างเสร็จแล้ว (ดูหัวข้อ "งานค้าง — Confirm Email" ด้านบน) แต่ยังไม่ผ่านการทดสอบ end-to-end จริงสักครั้งเพราะติด email deliverability (D-20) — **บล็อกการปิด L1 อยู่ ถูกพักไว้ 2026-08-10 ไปทำ layer อื่นก่อน**
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 
 ## 🧪 บัญชีทดสอบที่มีอยู่ (อัปเดต 2026-08-09)
@@ -95,10 +106,11 @@
 | `mju6598765432@mju.ac.th` | `6598765432` | `user` | **user ธรรมดาที่ไม่ใช่เจ้าของ** — ใช้เป็น UID ใน `checks/_common.sql` [C8] · ใช้ยืนยัน user-path login → `Home` สำเร็จ 2026-08-09 |
 | `somchai.j@mju.ac.th` | `NULL` | `user` | เคสบุคลากร |
 | `mju6511112222@mju.ac.th` | `6511112222` | `user` | สำรอง |
-| `mju6577778888@mju.ac.th` | `6577778888` | **`admin`** | สร้างผ่านแอปจริง 2026-08-09 (`full_name`/`phone` มาจาก meta data จริง) ตั้งเป็น admin ตาม D-02 เพื่อเทส `HomeAdmin` · 🔴 **`email_confirmed_at` ถูก patch ด้วย SQL** — บัญชีนี้ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงเลย ยังไม่ได้ล้าง (ดู "งานค้าง — Confirm Email" ด้านบน) |
-| `mju6500000099@mju.ac.th` | `6500000099` | `user` | **สด ไม่เคย patch SQL เลย** — สมัครผ่าน REST API ตรง ๆ 2026-08-09 (รหัสผ่าน `TestPT17verify!`) ตั้งใจปล่อยไว้ **ไม่ยืนยันอีเมล** เพื่อเทส flow ยืนยัน (D-17/D-19) ต่อ — ยืนยันแล้วว่า login ตอนนี้คืน `email_not_confirmed` จริงจาก Supabase |
+| `mju6577778888@mju.ac.th` | `6577778888` | **`admin`** | สร้างผ่านแอปจริง 2026-08-09 (`full_name`/`phone` มาจาก meta data จริง) ตั้งเป็น admin ตาม D-02 เพื่อเทส `HomeAdmin` · 🔴 **`email_confirmed_at` ถูก patch ด้วย SQL** — บัญชีนี้ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงเลย ยังไม่ได้ล้าง (ดู "งานค้าง — Confirm Email" ด้านบน) · **ใช้บัญชีนี้เทส layer อื่นได้เลยระหว่างพักงาน L1** เพราะ login เข้า Home/HomeAdmin ได้จริง — ห้ามใช้เทส confirm-email เอง |
 
 `full_name` ของ 4 บัญชีแรกยังเป็นชื่อปลอมที่เติมด้วยมือ (มาจากรอบทดสอบผ่าน Dashboard เมื่อ 2026-08-07) — คนละเรื่องกับ `mju6577778888` ที่ชื่อมาจาก meta data จริง
+
+🔴 **บัญชีทดสอบสด 4 บัญชีที่ใช้เทส D-19/D-20 (`mju6500000099`, `mju6500000101`, `mju6606105382`, `mju6606105383` — ทุกตัว `@mju.ac.th`) ถูกลบทิ้งแล้ว 2026-08-10** เพื่อเคลียร์ข้อมูลค้าง (ลบ `"Profile"` ก่อนแล้วค่อยลบ `auth.users` เพราะ `Profile_id_fkey` ไม่มี `ON DELETE CASCADE`) — **ไม่มีบัญชีสดพร้อมใช้เทส confirm-email แล้ว ต้องสมัครใหม่เมื่อกลับมาทำ D-20 ต่อ** ดู `../DECISIONS.md` **D-20**
 
 ## ❓ ค้างอยู่
 
@@ -114,9 +126,9 @@
 
 | ที่ใช้ในเอกสาร | ประเภท | หมายเหตุ |
 |---|---|---|
-| `SignUp` · `Login` · `Home` · `HomeAdmin` | ชื่อหน้า | ทั้ง 4 หน้าเดียวที่มีอยู่ใน v2 ตอนนี้ |
-| `SignUpWithProfile` · `IsCurrentUserAdmin` · `LoginWithEmailPassword` | Custom Action | ทั้งหมดรับ 0 argument ตามเหตุผลใน PT-09 · `LoginWithEmailPassword` ใหม่ 2026-08-09 (D-17) แทนที่ built-in `LoginEmailPassword` — sync `AppStateNotifier` เอง ดู PT-11 |
-| `email` · `password` · `fullName` · `phone` · `loginEmail` · `loginPassword` | App State | 2 ตัวหลังใหม่ 2026-08-09 — ย้ายจาก Page State ของ `Login` มาเป็น App State เพราะ `LoginWithEmailPassword` (custom action 0 arg) อ่านได้แค่ App State ตาม PT-09 |
+| `SignUp` · `Login` · `Home` · `HomeAdmin` · `ConfirmEmail` | ชื่อหน้า | `ConfirmEmail` ใหม่ 2026-08-09 (D-20, route `/confirm-email`) — 5 หน้าที่มีอยู่ใน v2 ตอนนี้ |
+| `SignUpWithProfile` · `IsCurrentUserAdmin` · `LoginWithEmailPassword` · `VerifyOtp` · `ResendSignupOtp` | Custom Action | ทั้งหมดรับ 0 argument ตามเหตุผลใน PT-09 · `LoginWithEmailPassword` ใหม่ 2026-08-09 (D-17) แทนที่ built-in `LoginEmailPassword` — sync `AppStateNotifier` เอง ดู PT-11 · `VerifyOtp`/`ResendSignupOtp` ใหม่ 2026-08-09 (D-20) — `VerifyOtp` ก็ sync `AppStateNotifier` เองเหมือนกัน (PT-11 ใช้ซ้ำ) |
+| `email` · `password` · `fullName` · `phone` · `loginEmail` · `loginPassword` · `otpCode` | App State | `loginEmail`/`loginPassword` ใหม่ 2026-08-09 — ย้ายจาก Page State ของ `Login` มาเป็น App State เพราะ `LoginWithEmailPassword` (custom action 0 arg) อ่านได้แค่ App State ตาม PT-09 · `otpCode` ใหม่ 2026-08-09 (D-20) — อ่านโดย `VerifyOtp` |
 
 🔴 **Page State `loginEmail`/`loginPassword` เดิมของ `Login`** (คนละตัวกับ App State ชื่อเดียวกันด้านบน) **ยังคงมีอยู่ในโปรเจกต์แต่ไม่มีอะไรเขียนเข้าไปแล้ว** — เป็น dead state ค้างจากก่อนแก้ D-17 ยังไม่ได้ลบ (ความเสี่ยงต่ำ ไม่กระทบการทำงาน แค่รก)
 

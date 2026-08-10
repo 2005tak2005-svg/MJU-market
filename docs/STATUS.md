@@ -29,7 +29,7 @@
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin ทำงานจริง เหลือ Confirm Email flow (D-20) — หยุดไว้ชั่วคราว** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · Edit Profile ยังไม่สร้าง · OTP flow สร้างโค้ดเสร็จแต่ติด email deliverability (ดู D-20) |
-| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | 🟨 **`addproduct` — insert ทดสอบผ่านบนแอปจริงแล้ว 2026-08-10, เจอ+แก้บั๊กรูปพรีวิวขาวเปล่าแล้ว แต่ยังไม่ทดสอบซ้ำ** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเริ่ม |
+| 2 | Product Listings + Storage | 🟨 **อัปจริงผ่านแอปสำเร็จแล้ว 2026-08-10 (6 object จริงใน `storage.objects`) เหลือแค่เทส reject >5MB/ผิดชนิด** | 🟨 **`addproduct` — insert ทดสอบผ่านบนแอปจริงแล้ว 2026-08-10, เจอ+แก้บั๊กรูปพรีวิวขาวเปล่าแล้ว แต่ยังไม่ทดสอบซ้ำ** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
@@ -51,9 +51,9 @@
 view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
 → ปิด L4 ฝั่ง Supabase ได้ต่อเมื่อ **สร้างห้องแชท 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดา เห็น `member_names` ครบ ไม่มี NULL**
 
-**L2 — ทำไมยังไม่ใช่ ✅** — bucket + policy + CHECK ครบและทดสอบด้วย user ธรรมดาผ่านแล้ว (`VERIFICATION.md` V-08) แต่ `storage.objects` ยังมี **0 object**
-`file_size_limit` (5 MB) กับ `allowed_mime_types` บังคับที่ **Storage API ไม่ใช่ที่ Postgres** — INSERT เข้า `storage.objects` ตรง ๆ ข้ามด่านนี้ไปเลย จึงทดสอบจาก DB แทนไม่ได้
-→ ปิดได้ต่อเมื่อ **อัปไฟล์จริงผ่านแอป** แล้วเห็นว่าไฟล์เกิน 5 MB / ไฟล์ผิดชนิดถูกตีกลับ และรูปเปิดดูได้ผ่าน public URL
+**L2 — ทำไมยังไม่ใช่ ✅** — bucket + policy + CHECK ครบและทดสอบด้วย user ธรรมดาผ่านแล้ว (`VERIFICATION.md` V-08) · **2026-08-10 ยืนยันจาก DB ตรง ๆ ว่าอัปไฟล์จริงผ่านแอปสำเร็จแล้ว** — `storage.objects` มี **6 object** จริง (ไม่ใช่ 0 แถวเหมือนตอนตรวจครั้งก่อน) และแถวเดียวใน `products` (จากการทดสอบของ pete) อ้างถึง 3 ใน 6 นั้นครบผ่าน `image_urls` ตรงกับ path `<uid>/<ไฟล์>` ที่ตั้งใจไว้ (อีก 3 object เป็นไฟล์กำพร้าจากการทดสอบซ้ำ — เข้าเงื่อนไขหนี้ทางเทคนิคที่มีอยู่แล้วด้านล่าง ไม่ใช่เคสใหม่)
+`file_size_limit` (5 MB) กับ `allowed_mime_types` บังคับที่ **Storage API ไม่ใช่ที่ Postgres** — ยังไม่เคยลองอัปไฟล์เกิน 5 MB หรือไฟล์ผิดชนิดผ่านแอปจริงสักครั้ง (ทดสอบจาก DB แทนไม่ได้)
+→ ปิดได้ต่อเมื่อ **ลองอัปไฟล์เกิน 5 MB / ไฟล์ผิดชนิดผ่านแอปจริง** แล้วเห็นว่าถูกตีกลับ (ฝั่งอัปสำเร็จ + path ถูกต้องยืนยันแล้วจาก DB ตรง ๆ — เหลือแค่เปิด public URL จริงดูว่ารูปขึ้นไหม ยังไม่มีใครเปิดยืนยัน)
 
 ---
 

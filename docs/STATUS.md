@@ -7,11 +7,14 @@
 
 > 🔴 **บทเรียนของ 2026-08-09:** ระวังการ "เชื่อว่าปิดแล้ว" จากสิ่งที่ทดสอบผ่าน AI vision agent (Test Pilot) หรือ proto ที่ `inspect` เห็น — ทั้งคู่เคยดูเหมือนถูกทั้งที่โค้ด Dart จริงที่ generate ออกมาผิด (PT-09) ต้องเปิด `generated_code/` ดูโค้ดจริงเสมอก่อนเชื่อว่า action ทำงานถูก และ evidence ที่เชื่อถือได้ที่สุดคือ query ตรงจาก DB (เช่น `auth.users.last_sign_in_at`) ไม่ใช่รายงานจากคนอื่นหรือ AI agent
 
+> 🟡 **L2 — 2026-08-10 พบ doc drift:** หน้า `addproduct` **มีอยู่แล้วจริง** ใน v2 (`m-j-u-market-v2-0xhjhg`) ก่อน session นี้เริ่ม ทั้งที่ตารางด้านล่างเคยเขียนว่า "ยังไม่เริ่มใน v2" — UI สร้างไว้แล้ว (รูปวางแบบ 3 ช่อง, ฟอร์ม, ปุ่ม) แต่ **ปุ่ม "ลงขายสินค้า" ไม่มี action ผูกเลย, dropdown หมวดหมู่เป็นข้อมูลปลอมที่ไม่ตรงกับ `"CAT"` จริง, และรูปที่เลือกโชว์เป็นรูป picsum.photos สุ่มที่ทำให้ดูเหมือนมีรูปอยู่แล้วทั้งที่ยังไม่ได้อัป** — ไม่รู้ว่าใคร/session ไหนสร้างไว้ session นี้แก้ backend ทั้งหมดแล้ว (ดูรายละเอียด PT-12) **แต่ยังไม่เคยทดสอบบนแอปจริงสักครั้ง** — ก่อนเชื่อว่า L2 UI ปิดได้ ต้องคลิกทดสอบจริงตาม DoD ใน `layers/L2-listings.md` ก่อนเสมอ
+
 ---
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **เริ่ม L2 ใน v2** → AddProduct/MyPost/Inspect **ไม่มีอยู่ใน v2 เลย** (v1 archived ตาม D-16) ต้องสร้างใหม่ทั้งหมด — อ่าน `PATTERNS.md` PT-09/PT-10 **ก่อน** เขียน Action Flow เพราะจะเจอบั๊ก SDK ที่เจอตอน L1 ซ้ำแน่ (ดูคำเตือนใน `layers/L2-listings.md`) **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin, เข้า Home/HomeAdmin ได้จริงอยู่แล้ว — ดูหมายเหตุ D-20 ด้านล่าง)
+0. **ทดสอบ `addproduct` บนแอปจริง** → backend ผูกเสร็จแล้ว 2026-08-10 (insert เข้า `products` ครบทุกฟิลด์ + อัปรูปเข้า `product-images` + dropdown หมวดหมู่จริง 12 อัน) แต่ **ยังไม่เคยกดจริงบนแอปสักครั้ง** ต้องเทสตาม DoD ใน `layers/L2-listings.md` ให้ครบก่อนถือว่า L2 ฝั่ง FlutterFlow ปิด — จุดที่เสี่ยงพังที่สุด (เพราะพึ่งกลไกที่ไม่มีเอกสารทางการรองรับ ดู `PATTERNS.md` **PT-12**): (ก) 3 ปุ่มอัปโหลดรูป upload เข้า `product-images` จริงไหมและ path ขึ้นต้นด้วย uid, (ข) กดอัปแล้วเช็คถูกต้องเปลี่ยนเป็น badge, (ค) ตัวเลือกหมวดหมู่ที่เลือกตรงกับ `category_id` ที่บันทึกจริงไหม, (ง) `condition` บันทึกเป็น `new`/`used` ถูกต้องตามชิปที่เลือก
+   ต่อจากนั้นค่อยสร้าง `MyPost`/`Inspect` (ยังไม่มีอยู่ใน v2 เลย) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** **ก่อน** เขียน Action Flow ใหม่ (ดูคำเตือนใน `layers/L2-listings.md`) **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin, เข้า Home/HomeAdmin ได้จริงอยู่แล้ว — ดูหมายเหตุ D-20 ด้านล่าง)
 1. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
 2. **🟡 หยุดไว้ — L1 confirm-email (D-20)** ไม่ใช่คิวด่วน แต่ยังไม่ปิด — ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" และ `DECISIONS.md` **D-20** ก่อนแตะเรื่องนี้ต่อ
    **ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว:** (1) **แก้ปัญหา email deliverability ก่อน** — OTP ไปไม่ถึงกล่องผู้รับ `@mju.ac.th` เลย (ไม่ bounce ไม่ junk ไม่ quarantine เข้าข่าย Microsoft ZAP) ยังไม่ได้ลองปิด custom SMTP กลับไปใช้ default mailer เพื่อแยกว่าปัญหาอยู่ที่ Gmail relay หรือทั้ง tenant, (2) หลังแก้ deliverability แล้วค่อย **คลิกทดสอบจริงบนแอป** ทั้งเส้น (สมัคร → กรอก OTP → login → เข้า Home/HomeAdmin ไม่เด้งกลับ ระวัง PT-11), (3) ทดสอบเคส login ด้วยบัญชีที่ยังไม่ยืนยัน (ต้องสร้างบัญชีทดสอบใหม่ — บัญชีเดิม `mju6500000099@mju.ac.th` ถูกลบไปแล้ว 2026-08-10 พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี), (4) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น
@@ -23,7 +26,7 @@
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin ทำงานจริง เหลือ Confirm Email flow (D-20) — หยุดไว้ชั่วคราว** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · Edit Profile ยังไม่สร้าง · OTP flow สร้างโค้ดเสร็จแต่ติด email deliverability (ดู D-20) |
-| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | ⬜ **ยังไม่เริ่มใน v2** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม |
+| 2 | Product Listings + Storage | 🟨 **ครบแล้ว เหลือยืนยันการอัปจริง** | 🟨 **`addproduct` ผูก backend เสร็จแล้ว 2026-08-10 (ยังไม่เคยทดสอบบนแอปจริงสักครั้ง)** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |

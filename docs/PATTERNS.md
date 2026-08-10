@@ -195,7 +195,7 @@ if (response.user != null) {
 
 ---
 
-## PT-12 — 🔴 5 กับดักของ `flutterflow ai run` DSL ที่เจอตอนต่อ backend หน้า `addproduct` (พบ 2026-08-10 ทำ L2)
+## PT-12 — 🔴 9 กับดักของ `flutterflow ai run` DSL ที่เจอตอนต่อ backend หน้า `addproduct` (พบ 2026-08-10 ทำ L2)
 
 พบตอนเขียน `dsl/edit.dart` ใน `flutterflow-export/mju_market_v2/` เพื่อผูกหน้า `addproduct` เข้ากับตาราง `products` — ทุกข้อยืนยันจริงจากการอ่าน `generated_code/` หลัง push ไม่ใช่แค่ `flutterflow ai validate` ผ่าน (validate/run **ไม่ได้รัน Dart analyzer** กับ `generated_code/` เลย เพราะ `flutter` ไม่อยู่บน PATH ในเครื่องนี้ — เห็นจาก log `Skipped flutter pub get in generated_code/: flutter was not found on PATH` — ดังนั้น validate ผ่าน **ไม่ได้แปลว่า Dart compile ผ่าน** ต้องอ่านโค้ดจริงเสมอ)
 
@@ -214,6 +214,9 @@ if (response.user != null) {
 **7. parameter ของ custom function ที่ generate ออกมาเป็น nullable (`String?`) เสมอ** ไม่ว่าจะประกาศ type เป็นอะไรก็ตาม (`FFDataTypeV2(scalarType: FFBaseDataType.String)` ไม่ได้แปลว่า non-null) — เขียน body ที่เรียก `.trim()`/method อื่นบน parameter ตรง ๆ โดยไม่มี `?? ''` กันไว้ก่อน จะ**ไม่ compile** ภายใต้ Dart sound null safety (แต่ `flutterflow ai validate`/`run` ไม่จับ เพราะไม่ได้รัน Dart analyzer จริงในเครื่องนี้)
 
 **8. `EditWidgetPatch.visible(bool value)` (static/literal) เซ็ต proto flag ถูกต้อง แต่**ไม่ทำให้ widget หายไปจาก generated code** — ยืนยันจากการอ่าน `generated_code/` ตรง ๆ: `visible(false)` ทำให้ `inspect` เห็น `visibility.visibleValue.inputValue: false` แต่ widget ยัง render แบบ unconditional เหมือนเดิมทุกประการ (ต่างจาก `bindVisible(selector, expression)` ที่ compile เป็น `if (...)` ครอบ widget จริง ๆ) ถ้าต้องการซ่อนถาวรแบบไม่มีเงื่อนไข ให้ใช้ `page.ensureRemoved(selector)` แทน — แต่ระวัง: `ensureRemoved` ไม่ rerun-safe เอง ถ้า rerun script เดิมซ้ำหลัง widget หายไปแล้ว `byKey(...)` จะหา node ไม่เจอและ throw ต้องลบ/comment บรรทัดนั้นออกหลังรันสำเร็จครั้งแรก
+
+**9. 🔴 `if (rootAction.hasFollowUpAction()) continue;` (skip-if-already-set idempotency guard ใน `app.raw`) ทำให้ field ใหม่ที่เพิ่มเข้า follow-up chain ทีหลังไม่ถูกเขียนเลย ทั้งที่ `validate`/`run` ผ่านสนิท** — เจอจริงตอนเพิ่ม preview รูป (`image1Url`/`image2Url`/`image3Url`) เข้า follow-up action เดิม (ที่เดิมมีแค่ `addToList` + `set uploaded flag`) — script เพิ่ม `setFromVariable(previewField, ...)` เข้าไปถูกต้อง แต่เพราะรันครั้งที่ 2 ขึ้นไป `rootAction.hasFollowUpAction()` เป็น `true` อยู่แล้วจาก run ก่อนหน้า โค้ดส่วนสร้าง follow-up ใหม่เลย**ไม่ทำงานเลยทั้งบล็อก** ผลคือ `image1Url` ไม่เคยถูก set จริง (ค่ายังเป็น `''` ค่า default ตลอด) ทำให้รูปที่ preview ขึ้นเป็นค่าว่างเปล่า (ดูเหมือน "หน้าขาวบล็อก" ให้ผู้ใช้)
+🔴 **บทเรียน: `app.raw` ต้อง converge ไปที่ desired state ปัจจุบันของ script ทุกครั้งที่รัน ไม่ใช่ "ตั้งครั้งเดียวแล้วข้าม"** — ถ้าจะกัน error จากการรัน operation ที่ throw เมื่อมีอยู่แล้ว (เช่น `ensureRemoved`/`addCustomFunction`) ให้ guard เฉพาะจุดนั้นแยก ไม่ใช่ guard ทั้งบล็อกด้วยการเช็คว่า "เคยมีมาก่อนไหม" เพราะ script จะแก้ไข/เพิ่มอะไรเข้า block เดิมทีหลังไม่ได้อีกเลยตลอดไป ทางที่ปลอดภัยกว่าคือ**เขียน `rootAction.followUpAction = ...` ทับใหม่ทุกครั้งไปเลย** (ไม่มีอะไรเสียหายเพราะเป็นการ derive จาก state เดิมที่แน่นอนอยู่แล้ว)
 
 **ใช้แล้วที่:** L2 (`addproduct` — upload wiring, dropdown categories, ChoiceChips condition capture, custom function insert)
 

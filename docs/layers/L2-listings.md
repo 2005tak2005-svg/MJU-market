@@ -24,12 +24,13 @@
 
 ## 🎨 A. หน้า `addproduct` ⚠️ ชื่อจริงในโปรเจกต์ตัวเล็กล้วน ไม่ใช่ `AddProduct`
 
-> 🟡 **2026-08-10 อัปเดต:** หน้านี้**มีอยู่แล้วจริง** ใน v2 (สร้างไว้ก่อน session นี้ โดยไม่มีใครบันทึกไว้ในเอกสาร — ดู doc drift note ใน `STATUS.md`) session นี้ผูก backend ให้ครบแล้วผ่าน `flutterflow ai run` บน `flutterflow-export/mju_market_v2/dsl/edit.dart` **แต่ยังไม่เคยทดสอบบนแอปจริง** ห้ามข้าม DoD ด้านล่างไปเชื่อว่าใช้ได้แล้ว
+> 🟡 **2026-08-10 อัปเดต:** หน้านี้**มีอยู่แล้วจริง** ใน v2 (สร้างไว้ก่อน session นี้ โดยไม่มีใครบันทึกไว้ในเอกสาร — ดู doc drift note ใน `STATUS.md`) session นี้ผูก backend ให้ครบแล้วผ่าน `flutterflow ai run` บน `flutterflow-export/mju_market_v2/dsl/edit.dart`
 > รายละเอียด/กับดักของ SDK ที่เจอตอนเขียน DSL นี้ทั้งหมดอยู่ที่ `PATTERNS.md` **PT-12** — ต้องอ่านก่อนแก้ไขหน้านี้ต่อทุกครั้ง
+> ✅ **pete ทดสอบจริงแล้ว 2026-08-10: กด "ลงขายสินค้า" บันทึกเข้า `products` สำเร็จ** — เจอบั๊ก UI แยกต่างหาก (รูปพรีวิวหลังอัปขึ้นขาวเปล่า) แก้แล้วตาม PT-12 ข้อ 9 **แต่ยังไม่ได้ทดสอบซ้ำหลังแก้จุดนี้**
 
 | widget key จริง | ชนิด | → คอลัมน์ |
 |---|---|---|
-| `Stack_s1nq0r5h`/`Stack_vdp8xsqu`/`Stack_361f48qw` (3 ช่องรูป, tap เพื่ออัป) | UploadData → Supabase | `image_urls` (text[]) — สะสมใน page state `uploadedImageUrls` แล้วส่งเข้า insert |
+| `Stack_s1nq0r5h`/`Stack_vdp8xsqu`/`Stack_361f48qw` (3 ช่องรูป, tap เพื่ออัป) | UploadData → Supabase | `image_urls` (text[]) — สะสมใน page state `uploadedImageUrls` แล้วส่งเข้า insert; รูปที่เพิ่งอัปโชว์พรีวิวจริงผ่าน page state แยกต่อช่อง `image1Url`/`image2Url`/`image3Url` (ต้อง set แยกจาก `uploadedImageUrls` เพราะ Image widget ผูกได้แค่ URL เดียวต่อช่อง ไม่ใช่ทั้ง list) |
 | `TextField_rl5m9b8b` | ชื่อสินค้า | `title` |
 | `TextField_gxb0yu0f` | รายละเอียด | `description` |
 | `TextField_1egqbjvw` | ราคา | `price` (ผ่าน custom function `parseProductPrice`) |

@@ -6,6 +6,9 @@
 
 > 📌 **P-01 / P-02 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`handle_new_user()` + trigger `on_auth_user_created`) อ่านที่ `SCHEMA.md` แทน
 > เลข P-01/P-02 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · ประวัติเต็มอยู่ใน git และ `DECISIONS.md` D-11
+>
+> 📌 **P-07 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `notifications` + RLS + trigger `enforce_moderation_admin_only`) อ่านที่ `SCHEMA.md` แทน
+> เลข P-07 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-23**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
@@ -13,7 +16,6 @@
 | P-04 | `update_chat_last_message()` + trigger | L4 | รอ confirm |
 | P-05 | `search_products(...)` | L3 | รอทดสอบว่า FF filter พอไหม |
 | P-06 | ตาราง `transactions` | L5 | รอ confirm ค่า status |
-| P-07 | ตาราง `notifications` | L6 | ยังไม่เริ่ม |
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-10 | RLS policy ของ `reports` | L7 | 🔴 ตอนนี้ deny-all ใช้งานไม่ได้เลย |
@@ -95,24 +97,6 @@ CREATE TABLE public.transactions (
 ```
 
 *รอ confirm ว่าต้องการ status กี่แบบจริง ๆ และต้องเก็บประวัติแยกไหม หรือใช้แค่ `products.status` พอ*
-
-## P-07 — ตาราง `notifications` (L6)
-
-```sql
-CREATE TABLE public.notifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES public."Profile"(id),
-  type varchar,      -- 'new_message' / 'listing_approved' / 'listing_rejected' / ...
-  ref_id uuid,       -- ⚠️ ดูหมายเหตุด้านล่าง
-  is_read boolean DEFAULT false,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-> 🔴 **ปัญหาที่ต้องแก้ก่อน apply:** `ref_id uuid` ใช้อ้าง `chat_id` ไม่ได้ เพราะ `chat.id` เป็น **bigint** ส่วน `products.id` เป็น uuid
-> ทางเลือก: (ก) เปลี่ยน `ref_id` เป็น `text` แล้วเก็บเป็น string (ข) แยกเป็น 2 คอลัมน์ `ref_product_id uuid` / `ref_chat_id bigint` (ค) เปลี่ยน `chat.id` เป็น uuid ให้เหมือนตารางอื่น (กระทบ L4 ที่สร้างเสร็จแล้ว — ไม่แนะนำ)
-
-+ เปิด Realtime บนตารางนี้ + trigger สร้าง notification อัตโนมัติ (เช่น บน `chat_message` insert → แจ้งสมาชิกห้องคนอื่น)
 
 ## P-08 — ตาราง `reviews` (L7)
 

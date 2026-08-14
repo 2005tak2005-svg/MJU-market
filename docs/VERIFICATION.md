@@ -230,3 +230,32 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 
 > ⚠️ **ยังไม่ได้ทดสอบ:** `file_size_limit` / `allowed_mime_types` ของ `avatars` (บังคับที่ Storage API เหมือน `product-images` ดู V-08) และเส้นทางสมัครจริงผ่าน GoTrue ที่ส่ง meta data มาจาก FlutterFlow
 > 🔴 **ยังไม่รู้:** โปรเจกต์เปิด **Confirm email** ไว้หรือเปล่า — เป็น setting ของ GoTrue ตรวจจาก DB ไม่ได้ ต้องเปิด Dashboard ดู ถ้าเปิดอยู่จะกระทบ PT-07 (ไม่มี session ให้ query `role` ทันทีหลังสมัคร)
+
+---
+
+## 2026-08-14
+
+### V-11 · ทดสอบ `ProfileUser` + ผลข้างเคียงของการสลับ auth backend (D-21)
+
+**ทดสอบผ่านแอปจริงโดย pete** (ไม่ใช่แค่ inspect) — ทุกข้อผ่าน:
+- `ProfileUser` แสดง avatar/ชื่อ/อีเมลของ user ที่ล็อกอินถูกต้อง ไม่ crash (ก่อนหน้านี้ crash `Unexpected null value` ที่ `FutureBuilder`)
+- เปลี่ยนชื่อ · เปลี่ยนรูปโปรไฟล์ · Log Out ออกจากระบบจริง
+- `AllList` (Home) แตะแล้วเข้า `ProductDetails` พร้อมข้อมูลสินค้า
+- คำทักทายหน้า `Home` โชว์อีเมล — **รับได้ ไม่ใช่บั๊ก** (ดู D-21)
+
+**ยืนยันจาก DB ตรง ๆ หลังทดสอบ:**
+
+| ตรวจ | ผล |
+|---|---|
+| `"Profile"` ทั้งหมด | 5 แถว · `full_name`/`email` **ไม่ NULL สักแถว** (0) |
+| `"Profile".avatar_url` ที่ไม่ NULL | **1 แถว** → บันทึกรูปโปรไฟล์สำเร็จจริงครบเส้นทาง |
+| `storage.objects` bucket `avatars` | **3 object** · path เป็น `<uid>/<ไฟล์>` **ตรงกับ `"Profile".id` ทั้ง 3 ไฟล์** |
+
+🔴 **ข้อสรุปสำคัญ: path storage เป็น Supabase uid จริง = D-21 ทำงานถูกต้อง** — ยืนยันว่า `currentUserUid` ส่งค่าถูกไปถึง Storage แล้ว (ก่อน D-21 จะเป็น `''` ซึ่งผิด policy) **ปิดประเด็น upload path ในคิว regression ข้อ 0 ไปได้**
+
+**ผลของการตั้ง `maxResolution` 512×512 + `imageQuality` 80 (PT-14 ข้อ 3):**
+ไฟล์ก่อนแก้ **1470 KB** × 2 · ไฟล์หลังแก้ **42 KB** — เล็กลง ~35 เท่า (ก่อนแก้เจอ **413 Payload too large** เพราะ `avatars` จำกัด 2 MB)
+
+⚠️ **3 object แต่ `avatar_url` ชี้แค่ 1** → เหลือ **ไฟล์กำพร้า 2 ไฟล์** ตรงกับหนี้ที่รับไว้แล้วใน **D-15** (เปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ) ไม่ใช่เคสใหม่
+
+**ยังไม่ได้ทดสอบหลัง D-21:** สมัครใหม่ · OTP · role-routing (user→`Home` / admin→`HomeAdmin`) · อัปรูปใน `addproduct`

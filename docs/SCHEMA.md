@@ -31,6 +31,7 @@
 | 7 | `student_id` | varchar | nullable | – |
 | 8 | `phone` | varchar | nullable | – |
 | 9 | `bio` | text | nullable | – |
+| 10 | `is_banned` | boolean | **NOT NULL** | `false` |
 
 ```sql
 -- constraint ทั้งหมด (pg_get_constraintdef คำต่อคำ)
@@ -56,6 +57,8 @@ CHECK (((email IS NULL)
 > ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10**
 >
 > 🔴 `profile_email_domain` anchor ทั้งสองด้าน (`^[^@]+@...$`) **จงใจ** — ถ้าใช้แค่ `@mju\.ac\.th$` อีเมลอย่าง `hacker@evil.com@mju.ac.th` จะผ่าน `[^@]+` บังคับให้มี `@` ตัวเดียว ยืนยันด้วยการทดสอบจริง `VERIFICATION.md` **V-09**
+
+> 📌 `is_banned` (L8, เพิ่ม 2026-08-14) — คอลัมน์ boolean แยกจาก `role` โดยตั้งใจ ไม่ใช่ค่าใน `role` เพิ่มอีกตัว (`role` คุม **สิทธิ์** user/admin, `is_banned` คุม **การเข้าถึง** — คนละมิติกัน ผสมกันจะทำให้ CHECK/logic ของ `role` ซับซ้อนขึ้นโดยไม่จำเป็น) ยังไม่มี RLS/Action Flow ใดบังคับพฤติกรรมจากค่านี้จริง (เช่น กัน login/กันโพสต์) — ตอนนี้แค่ให้แอดมินเห็นจำนวนผ่าน `admin_dashboard_stats` เท่านั้น ยังเป็นแค่ตัวนับ ไม่ใช่ enforcement
 
 ### `public.products`
 
@@ -189,7 +192,7 @@ FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON UPDATE CASCADE ON 
 
 ## Views
 
-4 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+6 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
@@ -247,12 +250,49 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id;
+
+-- reloptions: security_invoker=true
+CREATE VIEW public.admin_dashboard_stats WITH (security_invoker = true) AS
+ SELECT id,
+    full_name,
+    email,
+    ( SELECT count(*) AS count
+           FROM "Profile") AS total_users,
+    ( SELECT count(*) AS count
+           FROM "Profile"
+          WHERE "Profile".is_banned = true) AS banned_users,
+    ( SELECT count(*) AS count
+           FROM products
+          WHERE products.moderation_status::text = 'pending'::text) AS pending_products,
+    ( SELECT count(*) AS count
+           FROM products
+          WHERE products.moderation_status::text = 'approved'::text) AS approved_products,
+    ( SELECT count(*) AS count
+           FROM reports) AS total_reports
+   FROM "Profile" p
+  WHERE id = auth.uid();
+
+-- reloptions: security_invoker=true
+CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
+ SELECT p.seller_id,
+    pr.full_name AS seller_name,
+    count(*) AS items_sold,
+    sum(p.price) AS total_sales
+   FROM products p
+     LEFT JOIN public_profiles pr ON pr.id = p.seller_id
+  WHERE p.status::text = 'sold'::text
+  GROUP BY p.seller_id, pr.full_name
+  ORDER BY (sum(p.price)) DESC;
 ```
+
+> 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" จาก `products.status = 'sold'` — **ไม่มีตาราง `transactions`/`orders` จริง** (L5 ยังไม่เริ่ม) นี่คือ view ชั่วคราวที่ใช้คอลัมน์ที่มีอยู่แล้ว (`products.status`/`price`/`seller_id`) แทน · `status` **ไม่มี CHECK** (ดูหัวข้อ `products` ด้านบน) ตอนนี้ทุกแถวเป็น `NULL` จริง (ยังไม่มีใครขายของสำเร็จ) → view นี้คืน **0 แถว** ในสภาพปัจจุบัน ซึ่งเป็นค่าจริงของระบบ ไม่ใช่บั๊ก ถ้า L5 เปลี่ยนไปใช้ตาราง `transactions` แยกในอนาคต ต้องพิจารณาว่า view นี้ยังจำเป็นไหมหรือย้ายไปอ้างอิง `transactions` แทน
 
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**
 > เหตุผลเต็มอยู่ `DECISIONS.md` D-01 — ละเมิดแล้วชื่อจะเป็น NULL เฉพาะตอน user ธรรมดาเปิดดู (admin เห็นปกติ จึงตรวจไม่เจอถ้าเทสด้วย admin อย่างเดียว)
+
+> 📌 `admin_dashboard_stats` (L8, เพิ่ม 2026-08-14) join `"Profile"` ตรง ๆ แทน `public_profiles` **โดยตั้งใจ** — ต่างจากกฎด้านบน เพราะ view นี้ถูก `WHERE p.id = auth.uid()` กรองเหลือแค่แถวของตัวเองเสมอ (ไม่ใช่ list ของคนอื่น) จึงไม่เจอบั๊ก NULL แบบ D-01 · การนับ 5 ค่า (`total_users`/`banned_users`/`pending_products`/`approved_products`/`total_reports`) เป็น scalar subquery ธรรมดา **ไม่มี filter** จึงคืนแถวเดียวเสมอไม่มีทางว่าง (ต่างจาก query กรอง `id = auth.uid()` ที่ว่างได้ช่วงเฟรมแรกก่อน auth resolve — ดู PT-14) แต่ตัวนับยังนับจาก **มุมมองของ role ที่ query อยู่** ผ่าน `security_invoker` — user ทั่วไปที่ query ตรงจะได้ตัวเลขที่ถูก RLS ของตารางข้างในกรองแล้ว (เช่น `total_users` เหลือ 1 เพราะ `"Profile"` ให้เห็นแค่แถวตัวเอง) ไม่ใช่ตัวเลขจริงของทั้งระบบ — **ไม่ใช่ช่องโหว่ใหม่** แต่ก็ไม่ได้ปิดกั้นการยิง query ตรงแบบเข้มงวดตามที่ L8 DoD ต้องการเช่นกัน (`products`/`reports` policy ที่ตารางข้างในยังกว้างกว่าที่ควรอยู่แล้ว — ดู TODO ก่อน production ด้านล่าง)
 
 ---
 
@@ -268,7 +308,7 @@ RLS `ENABLE` ครบทั้ง 7 ตาราง จำนวน policy ต�
 | `chat_user` | 1 | allow-all |
 | `chat_message` | 1 | allow-all |
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
-| `reports` | **0** | 🔴 RLS เปิด ไม่มี policy = **deny-all** |
+| `reports` | **1** | admin-read เท่านั้น (SELECT) — insert ยังไม่มี policy = insert ยังทำไม่ได้ (L7 P-10 ยังไม่ apply ครึ่งนั้น) |
 
 **ค่าจริงจาก `pg_policies` — ทุก policy เป็น `PERMISSIVE` ไม่มี `RESTRICTIVE` สักตัว**
 
@@ -283,6 +323,7 @@ RLS `ENABLE` ครบทั้ง 7 ตาราง จำนวน policy ต�
 | `"Profile"` | Admins can view all profiles | SELECT | `{public}` | `private.is_admin()` | – |
 | `"Profile"` | Admins can update all profiles | UPDATE | `{public}` | `private.is_admin()` | – |
 | `"Profile"` | Users can update own profile | UPDATE | `{authenticated}` | `(auth.uid() = id)` | ↓ |
+| `reports` | admin can read reports | SELECT | `{authenticated}` | `private.is_admin()` | – |
 
 ```sql
 -- with_check ของ "Users can update own profile" (ค่าจริง คำต่อคำ)

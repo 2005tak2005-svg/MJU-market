@@ -217,3 +217,30 @@ if (response.user != null) {
 > ผลข้างเคียงที่ยังค้าง: คำทักทายหน้า Home ตอนนี้โชว์ **อีเมล** แทนชื่อ — ถ้าอยากได้ `full_name` ต้องผูก page-level query บน Home แบบเดียวกับ `ProfileUser`
 
 📌 `configureSupabaseAuth()` อยู่ใน `auth_helpers.dart` ซึ่ง **ไม่ได้ export ออกมาที่ barrel สาธารณะ** — ต้องเขียน proto เองใน `app.raw` (เซ็ต `active`, `ensureSupabase().providers`, `ensureAuthPageInfo().homePageNodeKeyRef`/`signInPageNodeKeyRef`)
+
+---
+
+## PT-14 — 🔴 ผูกข้อมูล "user ที่ล็อกอิน" เข้าหน้าจอ (พบทำ `ProfileUser` 2026-08-14)
+
+**ท่ามาตรฐาน:** page-level Backend Query บน Scaffold + bind widget ตรง ๆ — **ไม่ต้องใช้ ListView/page state**
+```
+node.databaseRequest = FFDatabaseRequest(
+  returnParameter: FFParameter(dataType: FFDataTypeV2(
+    scalarType: PostgresRow, subType: FFSubType(tableIdentifier: FFIdentifier(name: 'Profile')))),
+  postgres: FFPostgresQuery(filters: [id EQUAL_TO SUPABASE_AUTH_USER.USER_ID],
+                            isSingleRow: true, hideOnEmpty: true),
+)
+```
+bind: `FFVariable(source: POSTGRES_QUERY, baseVariable: postgresQuery, operations:[accessPostgresRowField(<col>)], nodeKeyRef: <Scaffold key>)`
+
+1. 🔴 **`hideOnEmpty: true` บังคับใส่** — query คืน **list**; ว่างเมื่อไหร่ codegen ได้ row เป็น `null` แล้ว force-unwrap (`row!.field!`) → crash `Unexpected null value` ที่ `FutureBuilder`
+   ใส่แล้ว codegen เพิ่ม `if (snapshot.data!.isEmpty) return Container();` ก่อนแตะ row
+   ⚠️ **เฟรมแรก row ว่างเป็นเรื่องปกติ** — auth stream ยิง user = null ก่อน restore session → `currentUserUid` เป็น `''` ชั่วขณะ
+2. 🔴 **เช็ค null ของ field ต้องใช้ `EXISTS_AND_NON_EMPTY` / `DOES_NOT_EXIST_OR_IS_EMPTY`** (`FFCondition_Relation`)
+   **ห้ามใช้ `EQUAL_TO ''`** — คอลัมน์ที่เป็น NULL ไม่เท่ากับ `''` → guard แบบ negate ยังหลุดเข้าไปเจอ `row!.field!` อยู่ดี
+   (relation ที่ถูกต้อง generate เป็น `if (row?.f != null && row?.f != '')`)
+3. **upload รูปต้องตั้ง `settings.maxResolution` + `settings.imageQuality`** ไม่งั้นส่งไฟล์ต้นฉบับ → **413 Payload too large** (`avatars` = 2 MB, `product-images` = 5 MB) · avatar ใช้ 512×512 / quality 80
+4. 🔴 **selector ต้องเป็น key เสมอ ห้าม positional path** — `ensureRemoved`/`ensureInserted*` ใน block เดียวกันทำ index เลื่อน แล้ว `byPath('...children[5]')` ไปโดน widget อื่น
+   **เคยเกิดจริง:** toggle "Edit Profile" ไปแปะทับปุ่ม Log Out → Log Out เสียแอ็กชัน sign-out ไปเงียบ ๆ กลายเป็นเปิดช่องเปลี่ยนชื่อแทน
+
+**ใช้แล้วที่:** L1 (`ProfileUser`) · **ใช้ซ้ำได้ทุกหน้าที่แสดงข้อมูลของ user ปัจจุบัน** (Edit Profile, MyPost, ฯลฯ)

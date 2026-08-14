@@ -420,5 +420,5 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ผลที่ตามมา:**
 - โปรเจกต์ Firebase ที่ต่อไว้ก่อนหน้า (เพื่อปิด error "Firebase config files not uploaded") **ไม่จำเป็นอีกแล้ว** — เป็นการแก้ที่ปลายเหตุ
 - reference ของ user ปัจจุบัน**ทั้งโปรเจกต์**ต้อง rewrite `FIREBASE_AUTH_USER` → `SUPABASE_AUTH_USER` พร้อมกันใน push เดียว ไม่งั้น validate ไม่ผ่าน (วิธี + กับดัก: `PATTERNS.md` **PT-13**)
-- 🔴 **`DISPLAY_NAME`/`PHOTO_URL` ไม่มีใน Supabase auth** → คำทักทายหน้า `Home` ถูก remap เป็น **อีเมล** ถ้าจะเอา `full_name` ต้องผูก page-level query แบบ **PT-14**
+- **`DISPLAY_NAME`/`PHOTO_URL` ไม่มีใน Supabase auth** → คำทักทายหน้า `Home` ถูก remap เป็น **อีเมล** — ✅ **pete ทดสอบแล้วรับได้ ถือเป็นพฤติกรรมที่ตั้งใจ ไม่ใช่งานค้าง** (ถ้าวันหลังอยากได้ `full_name` ผูก page-level query แบบ **PT-14**)
 - ⚠️ **ยัง regression test ไม่ครบ** — ทดสอบจริงแค่ `ProfileUser` ส่วนสมัคร/OTP/role-routing/upload ยังไม่ได้ไล่ (อยู่ในคิว `STATUS.md` ข้อ 0)

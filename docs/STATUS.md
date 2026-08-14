@@ -19,7 +19,7 @@
 
 0. **🔴 regression test ทั้งเส้นหลังสลับ auth backend (D-21)** — สมัคร/login/OTP/role-routing (user→`Home`, admin→`HomeAdmin`) + อัปรูปใน `addproduct` ยังลง path `<uid>/` ถูกไหม
    เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน ยังทดสอบจริงแค่ `ProfileUser`
-   ⚠️ คำทักทายหน้า `Home` ตอนนี้โชว์ **อีเมล** แทนชื่อ (Supabase auth ไม่มี `DISPLAY_NAME`) — ถ้าจะเอา `full_name` ต้องผูก page-level query แบบ PT-14
+   ✅ คำทักทายหน้า `Home` โชว์ **อีเมล** แทนชื่อ — **pete ทดสอบแล้วรับได้ ไม่ต้องแก้** (Supabase auth ไม่มี `DISPLAY_NAME`) ถ้าวันหลังอยากได้ `full_name` ค่อยผูก page-level query แบบ PT-14
 1. สร้าง `MyPost`/`Inspect` (ยังไม่มีใน v2) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12**/**PT-14** ก่อนเขียน Action Flow **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin)
 2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
 3. **🟡 หยุดไว้ — L1 confirm-email (D-20)** ไม่ใช่คิวด่วน แต่ยังไม่ปิด — ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" และ `DECISIONS.md` **D-20** ก่อนแตะเรื่องนี้ต่อ

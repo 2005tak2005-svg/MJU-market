@@ -449,21 +449,18 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 ---
 
-## D-23 — `HomeAdmin` approve/reject จริง + สร้าง `notifications` table (แก้บล็อกเดิมของ P-07) + คุ้มกัน moderation field ด้วย trigger (2026-08-14)
+## D-23 — `HomeAdmin` approve/reject จริง + `notifications` table (แก้บล็อก P-07) + trigger คุ้มกัน moderation field (2026-08-14)
 
-**บริบท:** ต่อจาก D-22 — `HomeAdmin` มีคิวสินค้ารอตรวจแล้วแต่กดแถวได้แค่ Navigate ไปดูรายละเอียด ไม่มีทางอนุมัติ/ปฏิเสธจริง pete ขอให้ต่อ flow นี้ให้ครบ ภายใน `Scaffold_sllg2xzc` เดิม พร้อมระบุชัดว่าให้ใช้ built-in action/query binding ของ FlutterFlow เป็นหลัก ใช้ custom code เฉพาะตอนจำเป็นจริง ๆ
+**ตัดสินใจ:**
+- `notifications.ref_product_id uuid` (nullable) แทน `ref_id` กลาง — แก้บล็อกเดิมของ P-07 ที่ผูก `chat.id` (bigint) ไม่ได้ เผื่อ `ref_chat_id bigint` เพิ่มทีหลัง
+- แจ้งเตือนเป็น **in-app list** เท่านั้น (ตาราง + หน้า `Notifications` + bell icon) ไม่ต่อ push จริง (FCM) — pete เลือก, สอดคล้องกับย้ายออกจาก Firebase (D-21)
+- คุ้มกัน `products.moderation_status`/`rejection_reason` ด้วย **trigger** ไม่ใช่ policy — permissive policy ใหม่ไม่มีผลเพราะ OR กับ allow-all เดิม, `WITH CHECK` เทียบ OLD/NEW ไม่ได้ ยืนยันด้วย impersonation test จริงว่า non-admin โดนบล็อก
+- Approve ไม่ส่ง notification (reject เท่านั้น) — ตรงสเปคที่ขอ
 
-**1. แก้บล็อกของ P-07 (`notifications.ref_id`):** ร่างเดิมใช้คอลัมน์กลาง `ref_id uuid` ผูกได้ทั้ง `products.id` (uuid) และ `chat.id` (bigint) ไม่ได้ในตัวเดียว — **ตัดสินใจแยกเป็นคอลัมน์เฉพาะชนิด** (`ref_product_id uuid`, nullable, ไม่ได้สร้าง `ref_chat_id` ตอนนี้เพราะยังไม่มีแจ้งเตือนแชทที่ต้องใช้) แทนตัวเลือกอื่นที่พิจารณาไว้ (เก็บเป็น `text` ทั่วไป / เปลี่ยน `chat.id` เป็น uuid ทั้งตาราง — ตัวหลังกระทบ L4 ที่สร้างเสร็จแล้ว ไม่เลือก) `ref_product_id` ปล่อย nullable โดยตั้งใจเพื่อให้เพิ่ม `ref_chat_id bigint` ทีหลังได้แบบ `ALTER TABLE ADD COLUMN` เฉย ๆ ไม่ต้อง migrate ของเดิม
+**ตัดออกจากสโคปนี้:** unread badge, realtime บน `notifications`, notification จากแชท (P-04)
 
-**2. ระดับการแจ้งเตือน — pete เลือก "in-app notification list" ไม่ใช่แค่เขียนแถวเปล่า ๆ หรือพึ่ง `MyPost` แสดง `rejection_reason` ตรง ๆ:** สร้างตาราง `notifications` จริง + หน้า `Notifications` (list, mark-read on tap) + bell icon บน `Home` — ยังไม่ใช่ push notification จริง (ไม่ต่อ FCM — เหตุผลเสริม: โปรเจกต์เพิ่งย้ายออกจาก Firebase dependency ใน D-21 การเพิ่ม FCM ตอนนี้จะขัดกับทิศทางนั้น) seller ต้องเปิดแอปเข้าหน้านี้เองถึงจะเห็น ตรงกับสโคป "system flow พอสำหรับตอนนี้"
+**กับดัก SDK ที่เจอ:** ดู `PATTERNS.md` PT-17
 
-**3. คุ้มกัน `products.moderation_status`/`rejection_reason` ด้วย trigger ไม่ใช่ `CREATE POLICY`:** `products` มี policy เดียวคือ allow-all (`FOR ALL USING (true) WITH CHECK (true)`) — เพิ่ม policy ใหม่ที่เข้มกว่าไม่มีผลเพราะ permissive policies OR กันเอง และ `WITH CHECK` เห็นแค่แถวใหม่ เทียบกับค่าเดิมไม่ได้ จึงต้องใช้ `BEFORE UPDATE ... FOR EACH ROW WHEN (...)` trigger แทน — `WHEN` เทียบ `OLD`/`NEW` ก่อนเรียกฟังก์ชันเลย ทำให้ seller แก้ title/price/images ปกติไม่โดน trigger นี้แตะ ต่างจากการเช็คเงื่อนไขเดียวกันไว้ข้างในฟังก์ชัน (ยังต้องเรียกฟังก์ชันทุกครั้งอยู่ดี) — **ยืนยันด้วย impersonation test จริง** (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) ทั้งก่อนและหลัง push ว่า non-admin โดนบล็อกจริง ไม่ใช่แค่เชื่อว่า trigger มีอยู่
-
-**ขอบเขตที่ตั้งใจไม่ทำรอบนี้ (ไม่ใช่ของลืม):**
-- Approve ไม่ส่ง notification (reject เท่านั้น) — เพราะ approve แค่เปลี่ยนสถานะให้สินค้าขึ้น `Home` ก็พอแล้วตามที่ pete ขอตรง ๆ ("reject it and notify the seller") เพิ่มทีหลังได้ง่าย (insert shape เดียวกัน เปลี่ยน `type`)
-- ไม่มี unread badge บนกระดิ่ง, ไม่เปิด Realtime บน `notifications` — ต้นทุนเพิ่มไม่คุ้มกับสโคป "system flow พอสำหรับตอนนี้"
-- แตะแค่คอลัมน์ moderation 2 ตัวของ `products` — คอลัมน์อื่นและตาราง `chat`/`chat_user`/`chat_message` ยังเป็น allow-all เหมือนเดิมทั้งหมด (หนี้เดิม D-03 ยังไม่ปิด ปิดแค่มุมเดียวที่เกี่ยวกับ flow นี้)
-
-**กับดัก SDK ที่เจอระหว่างทำ (บันทึกละเอียดใน `PATTERNS.md`):** compiler compile `app.component`/`app.ensurePage` **ก่อน** `app.rawMutations` เสมอ ไม่ว่าจะเขียนก่อนหลังในสคริปต์ — ทำให้ตารางที่เพิ่ง register ผ่าน `postgres_helpers.addTable` ใน push เดียวกันยังใช้ไม่ได้ทันที ต้องแยก push เป็น 2 รอบ · เจอ orphaned node สะสมจาก `ensureReplaced` ที่ยิงซ้ำหลายรอบ (PT-16) ต้องเขียน utility กวาดทิ้งแบบ generic ผ่าน protobuf reflection แล้วสร้างใหม่ทั้ง itemBuilder ให้ชัวร์
+**ผล:** L6 ⬜→🟨 · L8 ปิดช่องโหว่ "approve/reject ยังไม่ wire" จาก D-22 · RLS admin-only ยังเหลือ (ปิดแค่ 2 คอลัมน์)
 
 **ผลที่ตามมา:** L6 ขยับจาก ⬜ เป็น 🟨 ทั้งสองฝั่ง (ไม่ใช่ ✅ — ยังไม่ทดสอบผ่านแอปจริง, ยังไม่มี push จริง) · L8 ปิดช่องโหว่ "approve/reject บนคิวสินค้ารอตรวจยังไม่ได้ wire" จาก D-22 แล้ว แต่ RLS admin-only แบบเต็มยังเป็นของค้างเหมือนเดิม (ตอนนี้ปิดแค่ 2 คอลัมน์ ไม่ใช่ทั้งตาราง)

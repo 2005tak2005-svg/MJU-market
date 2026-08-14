@@ -206,9 +206,9 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
                                    'listing_rejected'::character varying])::text[])))
 ```
 
-- `ref_product_id` **จงใจปล่อย nullable** (ไม่มี `NOT NULL`) เพื่อเผื่อคอลัมน์ `ref_chat_id bigint` ในอนาคตสำหรับแจ้งเตือนแชท (P-07 เดิมติดปัญหานี้เพราะ `chat.id` เป็น bigint ผูกกับ uuid เดียวไม่ได้ — แก้ด้วยการแยกคอลัมน์ ไม่ใช้ `ref_id` กลาง ดู `DECISIONS.md` **D-23**)
-- `type` CHECK ครอบคลุมแค่ที่ใช้จริงตอนนี้ — ตอนนี้มีแค่ path เขียน `listing_rejected` (จาก `RejectProductSheet`) ส่วน `listing_approved` เผื่อไว้ยังไม่มี path เขียนจริง (approve ไม่ส่ง notification ในรอบนี้ ดู D-23)
-- ไม่เปิด Realtime บนตารางนี้ (ยังไม่ทำ live badge)
+- `ref_product_id` nullable โดยตั้งใจ — เผื่อ `ref_chat_id bigint` เพิ่มทีหลัง (แก้บล็อกเดิมของ P-07 ดู D-23)
+- `type` CHECK: มี path เขียนจริงแค่ `listing_rejected` (จาก `RejectProductSheet`) — `listing_approved` เผื่อไว้ ยังไม่มี path เขียน
+- ไม่เปิด Realtime
 
 ### ตารางที่ยังไม่มี
 
@@ -329,7 +329,7 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | ตาราง | policy | สรุป |
 |---|---|---|
 | `"Profile"` | 4 | ดูตารางค่าจริงด้านล่าง |
-| `products` | 1 | allow-all (+ trigger แยกกัน moderation_status/rejection_reason ดูหัวข้อ Function/Trigger) |
+| `products` | 1 | allow-all (+ trigger กัน moderation_status/rejection_reason — ดู Function/Trigger) |
 | `chat` | 1 | allow-all |
 | `chat_user` | 1 | allow-all |
 | `chat_message` | 1 | allow-all |
@@ -505,10 +505,10 @@ CREATE TRIGGER enforce_moderation_admin_only
   EXECUTE FUNCTION private.enforce_moderation_admin_only();   -- tgenabled = 'O' (เปิดอยู่)
 ```
 
-- **ไม่ใช่ `SECURITY DEFINER`** — เรียกใช้ `private.is_admin()` เฉย ๆ (ตัวนั้นเป็น `SECURITY DEFINER` อยู่แล้ว) ไม่ต้อง bypass อะไรเพิ่ม, RLS ของ `products` (allow-all) อนุญาต UPDATE อยู่แล้ว trigger นี้แค่เพิ่มเหตุผลให้ปฏิเสธ
-- **`WHEN` clause กรองก่อนเรียกฟังก์ชัน** — Postgres เทียบ `OLD`/`NEW` ก่อน ถ้า `moderation_status`/`rejection_reason` ไม่เปลี่ยนเลย ฟังก์ชันจะไม่ถูกเรียกเลย ไม่ใช่แค่ no-op ข้างใน — แก้ title/price/images ของ seller ปกติไม่โดน trigger นี้แตะเลย
-- **เหตุผลที่ใช้ trigger ไม่ใช่ `CREATE POLICY`:** policy แบบ permissive OR กันเองกับ policy allow-all เดิมของ `products` เสมอ (เพิ่ม policy เข้มกว่าไม่มีผล) และ `WITH CHECK` เห็นแค่แถวใหม่ เทียบ OLD/NEW ไม่ได้ — ต้องใช้ trigger เท่านั้น ยืนยันจริงด้วย impersonation test (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) ทั้งก่อนและหลัง push ดู `DECISIONS.md` **D-23**
-- คุ้มกันเฉพาะ 2 คอลัมน์นี้เท่านั้น — คอลัมน์อื่นของ `products` ยังอยู่ใต้ policy allow-all เดิม (D-03 ยังไม่ปิด)
+- ไม่ใช่ `SECURITY DEFINER` — เรียก `private.is_admin()` (ตัวนั้น definer อยู่แล้ว) ไม่ต้อง bypass เพิ่ม
+- `WHEN` เทียบ OLD/NEW ก่อนเรียกฟังก์ชัน — แก้ title/price/images ปกติไม่โดน trigger นี้
+- ใช้ trigger ไม่ใช่ policy เพราะ permissive policy OR กับ allow-all เดิมของ `products` เสมอ (ไม่มีผล) และ `WITH CHECK` เทียบ OLD/NEW ไม่ได้ — ยืนยันด้วย impersonation test จริง (ดู D-23)
+- คุ้มกันแค่ 2 คอลัมน์นี้ — คอลัมน์อื่นยังอยู่ใต้ allow-all เดิม (D-03)
 
 ---
 

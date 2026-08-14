@@ -14,7 +14,7 @@
 
 ## ตาราง
 
-7 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
+8 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
 
 ### `auth.users` (Supabase Auth built-in — ห้ามแก้ตรง ๆ)
 
@@ -184,9 +184,35 @@ FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON UPDATE CASCADE ON 
 - `status` **ไม่มี CHECK** — ค่าที่ใช้ได้ (`open`/`resolved`/…) ยังไม่บังคับ รอทำพร้อม P-10
 - 🔴 RLS เปิดอยู่ **แต่ 0 policy = deny-all** — ต้องเพิ่มก่อนใช้จริง (Layer 7, ดู P-10)
 
+### `public.notifications` (L6, เพิ่ม 2026-08-14)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| 2 | `user_id` | uuid | **NOT NULL** | – |
+| 3 | `type` | varchar | **NOT NULL** | – |
+| 4 | `ref_product_id` | uuid | nullable | – |
+| 5 | `title` | text | **NOT NULL** | – |
+| 6 | `body` | text | nullable | – |
+| 7 | `is_read` | boolean | **NOT NULL** | `false` |
+| 8 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (id)
+FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
+FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
+
+CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
+                                   'listing_rejected'::character varying])::text[])))
+```
+
+- `ref_product_id` **จงใจปล่อย nullable** (ไม่มี `NOT NULL`) เพื่อเผื่อคอลัมน์ `ref_chat_id bigint` ในอนาคตสำหรับแจ้งเตือนแชท (P-07 เดิมติดปัญหานี้เพราะ `chat.id` เป็น bigint ผูกกับ uuid เดียวไม่ได้ — แก้ด้วยการแยกคอลัมน์ ไม่ใช้ `ref_id` กลาง ดู `DECISIONS.md` **D-23**)
+- `type` CHECK ครอบคลุมแค่ที่ใช้จริงตอนนี้ — ตอนนี้มีแค่ path เขียน `listing_rejected` (จาก `RejectProductSheet`) ส่วน `listing_approved` เผื่อไว้ยังไม่มี path เขียนจริง (approve ไม่ส่ง notification ในรอบนี้ ดู D-23)
+- ไม่เปิด Realtime บนตารางนี้ (ยังไม่ทำ live badge)
+
 ### ตารางที่ยังไม่มี
 
-`transactions` (L5) · `notifications` (L6) · `reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
+`transactions` (L5) · `reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
 
 ---
 
@@ -298,17 +324,18 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
 
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 7 ตาราง จำนวน policy ต่อตาราง:
+RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต่อตาราง:
 
 | ตาราง | policy | สรุป |
 |---|---|---|
 | `"Profile"` | 4 | ดูตารางค่าจริงด้านล่าง |
-| `products` | 1 | allow-all |
+| `products` | 1 | allow-all (+ trigger แยกกัน moderation_status/rejection_reason ดูหัวข้อ Function/Trigger) |
 | `chat` | 1 | allow-all |
 | `chat_user` | 1 | allow-all |
 | `chat_message` | 1 | allow-all |
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
 | `reports` | **1** | admin-read เท่านั้น (SELECT) — insert ยังไม่มี policy = insert ยังทำไม่ได้ (L7 P-10 ยังไม่ apply ครึ่งนั้น) |
+| `notifications` | **3** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert เท่านั้น (L6, เพิ่ม 2026-08-14) |
 
 **ค่าจริงจาก `pg_policies` — ทุก policy เป็น `PERMISSIVE` ไม่มี `RESTRICTIVE` สักตัว**
 
@@ -324,6 +351,9 @@ RLS `ENABLE` ครบทั้ง 7 ตาราง จำนวน policy ต�
 | `"Profile"` | Admins can update all profiles | UPDATE | `{public}` | `private.is_admin()` | – |
 | `"Profile"` | Users can update own profile | UPDATE | `{authenticated}` | `(auth.uid() = id)` | ↓ |
 | `reports` | admin can read reports | SELECT | `{authenticated}` | `private.is_admin()` | – |
+| `notifications` | users can read own notifications | SELECT | `{authenticated}` | `(user_id = auth.uid())` | – |
+| `notifications` | users can mark own notifications read | UPDATE | `{authenticated}` | `(user_id = auth.uid())` | `(user_id = auth.uid())` |
+| `notifications` | admin can insert notifications | INSERT | `{authenticated}` | – | `private.is_admin()` |
 
 ```sql
 -- with_check ของ "Users can update own profile" (ค่าจริง คำต่อคำ)
@@ -362,7 +392,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-4 function (`public` 1 + `private` 3) · 1 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+5 function (`public` 1 + `private` 4) · 2 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -450,6 +480,35 @@ AS $function$ SELECT student_id FROM public."Profile" WHERE id = auth.uid() $fun
 > 📌 อยู่ใน schema **`private`** ไม่ใช่ `public` — query ที่กรอง `nspname='public'` อย่างเดียวจะ**มองไม่เห็น**
 > เช่นเดียวกับ `on_auth_user_created` ที่อยู่บนตารางใน schema **`auth`**
 > เคยทำให้เอกสารเขียนผิดมาแล้ว → `DECISIONS.md` **D-11**
+
+### `private.enforce_moderation_admin_only()` + trigger `enforce_moderation_admin_only` (L8, เพิ่ม 2026-08-14)
+
+```sql
+CREATE OR REPLACE FUNCTION private.enforce_moderation_admin_only()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF NOT private.is_admin() THEN
+    RAISE EXCEPTION 'Only admins can change moderation_status or rejection_reason';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER enforce_moderation_admin_only
+  BEFORE UPDATE ON public.products
+  FOR EACH ROW
+  WHEN (((old.moderation_status)::text IS DISTINCT FROM (new.moderation_status)::text)
+        OR (old.rejection_reason IS DISTINCT FROM new.rejection_reason))
+  EXECUTE FUNCTION private.enforce_moderation_admin_only();   -- tgenabled = 'O' (เปิดอยู่)
+```
+
+- **ไม่ใช่ `SECURITY DEFINER`** — เรียกใช้ `private.is_admin()` เฉย ๆ (ตัวนั้นเป็น `SECURITY DEFINER` อยู่แล้ว) ไม่ต้อง bypass อะไรเพิ่ม, RLS ของ `products` (allow-all) อนุญาต UPDATE อยู่แล้ว trigger นี้แค่เพิ่มเหตุผลให้ปฏิเสธ
+- **`WHEN` clause กรองก่อนเรียกฟังก์ชัน** — Postgres เทียบ `OLD`/`NEW` ก่อน ถ้า `moderation_status`/`rejection_reason` ไม่เปลี่ยนเลย ฟังก์ชันจะไม่ถูกเรียกเลย ไม่ใช่แค่ no-op ข้างใน — แก้ title/price/images ของ seller ปกติไม่โดน trigger นี้แตะเลย
+- **เหตุผลที่ใช้ trigger ไม่ใช่ `CREATE POLICY`:** policy แบบ permissive OR กันเองกับ policy allow-all เดิมของ `products` เสมอ (เพิ่ม policy เข้มกว่าไม่มีผล) และ `WITH CHECK` เห็นแค่แถวใหม่ เทียบ OLD/NEW ไม่ได้ — ต้องใช้ trigger เท่านั้น ยืนยันจริงด้วย impersonation test (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) ทั้งก่อนและหลัง push ดู `DECISIONS.md` **D-23**
+- คุ้มกันเฉพาะ 2 คอลัมน์นี้เท่านั้น — คอลัมน์อื่นของ `products` ยังอยู่ใต้ policy allow-all เดิม (D-03 ยังไม่ปิด)
 
 ---
 

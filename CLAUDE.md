@@ -15,6 +15,11 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 6. **`export-code` = diagnostic เท่านั้น** ห้าม edit โค้ดที่ export แล้ว re-import กลับ
 7. **จบทุก session ต้องอัปเดต `docs/STATUS.md` + `docs/SCHEMA.md`** — ข้อนี้ถูกลืมบ่อยที่สุด และเป็นสาเหตุที่ session ถัดไปทำงานผิดมาตรฐาน
 8. **`P` ตัวใหญ่ใน `"Profile"`** — ใน SQL ต้อง double-quote เสมอ ไม่งั้น Postgres หาไม่เจอ
+9. **🔴 ก่อนแตะ custom action / custom code ทุกครั้ง — ต้อง inspect 3 อย่างนี้ก่อน:**
+   (1) **widget tree** (`flutterflow ai inspect <id> --page <Page>` → key/ชื่อ/โครงสร้างจริง)
+   (2) **action + binding ที่มีอยู่** (`triggerActions` ของ node นั้น · `databaseRequest` ระดับหน้า · `textValue`/`pathValue`/`visibility` ของ widget)
+   (3) **Supabase** (`SCHEMA.md` + query ข้อมูลจริงว่า null/ว่างไหม)
+   **เหตุผล:** ปัญหาส่วนใหญ่แก้ได้ที่ binding/query ซึ่งง่ายและ rerun-safe กว่าเขียน custom code — เคยเสียหลายรอบเพราะเดาแล้วแก้ผิดชั้น (ดู PT-14) · custom code เป็นทางเลือกสุดท้ายเมื่อ binding ทำไม่ได้จริง (PT-09/PT-10)
 
 ---
 

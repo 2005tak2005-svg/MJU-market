@@ -105,8 +105,8 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
   - RLS admin-only แบบเต็ม (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all — D-03) ยังไม่ทำ ทั้งที่เป็นหัวใจของ L8 DoD
   - หน้า `Inspect` แยกยังไม่มีใน v2 — ตอนนี้ "คิวสินค้ารอตรวจ" ใน `HomeAdmin` ทำหน้าที่แสดงรายการแทนบางส่วน แต่ยังไม่มีปุ่ม approve/reject จริง (แตะแถวแค่ Navigate ไป `ProductDetails`)
   - `"CAT"` ยังจัดการ (CRUD) ผ่าน UI ไม่ได้ ยังต้อง seed ด้วยมือ
-  - กราฟยอดขาย (`admin_sales_by_seller`) เป็น**ทางลัดชั่วคราว**จาก `products.status='sold'` เพราะยังไม่มีตาราง `transactions` (L5) — ต้องตัดสินใจตอน L5 เริ่มว่าจะย้ายไปอ้างอิง `transactions` จริงไหม
-  - FlutterFlow AI DSL **ไม่มี** `Chart` widget constructor (เช็คแล้วจากทั้ง docs และ widget surface) — กราฟที่ทำได้ตอนนี้คือ ranked list ธรรมดา ไม่ใช่ chart จริง ถ้าต้องการกราฟจริงต้องไปทาง custom widget + pub package (`fl_chart` เป็นต้น) ซึ่งเป็นงานคนละขนาด
+  - ✅ **pete ยืนยันแล้ว 2026-08-14 (ไม่ใช่ของค้าง):** การ์ด "สินค้ารอตรวจสอบ" ใช้แทนแนวคิด "pending orders" ต่อไปได้ (ยังไม่ต้องเริ่ม L5) และ "ยอดขายตามผู้ขาย" เป็น ranked list (ไม่ใช่ chart จริง — DSL ไม่มี `Chart` widget constructor) ก็ใช้ต่อไปก่อนได้เช่นกัน — รายละเอียด `DECISIONS.md` **D-22** ท้ายข้อ
+  - กราฟยอดขาย (`admin_sales_by_seller`) อ้างอิง `products.status='sold'` เพราะยังไม่มีตาราง `transactions` (L5) — ถ้า L5 เริ่มจริงในอนาคต ต้องตัดสินใจว่าจะย้ายไปอ้างอิง `transactions` แทนไหม
 
 ---
 

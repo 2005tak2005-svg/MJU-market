@@ -441,3 +441,8 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - นับเป็นจุดเริ่มของ L8 (ก่อนหน้านี้ ⬜ ทั้ง Supabase/FlutterFlow) — ยังไม่ปิด layer เพราะ RLS admin-only "กันยิง API ตรง" ยังไม่ทำ (`products`/`chat` ยัง allow-all ตามหนี้เดิม), `"CAT"` CRUD ยังไม่มี, approve/reject action บนคิวสินค้ารอตรวจยังไม่ได้ wire (ตอนนี้กดแถวแค่ Navigate ไป `ProductDetails` เพื่อดูรายละเอียด ยังไม่มีปุ่มอนุมัติ/ปฏิเสธในหน้านี้)
 - feed "รายงานล่าสุด" (bind `reports` เข้า Activity panel) เป็น follow-up ที่ตั้งใจปล่อยไว้ ไม่ใช่ลืม — รอ L7 ตัดสินใจ `reports.status` vocabulary ก่อน (P-10)
 - กับดัก SDK 2 เรื่องที่เจอระหว่างทำ (selector พังหลัง `ensureRemoved`, ผูก view ใหม่ต้อง `postgres_helpers.addTable`) บันทึกไว้ที่ `PATTERNS.md` **PT-15**
+
+**🆕 ตามด้วยรอบ pete ยืนยันของค้าง 3 ข้อ (เซสชันเดียวกัน 2026-08-14):**
+1. **"จำนวนสินค้ารอตรวจ" แทน "pending orders"** — pete ยืนยันแล้วว่าใช้ตัวเลขนี้ต่อไปได้ (ไม่ต้องเริ่ม L5 ตอนนี้เพื่อสร้างตาราง orders/transactions จริง) การ์ดใบที่ 2 ของ `HomeAdmin` จึงตั้งใจนับจาก `products.moderation_status='pending'` ไม่ใช่ของค้างที่ต้องแก้
+2. **"ยอดขายตามผู้ขาย" เป็น ranked list ธรรมดา ไม่ใช่กราฟจริง** — pete ยืนยันแล้วว่าใช้ต่อไปก่อนได้เช่นกัน (สร้างกราฟจริงต้องไปทาง custom widget + pub package อย่าง `fl_chart` ซึ่งเป็นงานคนละขนาด ยังไม่ทำตอนนี้)
+3. **การทดสอบ end-to-end ผ่านแอปจริง** — สภาพแวดล้อมที่ Claude รันไม่มี `flutter` บน PATH (`local_run.list_devices` คืนค่าว่าง) และ Test Pilot ถูก auto-mode classifier บล็อกไม่ให้สร้าง test ใหม่ pete เลือกจะเทสเองผ่านแอปจริงแทนการเปิด permission — ใช้บัญชี admin `mju6577778888@mju.ac.th` (รหัสผ่านคุยกันในแชท ถูกตั้งใหม่ผ่าน SQL วันนี้เพราะของเดิมไม่รู้ค่า ดู `STATUS.md`)

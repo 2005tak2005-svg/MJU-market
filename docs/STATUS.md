@@ -17,8 +17,9 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **🔴 regression test ทั้งเส้นหลังสลับ auth backend (D-21)** — สมัคร/login/OTP/role-routing (user→`Home`, admin→`HomeAdmin`) + อัปรูปใน `addproduct` ยังลง path `<uid>/` ถูกไหม
-   เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน ยังทดสอบจริงแค่ `ProfileUser`
+0. **🔴 regression test ที่เหลือหลังสลับ auth backend (D-21)** — **สมัครใหม่ · OTP · role-routing** (user→`Home`, admin→`HomeAdmin`) · อัปรูปใน `addproduct`
+   เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน
+   ✅ **ทดสอบผ่านแล้ว (V-11):** `ProfileUser` ทั้งหน้า · login · **path storage เป็น Supabase uid ถูกต้องจริง** (ยืนยันจาก `storage.objects` 3 ไฟล์) → ประเด็น upload path ปิดแล้ว
    ✅ คำทักทายหน้า `Home` โชว์ **อีเมล** แทนชื่อ — **pete ทดสอบแล้วรับได้ ไม่ต้องแก้** (Supabase auth ไม่มี `DISPLAY_NAME`) ถ้าวันหลังอยากได้ `full_name` ค่อยผูก page-level query แบบ PT-14
 1. สร้าง `MyPost`/`Inspect` (ยังไม่มีใน v2) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12**/**PT-14** ก่อนเขียน Action Flow **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin)
 2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`

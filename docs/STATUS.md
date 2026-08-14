@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว ยังไม่ได้ทดสอบผ่านแอปจริง
+> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **🆕 approve/reject บนคิวสินค้ารอตรวจ + `notifications` table (L6) + `Notifications` page + bell icon บน `Home`** (D-23) — push สำเร็จ ยืนยันผ่าน `generated_code/` ครบ (HomeAdmin/RejectProductSheet/Notifications/Home) + impersonation test ยืนยัน trigger กัน non-admin จริง ยังไม่ได้ทดสอบผ่านแอปจริง
 > **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
 
 > 🔴 **บทเรียนใหญ่ของ session 2026-08-14:** `currentUserUid` เคยผูกกับ **Firebase** ทั้งที่ login จริงวิ่งผ่าน Supabase → เป็น `''` ตลอด ทำให้ query ที่ filter ด้วย user ปัจจุบัน**หาแถวไม่เจอ**แล้ว crash · แก้โดยสลับ auth backend เป็น Supabase (D-21)
@@ -16,6 +16,10 @@
 ---
 
 ## 🔥 คิวถัดไป (3 อันดับ)
+
+0.7. **🆕 approve/reject + Notifications ที่เพิ่งผูกวันนี้ (D-23) — รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
+    ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `generated_code/` + impersonation test ใน Supabase): ปุ่มอนุมัติ/ปฏิเสธใน `HomeAdmin` ผูก action chain ถูกต้อง, `RejectProductSheet` เขียน `products` + `notifications` ถูกต้อง, `Notifications` page query กรอง `user_id = currentUserUid` ถูกต้อง, bell icon บน `Home` navigate ไปถูกหน้า, trigger `enforce_moderation_admin_only` กัน non-admin จริง (ทดสอบ 2 รอบ ก่อน/หลัง push)
+    ⚠️ **ยังไม่ได้กดผ่านแอปจริง** — เดียวกับ `HomeAdmin` เดิม (ข้อ 0.5) สภาพแวดล้อมนี้รัน `flutter` ไม่ได้ ตรวจได้แค่ระดับ proto/generated code เช็คก่อนปิดข้อนี้: (1) กดอนุมัติแล้วสินค้าหายจากคิว + ขึ้น `Home` จริง (2) กดปฏิเสธ กรอกเหตุผล แล้ว seller เห็นแจ้งเตือนใน `Notifications` จริง (3) user ทั่วไปพยายามยิง API ตรงแก้ `moderation_status` เอง ต้องโดน trigger บล็อก
 
 0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ตรวจ structure/binding ผ่าน FF Desktop live session + `generated_code/` แล้ว รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
     ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `ide.query_nodes` + `flutterflow ai inspect --outline` + อ่าน `generated_code/` ตรง ๆ): การ์ด 3 ใบ (`ผู้ใช้ทั้งหมด`/`สินค้ารอตรวจสอบ`/`ผู้ใช้ถูกระงับ`) ผูกกับ `admin_dashboard_stats` ถูกต้อง ไม่ใช่ placeholder, โครง widget tree ของ `Row_zau657ld` ถูกต้อง (3 การ์ดจริง ไม่ใช่ list ซ้ำ — เจอบั๊ก canvas render ซ้ำ 4 ชุดระหว่างทำ แก้แล้ว ดู `PATTERNS.md` **PT-16**)
@@ -41,9 +45,9 @@
 | 3 | Browse / Search / Filter | ⬜ | 🟨 **`AllList` (Home) + `ProductDetails` ทำแล้ว 2026-08-14** | `AllList` ผูก `products_review_view` (filter `moderation_status='approved'`) แตะแล้วส่ง `productId` ไป `ProductDetails` · ยังไม่มี search/filter · รูปสินค้ายังเป็น placeholder (ต้อง index `image_urls[1]` — ติด PT-10) |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
-| 6 | Notifications | ⬜ ยังไม่มีตาราง | ⬜ | |
+| 6 | Notifications | 🟨 **ตาราง + RLS apply แล้ว 2026-08-14** | 🟨 **`Notifications` page + bell icon บน `Home` เพิ่มแล้ว** | `notifications` table (RLS: user อ่าน/มาร์กอ่านของตัวเอง, admin insert เท่านั้น) — ดู `SCHEMA.md` · เขียนได้ทางเดียวจาก `RejectProductSheet` (reject → insert `type='listing_rejected'`) ยังไม่มี notification ตอน approve หรือจากแชท (P-04 ยังไม่ทำ) · ไม่มี push จริง (FCM) — เป็นแค่ in-app list ต้องเปิดแอปเข้าหน้านี้ถึงจะเห็น ไม่มี unread badge บนกระดิ่ง ไม่มี realtime |
 | 7 | Reviews & Reports | 🟨 `reports` มีแล้ว (ไม่มี policy) / `reviews` ยังไม่มี | ⬜ | |
-| 8 | Admin Dashboard | 🟨 **เริ่มแล้ว 2026-08-14** | 🟨 **`HomeAdmin` เริ่มผูกข้อมูลจริง** | `admin_dashboard_stats` + `admin_sales_by_seller` (view ใหม่) · `reports` มี admin-read policy แล้ว · `"Profile".is_banned` เพิ่มใหม่ (นับอย่างเดียว ยังไม่ enforce) · การ์ดสถิติ (ผู้ใช้ทั้งหมด/สินค้ารอตรวจ/ถูกระงับ) + คิวสินค้ารอตรวจ (แทน Inspect แยก) + กราฟยอดขายตามผู้ขาย (ว่างจริงเพราะยังไม่มี `transactions`, L5) ผูกจริงหมดแล้ว — เหลือ: RLS admin-only แบบเต็ม (กันยิง API ตรง — หัวใจ DoD ข้อนี้), `"CAT"` CRUD, ปุ่ม approve/reject บนคิวสินค้า (ตอนนี้แค่ Navigate ไปดูรายละเอียด) |
+| 8 | Admin Dashboard | 🟨 **เริ่มแล้ว 2026-08-14** | 🟨 **`HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้แล้ว** | `admin_dashboard_stats` + `admin_sales_by_seller` (view ใหม่) · `reports` มี admin-read policy แล้ว · `"Profile".is_banned` เพิ่มใหม่ (นับอย่างเดียว ยังไม่ enforce) · การ์ดสถิติ + คิวสินค้ารอตรวจ (แทน Inspect แยก) + กราฟยอดขายตามผู้ขาย ผูกจริงหมดแล้ว · **🆕 ปุ่มอนุมัติ/ปฏิเสธบนคิวสินค้าใช้งานได้แล้ว** (อนุมัติ = อัปเดต `moderation_status` ตรง ๆ, ปฏิเสธ = เปิด `RejectProductSheet` กรอกเหตุผล → insert `notifications`) คุ้มกันด้วย trigger `enforce_moderation_admin_only` (ยืนยันด้วย impersonation test ว่า non-admin ยิงตรงไม่ได้) — เหลือ: RLS admin-only แบบเต็มสำหรับคอลัมน์อื่นของ `products`/`chat`/`chat_user`/`chat_message` (ยัง allow-all ทั้งหมด, D-03), `"CAT"` CRUD |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม
 
@@ -79,7 +83,7 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 **Layer 2**
 - จะเปิดให้ browse ก่อนล็อกอินไหม — ถ้าเอา ต้องเพิ่ม policy ให้ `anon` ทั้ง `"CAT"` และ `products` (ตอนนี้ `anon` เห็น `"CAT"` เป็น 0 แถว)
 - จะบังคับ `category_id` ห้าม null ไหม
-- ผู้ขายไม่ได้เปิดแอปตอน admin กด reject → รอ Layer 6 มาช่วย หรือปล่อยตามนี้
+- ✅ **ตอบแล้ว 2026-08-14:** ผู้ขายไม่ได้เปิดแอปตอน admin กด reject → ใช้ in-app notification list (L6) ไม่ใช่ push จริง — ผู้ขายต้องเปิดแอปเข้าหน้า `Notifications` เองถึงจะเห็น (ดู D-23)
 
 **Layer 3**
 - FlutterFlow built-in filter พอไหม หรือต้องสร้าง RPC `search_products` (P-05) — รอทดสอบจริง
@@ -93,17 +97,18 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - ต้องการ `status` กี่แบบจริง ๆ, ต้องเก็บประวัติ transaction แยกไหม หรือใช้ `products.status` พอ
 
 **Layer 6**
-- Supabase table + Realtime พอไหม หรือต้องต่อ push จริง (FCM)
-- 🔴 `notifications.ref_id` ร่างเป็น uuid แต่ `chat.id` เป็น bigint → อ้าง chat ไม่ได้ ต้องเลือก design ก่อน apply (P-07)
+- ✅ **ตอบแล้ว 2026-08-14:** pete เลือกสร้างตาราง `notifications` จริง + in-app list ก่อน (ดู D-23) — ยังไม่ต่อ push จริง (FCM) เป็นคำถามที่ยังเปิดอยู่ถ้าจะทำต่อ
+- ✅ **แก้แล้ว 2026-08-14:** ปัญหา `ref_id` uuid อ้าง `chat.id` (bigint) ไม่ได้ — ใช้ `ref_product_id uuid` แยกคอลัมน์แทน เผื่อ `ref_chat_id bigint` ในอนาคต (ดู `SCHEMA.md`, D-23)
+- ยังไม่ทำ: notification อัตโนมัติจาก `chat_message` insert (P-04), unread badge บนกระดิ่งใน `Home`, realtime บน `notifications`
 
 **Layer 7**
 - รองรับรีพอร์ต "ผู้ใช้" ด้วยไหม (P-09)
 - `reviews` ใช้ RLS allow-all หรือ restrictive
 
 **Layer 8**
-- 🟨 เริ่มคุยแล้ว 2026-08-14 (`HomeAdmin` stat cards + sales graph) — ค้างจริง:
-  - RLS admin-only แบบเต็ม (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all — D-03) ยังไม่ทำ ทั้งที่เป็นหัวใจของ L8 DoD
-  - หน้า `Inspect` แยกยังไม่มีใน v2 — ตอนนี้ "คิวสินค้ารอตรวจ" ใน `HomeAdmin` ทำหน้าที่แสดงรายการแทนบางส่วน แต่ยังไม่มีปุ่ม approve/reject จริง (แตะแถวแค่ Navigate ไป `ProductDetails`)
+- 🟨 เริ่มคุยแล้ว 2026-08-14 (`HomeAdmin` stat cards + sales graph + approve/reject) — ค้างจริง:
+  - RLS admin-only แบบเต็ม (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all — D-03) ยังไม่ทำ **ยกเว้น `products.moderation_status`/`rejection_reason` ซึ่งคุ้มกันด้วย trigger แล้ว** (D-23) — ยังเป็นแค่จุดเดียว ไม่ใช่ทั้งตาราง
+  - หน้า `Inspect` แยกยังไม่มีใน v2 — **"คิวสินค้ารอตรวจ" ใน `HomeAdmin` มีปุ่มอนุมัติ/ปฏิเสธจริงแล้ว** (2026-08-14, D-23) แทนที่การ Navigate ไป `ProductDetails` เฉย ๆ แบบเดิม
   - `"CAT"` ยังจัดการ (CRUD) ผ่าน UI ไม่ได้ ยังต้อง seed ด้วยมือ
   - ✅ **pete ยืนยันแล้ว 2026-08-14 (ไม่ใช่ของค้าง):** การ์ด "สินค้ารอตรวจสอบ" ใช้แทนแนวคิด "pending orders" ต่อไปได้ (ยังไม่ต้องเริ่ม L5) และ "ยอดขายตามผู้ขาย" เป็น ranked list (ไม่ใช่ chart จริง — DSL ไม่มี `Chart` widget constructor) ก็ใช้ต่อไปก่อนได้เช่นกัน — รายละเอียด `DECISIONS.md` **D-22** ท้ายข้อ
   - กราฟยอดขาย (`admin_sales_by_seller`) อ้างอิง `products.status='sold'` เพราะยังไม่มีตาราง `transactions` (L5) — ถ้า L5 เริ่มจริงในอนาคต ต้องตัดสินใจว่าจะย้ายไปอ้างอิง `transactions` แทนไหม

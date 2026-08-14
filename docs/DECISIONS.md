@@ -404,3 +404,21 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **เก็บกวาดที่ทำไปพร้อมกัน:** ลบบัญชีทดสอบเก่า 4 บัญชีที่ค้างจากรอบทดสอบ D-19/D-20 (`mju6500000099@mju.ac.th`, `mju6500000101@mju.ac.th`, `mju6606105382@mju.ac.th`, `mju6606105383@mju.ac.th`) — ลบ `"Profile"` ก่อนแล้วค่อยลบ `auth.users` (ต้องเรียงลำดับนี้เสมอเพราะ `Profile_id_fkey` ไม่มี `ON DELETE CASCADE`) เหลือบัญชี admin (`mju6577778888@mju.ac.th`) และบัญชีทดสอบ RLS เดิม 4 บัญชีไว้ตามเดิม ไม่แตะ
 
 **คำแนะนำสำหรับ session ถัดไปที่ทำ layer อื่น:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` ถูก patch ด้วย SQL ไว้แล้วจาก D-17) ทดสอบ layer อื่นที่ต้อง login ได้ เพราะเป็นบัญชีเดียวตอนนี้ที่เข้า Home/HomeAdmin ได้จริงโดยไม่ติดปัญหา confirm-email — **ห้ามใช้บัญชีนี้เทสเรื่อง confirm-email เองอีก** (สภาพถูกลัดผ่านไปแล้ว ดู `STATUS.md` หนี้ทางเทคนิค)
+
+---
+
+## D-21 — สลับ Authentication backend: Firebase → Supabase (2026-08-14)
+
+**อาการที่พาไปเจอ:** หน้า `ProfileUser` crash `Unexpected null value` แบบสุ่ม (เปิดครั้งแรกหลัง login ได้ แต่ reload/กลับเข้าหน้าใหม่แล้วพัง)
+
+**ต้นเหตุ:** query ที่ filter ด้วย user ปัจจุบัน compile เป็น `currentUserUid` → อ่านจาก `currentUser` ของ FlutterFlow ซึ่งผูกกับ **Firebase** แต่**ไม่มีใคร login เข้า Firebase เลย** (การ login จริงวิ่งผ่าน Supabase ทั้งหมด) → `currentUserUid = ''` → หา `"Profile"` ไม่เจอ → force-unwrap พัง
+**กระทบทั้งแอป** ไม่ใช่แค่หน้าเดียว — `storageFolderPath: currentUserUid` ของ `addproduct`/avatar ก็จะเขียนลงโฟลเดอร์ `''` ซึ่งผิด storage policy
+
+**ตัดสินใจ:** เปลี่ยน backend เป็น Supabase (pete เลือก 2026-08-14) แทนการ (ก) แปะ null-guard กลบอาการ หรือ (ข) sync session เข้า `currentUser` เองด้วย custom code
+เหตุผล: แก้ที่ต้นเหตุครั้งเดียว `currentUserUid` = Supabase uid ตรงกับ `"Profile".id` จริง — ทางเลือกอื่นเป็นการซ่อมอาการและยังทิ้ง upload path พังไว้
+
+**ผลที่ตามมา:**
+- โปรเจกต์ Firebase ที่ต่อไว้ก่อนหน้า (เพื่อปิด error "Firebase config files not uploaded") **ไม่จำเป็นอีกแล้ว** — เป็นการแก้ที่ปลายเหตุ
+- reference ของ user ปัจจุบัน**ทั้งโปรเจกต์**ต้อง rewrite `FIREBASE_AUTH_USER` → `SUPABASE_AUTH_USER` พร้อมกันใน push เดียว ไม่งั้น validate ไม่ผ่าน (วิธี + กับดัก: `PATTERNS.md` **PT-13**)
+- 🔴 **`DISPLAY_NAME`/`PHOTO_URL` ไม่มีใน Supabase auth** → คำทักทายหน้า `Home` ถูก remap เป็น **อีเมล** ถ้าจะเอา `full_name` ต้องผูก page-level query แบบ **PT-14**
+- ⚠️ **ยัง regression test ไม่ครบ** — ทดสอบจริงแค่ `ProfileUser` ส่วนสมัคร/OTP/role-routing/upload ยังไม่ได้ไล่ (อยู่ในคิว `STATUS.md` ข้อ 0)

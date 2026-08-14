@@ -289,3 +289,28 @@ app.raw((project) {
 โค้ดที่ออกมาคือ `.order('created_at')` เฉย ๆ ไม่มี flag ทิศทางใด ๆ — เป็น gap เดิมของ SDK เวอร์ชันนี้ ไม่ใช่บั๊กที่เพิ่งเกิด (เช็คแล้วว่า `AllList` ที่ deploy จริงก็เป็นแบบนี้เหมือนกัน) ถ้าลำดับ (ใหม่สุดก่อน/เก่าสุดก่อน) สำคัญกับ feature ที่ทำ ต้องเปิด `generated_code/` ยืนยันเองทุกครั้ง ห้ามเชื่อว่า `ascending: false` ทำงานจากแค่โค้ด DSL
 
 **ใช้แล้วที่:** L8 (`HomeAdmin` — `admin_dashboard_stats`) · เช็คก่อนทุกครั้งที่ผูกหน้าใหม่เข้า view/table ที่สร้างเองใน Supabase ระหว่าง session เดียวกัน (ไม่ใช่ table เดิมที่มีอยู่แล้วใน `ff.Tables`)
+
+---
+
+## PT-16 — 🔴 อย่าใช้ `ListView` แทน "การ์ดค่าเดียว" + `ensureReplaced` ไม่ rerun-safe ถ้า target เป็น key ที่ operation ก่อนหน้าใน**สคริปต์เดียวกัน**เพิ่งกินไป (พบทำ L8 `HomeAdmin` 2026-08-14)
+
+**1. ห้ามห่อ "การ์ดแสดงค่าตัวเลขตัวเดียว" ด้วย `ListView(source: State('xxx'), itemBuilder: ...)` เพื่อเลี่ยงข้อจำกัดที่ query แบบ scalar ทำไม่ได้ (ดู PT-10)**
+
+อาการ: compile/push ผ่านเฉย ๆ, `generated_code/` ก็ดูถูกต้อง แต่เปิด **FF Desktop canvas** (`ide.screenshot_canvas`) แล้วเห็นการ์ดซ้ำเป็น 4 ก๊อปปี้ซ้อนกัน (placeholder mock ของ ListView ตอน design-time) แล้วดัน sibling อื่นในแถวเดียวกันหายไปจากมุมมอง — ทั้งที่ proto จริงถูกต้องครบ (ยืนยันด้วย `ide.query_nodes` ว่า sibling ยังอยู่ใน tree ปกติ)
+สาเหตุ: canvas ของ FF Desktop render ListView เป็น "รายการที่ repeat" เสมอ ไม่สนใจว่า runtime จะมีจริงกี่ item — เอาไปใช้แสดงค่าเดียวจึงดู "พัง" ใน editor ทั้งที่ apk/web จริงจะแสดงถูก (เพราะ query จริงคืนแค่ 1 row)
+
+**ทางแก้ที่ถูกต้อง:** สร้างเป็น widget นิ่ง (`Container`/`Text` ธรรมดา ไม่ใช่ `ListView`) ด้วยค่า placeholder ไปก่อน แล้วผูกค่าจริงทีหลังด้วย raw-proto `nodeKeyRef` แบบเดียวกับการ์ดอื่น (PT-14) — ไม่ใช่ผ่าน `item['field']`
+
+**2. `page.ensureReplaced(page.findByKey('key ที่ยังไม่เคยมี ณ ตอนสคริปต์เริ่มรัน'), ...)` ไม่ rerun-safe ถ้า key นั้นถูก op ก่อนหน้าใน**สคริปต์เดียวกัน**สร้างขึ้นมาเอง**
+
+เจอจริงตอนแก้ข้อ 1: push ครั้งแรกสร้าง `ListView_h65u06bk` แล้วเอาไป `ensureReplaced` ด้วย `Container` ใหม่ (คนละ key, auto-gen) — พอรัน**สคริปต์เดิมซ้ำ**ในการ push ครั้งถัดไป (มี `ensureReplaced(findByKey('ListView_h65u06bk'), Container(...))` เหลืออยู่) `ListView_h65u06bk` ไม่มีอยู่แล้วในโปรเจกต์ (ถูกแทนที่ไปตั้งแต่ครั้งก่อน) — compiler ไม่ error แต่กลับ **สร้าง `Container` ใหม่อีกชุดด้วย key อื่น** ซ้อนขึ้นมาแทน ในขณะที่การ bind ค่าที่เขียนไว้ (`bindText('Text_bvmb7v87', ...)`) ยังชี้ไปที่ key เก่าที่ถูกทิ้งไปแล้ว → ค่าบนหน้าจอไม่ขึ้น ทั้งที่ `flutterflow ai run` รายงานผ่านทุกครั้ง
+ตรวจพบได้จาก `generated_code/` (ไม่มี `.bannedUsers` เลยทั้งไฟล์ ทั้งที่เขียน `bindText` ไว้แล้ว) + ยืนยัน key จริงด้วย `ide.query_nodes` (ค้นด้วย `name:` ที่ตั้งไว้ตอนสร้าง widget) แล้วพบว่า key เปลี่ยนไปจริง
+
+**ทางแก้:** operation ที่สร้าง widget ใหม่ (`ensureReplaced`/`ensureInsertedInto`) ให้ถือเป็น**ของใช้ครั้งเดียว** — พอ push สำเร็จแล้วให้ **ลบ operation นั้นออกจากสคริปต์** เปลี่ยนเป็นคอมเมนต์อธิบายว่าทำไปแล้ว (ทำตามธรรมเนียมที่ไฟล์นี้ทำอยู่แล้วกับปุ่ม FAB ของ `Home`) แล้วค่อยตามด้วย op ที่ target key จริงที่เพิ่งสร้าง (เจอผ่าน `ide.query_nodes` หรือ `flutterflow ai inspect --outline`) — **ห้ามปล่อย `ensureReplaced`/`ensureInsertedInto` ที่เคยรันสำเร็จแล้วค้างในสคริปต์** เพราะรันซ้ำแล้วไม่ error แต่ผลลัพธ์ผิด (ต่างจาก `ensureRemoved` ที่ PT-12 ข้อ 9 บอกว่า rerun ไม่ได้เหมือนกันแต่ อย่างน้อย fail ชัดเจน)
+
+**เครื่องมือตรวจที่ใช้ได้จริงระหว่างทำ (ไม่ต้องรอ local run):**
+- `ide.screenshot_canvas` (ต้องมี FF Desktop เปิดโปรเจกต์อยู่ — เช็ค `live.status` ก่อน) — เห็นภาพจริงของ design-time canvas ไม่ใช่แค่เดาจาก proto
+- `ide.query_nodes` ค้นด้วย `name:` ที่ตั้งไว้เอง — หา key จริงหลัง push โดยไม่ต้องเดา **แต่ผลลัพธ์ scope อยู่แค่ "หน้าที่เปิดอยู่ใน Desktop ตอนนั้น"** ถ้า pete สลับหน้าอยู่ (เป็น session ที่ share กับ pete แบบ live) จะได้ผลว่างเปล่าทั้งที่ node มีจริง — สับสนกับ "ไม่มีจริง" ได้ง่าย ให้ตรวจซ้ำด้วย `flutterflow ai inspect <id> --page <ชื่อ> --outline` (query ตรงจาก server ไม่ผ่าน Desktop) เป็นหลักฐานสุดท้ายเสมอ
+- `flutterflow ai inspect <id> --page <ชื่อ> --outline` — ยืนยันโครงสร้าง tree ปัจจุบันจริงจากเซิร์ฟเวอร์ (ไม่สน state ของ Desktop) เชื่อถือได้สุดในบรรดา 3 อย่างนี้
+
+**ใช้แล้วที่:** L8 (`HomeAdmin` — การ์ดผู้ใช้ถูกระงับ) · เช็คทุกครั้งที่จะ "ผูกค่าเดียวแบบ scalar" ด้วยลูกเล่น ListView-1-item หรือจะรัน `ensureReplaced`/`ensureInsertedInto` ซ้ำในสคริปต์ที่เคย push สำเร็จมาก่อนแล้ว

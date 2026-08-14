@@ -17,7 +17,9 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ยังไม่ได้ทดสอบผ่านแอปจริง** ต้องเปิดแอปจริงด้วยบัญชี admin (`mju6577778888@mju.ac.th`) เช็ค: (1) การ์ด "ผู้ใช้ทั้งหมด/สินค้ารอตรวจ/ถูกระงับ" ขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) ก่อนปิดข้อนี้ให้รัน `db-verifier`/`ui-checker` ด้วยก็ได้
+0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ตรวจ structure/binding ผ่าน FF Desktop live session + `generated_code/` แล้ว แต่ยังไม่เคยคลิกผ่านแอปจริงสักครั้ง**
+    ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `ide.query_nodes` + `flutterflow ai inspect --outline` + อ่าน `generated_code/` ตรง ๆ): การ์ด 3 ใบ (`ผู้ใช้ทั้งหมด`/`สินค้ารอตรวจสอบ`/`ผู้ใช้ถูกระงับ`) ผูกกับ `admin_dashboard_stats` ถูกต้อง ไม่ใช่ placeholder, โครง widget tree ของ `Row_zau657ld` ถูกต้อง (3 การ์ดจริง ไม่ใช่ list ซ้ำ — เจอบั๊ก canvas render ซ้ำ 4 ชุดระหว่างทำ แก้แล้ว ดู `PATTERNS.md` **PT-16**)
+    ⚠️ **สภาพแวดล้อมนี้รัน `flutter` ไม่ได้** (`local_run.list_devices` คืนค่าว่าง, ไม่มี Flutter SDK บน PATH) — เลยทดสอบได้แค่ระดับ proto/canvas ไม่ใช่แอปที่รันจริง ต้องเปิดแอปจริงด้วยบัญชี admin (`mju6577778888@mju.ac.th`) เช็คก่อนปิดข้อนี้: (1) การ์ดขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) — รัน `db-verifier`/`ui-checker` ประกอบก็ได้
 
 0. **🔴 regression test ที่เหลือหลังสลับ auth backend (D-21)** — **สมัครใหม่ · OTP · role-routing** (user→`Home`, admin→`HomeAdmin`) · อัปรูปใน `addproduct`
    เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน

@@ -314,3 +314,25 @@ app.raw((project) {
 - `flutterflow ai inspect <id> --page <ชื่อ> --outline` — ยืนยันโครงสร้าง tree ปัจจุบันจริงจากเซิร์ฟเวอร์ (ไม่สน state ของ Desktop) เชื่อถือได้สุดในบรรดา 3 อย่างนี้
 
 **ใช้แล้วที่:** L8 (`HomeAdmin` — การ์ดผู้ใช้ถูกระงับ) · เช็คทุกครั้งที่จะ "ผูกค่าเดียวแบบ scalar" ด้วยลูกเล่น ListView-1-item หรือจะรัน `ensureReplaced`/`ensureInsertedInto` ซ้ำในสคริปต์ที่เคย push สำเร็จมาก่อนแล้ว
+
+---
+
+## PT-17 — 🔴 `app.raw` table registration compile **หลัง** `app.component`/`ensurePage`/`editPage*` เสมอ ไม่สนลำดับในสคริปต์ + orphan node สะสมจาก `ensureReplaced` ที่ยิงซ้ำหลายรอบ (พบทำ L8/L6 approve-reject + Notifications 2026-08-14)
+
+**1. `postgres_helpers.addTable(...)` ที่อยู่ใน `app.raw(...)` compile **ทีหลัง** `app.component`/`app.ensurePage`/`app.editPage*` เสมอ — ไม่ว่าจะเขียน `app.raw` ไว้ก่อนหรือหลังในไฟล์สคริปต์**
+
+สาเหตุ: ใน `compiler.dart` (`compile()`, ~บรรทัด 3546-3560) `_compileComponents`/`_compilePages` (มาจาก `app.component`/`app.page`/`app.ensurePage` แบบ declarative) รันก่อน `app.rawMutations` เสมอ — เป็นลำดับ **fix ตาม phase ของ compiler ไม่ใช่ลำดับ statement ในสคริปต์** แม้แต่ `app.editPageState`/`app.editPageOnLoad`/`app.editPage` (ซึ่งข้างในสร้างจาก `app.raw` เหมือนกัน — ยืนยันจาก `edit.dart:191-209`) ก็ยังพบว่ารันหลัง `app.raw` แยกที่เขียนไว้**ก่อน**มันในสคริปต์ (พิสูจน์จริงระหว่างทำ ไม่ใช่แค่เดาจากซอร์ส) — สรุปคือ**ห้ามเชื่อลำดับที่เขียนในไฟล์เป็นตัวตัดสิน** ระหว่าง raw mutation กับ declarative op
+
+อาการที่เจอ: `PostgresQuery`/`PostgresCreate` อ้างตารางที่เพิ่ง `addTable` ใน push เดียวกัน → error `Table notifications was not compiled`
+
+**ทางแก้:** แยก push เป็น 2 รอบเมื่อ "สร้าง page/component ใหม่ที่อ้างตารางใหม่" เกิดในสคริปต์เดียวกัน — รอบแรก push แค่ `app.raw` ที่ register ตาราง (ตัดส่วนอื่นออกชั่วคราว) รอบสองค่อยเติมส่วนที่เหลือกลับมาแล้ว push อีกที (ตารางมีอยู่แล้วตั้งแต่ก่อน compile รอบนี้เริ่ม)
+
+**2. orphan node สะสมจาก `ensureReplaced` ที่ยิงซ้ำข้ามหลาย push (ต่อยอดจาก PT-16 ข้อ 2) ตรวจไม่เจอผ่าน `--outline`/`--deep`/`--dsl-json` เพราะ tool พวกนี้เดินแค่ต้นไม้ที่ reachable จาก root**
+
+เจอสะสมถึง 12+ ชุดจาก stale key เดิม (`ensureReplaced(findByKey('ListView_mctnycd6'), ...)` ที่ค้างในสคริปต์ตั้งแต่ก่อน PT-16 ถูกเขียน) — แต่ละ push ที่รันซ้ำสร้าง node กำพร้าใหม่ 1 ชุด **ไม่ error เลยสักครั้ง** เพราะ `flutterflow ai run` validate ผ่าน (node ที่ไม่ reachable ก็ยัง valid ในตัวมันเอง) validator รายงาน error ทีละ key ใหม่ทุกครั้งที่ตรวจ — ต้อง fix วนหลายรอบ
+
+**ทางแก้ที่ใช้ได้จริง:** เขียน utility เดินโครงสร้าง proto แบบ generic ด้วย reflection (`message.info_.fieldInfo.values` เช็ค `isMapField`/`isRepeated`/`isGroupOrMessage` — pattern เดียวกับ `_rewriteFirebaseAuthToSupabase` ที่มีอยู่แล้วในไฟล์) แล้ว **discover + remove ในการเรียกเดียวกันภายใน `app.raw` closure เดียว** (ไม่ใช่แยกเป็น 2 การเรียก — ลองแยกแล้วพบว่า closure ที่สองเห็น list ว่างเปล่า เป็นปัญหาลำดับ cross-call-type อีกแบบหนึ่ง ไม่ใช่ลำดับ statement)
+
+⚠️ **กับดักซ้อนที่เจอระหว่างแก้ข้อนี้:** รอบแรกที่ลองกวาด orphan ทิ้งด้วยวิธีนี้ ดันกวาดโดน node ที่ **reachable จริง** ไปด้วย (key ของมันเปลี่ยนไประหว่างที่เช็ค `--outline` กับตอน push จริง executed — root cause ไม่เคยสืบให้สุด ตัดสินใจเลิกสืบเพราะมี fix ที่ทำงานได้แล้ว) ผลคือ FlutterFlow auto-substitute placeholder กล่องเขียวเปล่าแทน widget จริง (ตรวจพบจาก `generated_code/` เจอ `Colors.green, width: 100` ซึ่งเป็นค่า fallback มาตรฐาน) **ทางแก้สุดท้าย:** ไม่พึ่งการกวาด-แล้ว-หวังว่า live node ยังอยู่ — สร้าง widget เป้าหมายใหม่ทั้งหมดผ่าน `page.ensureReplaced(page.findByKey('<key ล่าสุดที่ยืนยันจริง>'), <widget เนื้อหาเต็ม>)` รอบเดียวจบ ยืนยัน key ล่าสุดด้วย `flutterflow ai inspect --outline` ก่อนเขียนเสมอ
+
+**ใช้แล้วที่:** L6/L8 (`notifications` table registration + `HomeAdmin` approve/reject itemBuilder rebuild) — เช็คทุกครั้งที่ push เดียวกันทั้งสร้างตาราง/view ใหม่ **และ** อ้างมันจาก page/component ใหม่ หรือสงสัยว่ามี `ensureReplaced`/`ensureInsertedInto` ค้างจากหลาย session ก่อนหน้าที่ไม่เคยถูกลบออกจากสคริปต์ตาม PT-16

@@ -1,7 +1,11 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-10** — **L1 confirm-email หยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant — เต็ม ๆ ดู `DECISIONS.md` D-20)
+> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว
+> **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
+
+> 🔴 **บทเรียนใหญ่ของ session 2026-08-14:** `currentUserUid` เคยผูกกับ **Firebase** ทั้งที่ login จริงวิ่งผ่าน Supabase → เป็น `''` ตลอด ทำให้ query ที่ filter ด้วย user ปัจจุบัน**หาแถวไม่เจอ**แล้ว crash · แก้โดยสลับ auth backend เป็น Supabase (D-21)
+> **ก่อนแตะ custom code ต้อง inspect widget tree + binding + Supabase ก่อนเสมอ** (กฎข้อ 9 ใน `CLAUDE.md`) — session นี้เสียหลายรอบเพราะแก้ผิดชั้น
 
 > 🔴 **บทเรียนสะสม:** (1) SMTP ตอบ 200 ไม่ใช่หลักฐานว่าอีเมลถึงกล่อง ต้องเช็คกล่องจริง (D-20) (2) ห้ามเชื่อ AI vision test/`inspect` ว่า action ทำงานถูก ต้องเปิด `generated_code/` ดู (PT-09) — evidence ที่เชื่อถือได้สุดคือ query ตรงจาก DB
 
@@ -13,10 +17,12 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0. **ทดสอบ `addproduct` รูปพรีวิวซ้ำบนแอปจริง** (ดูหมายเหตุด้านบน) → ต้องเห็น: รูปจริงหลังอัป (ไม่ใช่ขาว), badge ✓ ถูกจังหวะ, อัปครบ 3 ช่องแล้วกดบันทึกรูปไม่หาย
-   ต่อจากนั้นสร้าง `MyPost`/`Inspect` (ยังไม่มีใน v2) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเขียน Action Flow **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin)
-1. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
-2. **🟡 หยุดไว้ — L1 confirm-email (D-20)** ไม่ใช่คิวด่วน แต่ยังไม่ปิด — ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" และ `DECISIONS.md` **D-20** ก่อนแตะเรื่องนี้ต่อ
+0. **🔴 regression test ทั้งเส้นหลังสลับ auth backend (D-21)** — สมัคร/login/OTP/role-routing (user→`Home`, admin→`HomeAdmin`) + อัปรูปใน `addproduct` ยังลง path `<uid>/` ถูกไหม
+   เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน ยังทดสอบจริงแค่ `ProfileUser`
+   ⚠️ คำทักทายหน้า `Home` ตอนนี้โชว์ **อีเมล** แทนชื่อ (Supabase auth ไม่มี `DISPLAY_NAME`) — ถ้าจะเอา `full_name` ต้องผูก page-level query แบบ PT-14
+1. สร้าง `MyPost`/`Inspect` (ยังไม่มีใน v2) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12**/**PT-14** ก่อนเขียน Action Flow **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin)
+2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
+3. **🟡 หยุดไว้ — L1 confirm-email (D-20)** ไม่ใช่คิวด่วน แต่ยังไม่ปิด — ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" และ `DECISIONS.md` **D-20** ก่อนแตะเรื่องนี้ต่อ
    **ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว:** (1) **แก้ปัญหา email deliverability ก่อน** — OTP ไปไม่ถึงกล่องผู้รับ `@mju.ac.th` เลย (ไม่ bounce ไม่ junk ไม่ quarantine เข้าข่าย Microsoft ZAP) ยังไม่ได้ลองปิด custom SMTP กลับไปใช้ default mailer เพื่อแยกว่าปัญหาอยู่ที่ Gmail relay หรือทั้ง tenant, (2) หลังแก้ deliverability แล้วค่อย **คลิกทดสอบจริงบนแอป** ทั้งเส้น (สมัคร → กรอก OTP → login → เข้า Home/HomeAdmin ไม่เด้งกลับ ระวัง PT-11), (3) ทดสอบเคส login ด้วยบัญชีที่ยังไม่ยืนยัน (ต้องสร้างบัญชีทดสอบใหม่ — บัญชีเดิม `mju6500000099@mju.ac.th` ถูกลบไปแล้ว 2026-08-10 พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี), (4) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น
 
 ---
@@ -25,9 +31,9 @@
 
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
-| 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin ทำงานจริง เหลือ Confirm Email flow (D-20) — หยุดไว้ชั่วคราว** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · Edit Profile ยังไม่สร้าง · OTP flow สร้างโค้ดเสร็จแต่ติด email deliverability (ดู D-20) |
+| 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email flow (D-20)** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · **`ProfileUser` เสร็จ 2026-08-14** (แสดงข้อมูล user + เปลี่ยนชื่อ/รูป + logout — ดู PT-14) เหลือ `phone`/`bio` · **auth backend = Supabase แล้ว (D-21)** ยังไม่ regression test ทั้งเส้น · OTP flow ติด email deliverability (D-20) |
 | 2 | Product Listings + Storage | 🟨 **อัปจริงผ่านแอปสำเร็จแล้ว 2026-08-10 (6 object จริงใน `storage.objects`) เหลือแค่เทส reject >5MB/ผิดชนิด** | 🟨 **`addproduct` — insert ทดสอบผ่านบนแอปจริงแล้ว 2026-08-10, เจอ+แก้บั๊กรูปพรีวิวขาวเปล่าแล้ว แต่ยังไม่ทดสอบซ้ำ** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเริ่ม |
-| 3 | Browse / Search / Filter | ⬜ | ⬜ | ใช้ view เดิม ไม่มีตารางใหม่ |
+| 3 | Browse / Search / Filter | ⬜ | 🟨 **`AllList` (Home) + `ProductDetails` ทำแล้ว 2026-08-14** | `AllList` ผูก `products_review_view` (filter `moderation_status='approved'`) แตะแล้วส่ง `productId` ไป `ProductDetails` · ยังไม่มี search/filter · รูปสินค้ายังเป็น placeholder (ต้อง index `image_urls[1]` — ติด PT-10) |
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | ⬜ ยังไม่มีตาราง | ⬜ | |

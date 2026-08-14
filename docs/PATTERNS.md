@@ -244,3 +244,48 @@ bind: `FFVariable(source: POSTGRES_QUERY, baseVariable: postgresQuery, operation
    **เคยเกิดจริง:** toggle "Edit Profile" ไปแปะทับปุ่ม Log Out → Log Out เสียแอ็กชัน sign-out ไปเงียบ ๆ กลายเป็นเปิดช่องเปลี่ยนชื่อแทน
 
 **ใช้แล้วที่:** L1 (`ProfileUser`) · **ใช้ซ้ำได้ทุกหน้าที่แสดงข้อมูลของ user ปัจจุบัน** (Edit Profile, MyPost, ฯลฯ)
+
+---
+
+## PT-15 — 🔴 ผูก query เข้า view/table ใหม่ที่เพิ่งสร้างใน Supabase + selector พังหลัง `ensureRemoved` (พบทำ L8 `HomeAdmin` 2026-08-14)
+
+**1. `ff.Pages.X.widgets.byKey(key).single` (typed SDK, static) ไม่ปลอดภัยเมื่อผสมกับ `ensureRemoved`/`ensureReplaced` ของ sibling ที่อยู่ "ก่อนหน้า" ใน block เดียวกัน**
+
+อาการ: `Bad state: page X findByPath("X.body[0]...children[N]...") found no matches.` ทั้งที่โค้ดเขียนด้วย `.byKey(...)` ไม่ใช่ `.byPath(...)` เลย
+
+สาเหตุ: `.widgets.byKey(key)` (เมธอดบน `ProjectWidgetTree` ที่มาจาก `lib/flutterflow_project/pages/*.dart` — สแนปช็อตนิ่ง) รีโซลฟ์ผ่าน path ที่ฝังมาตอน generate ไฟล์ ไม่ใช่ค้นหา key สดในทรีปัจจุบัน — ต่างจาก `page.findByKey(key)` (เมธอดบน `EditPageBuilder` ที่ได้จาก `app.editPage(page, (page) {...})`) ซึ่งค้นสดจริง
+พอ `ensureRemoved`/`ensureReplaced` ของ sibling ที่มา "ก่อน" ใน execution order ลบ/แทนที่โหนดออกไป ดัชนีของพี่น้องที่เหลือเลื่อน → path ที่ฝังไว้ใน `.byKey(...)` ของ typed SDK ชี้ผิดที่ทันที (เหมือน PT-14 ข้อ 4 แต่คนละกลไก — ข้อ 4 คือ `.byPath(...)` ตรง ๆ, ข้อนี้คือ `.byKey(...)` ที่ดูปลอดภัยแต่ไม่ใช่)
+
+**ทางแก้:** ใช้ `page.findByKey(key)` (ของ `EditPageBuilder`) แทน `ff.Pages.X.widgets.byKey(key).single` (ของ typed SDK) ทุกจุดที่อยู่ใน scope เดียวกับการ `ensureRemoved`/`ensureReplaced` — โดยเฉพาะเมื่อมีการลบ widget ที่อยู่ "ก่อน" widget อื่นในลิสต์พี่น้องเดียวกัน (ancestor chain เดียวกัน)
+
+**2. ผูก query เข้า table/view ที่เพิ่งสร้างใน Supabase ตรง ๆ (ยังไม่เคยผ่าน `flutterflow ai refresh-context`) จะ validate fail แม้ compile ผ่าน**
+
+อาการ: `Table is not properly set in database query for <Page>` + `Invalid postgres row field operation` ที่ทุก Text ที่ผูกกับ field ของ table นั้น
+
+สาเหตุ: compiler validate `FFIdentifier(name: 'ชื่อ table/view')` เทียบกับ **ลิสต์ table ที่โปรเจกต์รู้จักเอง** (เก็บใน proto ของโปรเจกต์) ไม่ใช่เช็คกับ Postgres สด — สร้างแค่ `PostgresTableHandle('ชื่อ', {...}, isView: true)` ในเครื่องแล้วยัดใส่ `PostgresQuery(...)` compile ผ่านเฉย ๆ (syntax ถูก) แต่ validate ตอน push ไม่ผ่าน
+`flutterflow ai refresh-context` ไม่ช่วย — รันแล้ว `lib/flutterflow_project/schemas.dart` ก็ยังไม่เห็น table ใหม่ (ยังไม่รู้กลไกที่แท้จริงว่า FF sync schema จาก Postgres ตอนไหน)
+
+🔴 **ห้ามแก้ด้วย `app.table(...)`** — เมธอดนี้เช็ค `_ensureSqlBackendConfigured` ซึ่งบังคับให้เรียก `app.supabase(url:, anonKey:)` **ในสคริปต์เดียวกัน** ก่อน ถ้าโปรเจกต์ Supabase ต่ออยู่แล้ว (เคสเกือบทุกครั้งของโปรเจกต์นี้) การ re-declare `app.supabase(...)` มีความเสี่ยงเขียนทับ config auth จริงโดยไม่ตั้งใจ (ดู PT-13 ที่เจอปัญหาจากการสลับ backend มาแล้วครั้งหนึ่ง) — ไม่คุ้มเสี่ยงสำหรับแค่จะเพิ่ม table หนึ่งตัว
+
+**ทางแก้ที่ปลอดภัย:** เรียก `postgres_helpers.addTable(project, name:, fields:, isView:)` ตรง ๆ ใน `app.raw` — ฟังก์ชันนี้เขียนเข้า `project.currentSupabaseConfig`/`postgresConfig` ที่มีอยู่แล้วโดยตรง ไม่แตะ credential ใด ๆ
+```dart
+import 'package:flutterflow_ai/src/helpers/postgres_helpers.dart' as postgres_helpers;
+// ...
+app.raw((project) {
+  if (postgres_helpers.findTable(project, name: 'ชื่อ_view') == null) {
+    postgres_helpers.addTable(project, name: 'ชื่อ_view', isView: true, fields: [
+      postgres_helpers.postgresField('col', type: FFDataTypeV2(scalarType: FFBaseDataType.Integer), postgresType: 'int8'),
+      // ...
+    ]);
+  }
+  // ตามด้วย databaseRequest/query ปกติ (PT-14) — ตอนนี้ FFIdentifier(name: 'ชื่อ_view') validate ผ่านแล้ว
+});
+```
+⚠️ `postgres_helpers.dart` อยู่ใต้ `src/` ของแพ็กเกจ — import ตรงด้วย path เต็ม (`package:flutterflow_ai/src/helpers/postgres_helpers.dart`) ได้จริง ไม่ถูกบล็อก แค่ไม่อยู่ใน barrel สาธารณะ `flutterflow_ai.dart`
+`addTable` throw ถ้าชื่อซ้ำ — ต้อง guard ด้วย `findTable(...) == null` เสมอเพื่อให้ rerun ได้ (เหมือน PT-12 ข้อ 9)
+
+**3. `PostgresOrderBy('col', ascending: false)` ไม่ generate `ascending` ใน `.order(...)` เลย (พบว่าเป็นมาแล้วตั้งแต่ `AllList`)**
+
+โค้ดที่ออกมาคือ `.order('created_at')` เฉย ๆ ไม่มี flag ทิศทางใด ๆ — เป็น gap เดิมของ SDK เวอร์ชันนี้ ไม่ใช่บั๊กที่เพิ่งเกิด (เช็คแล้วว่า `AllList` ที่ deploy จริงก็เป็นแบบนี้เหมือนกัน) ถ้าลำดับ (ใหม่สุดก่อน/เก่าสุดก่อน) สำคัญกับ feature ที่ทำ ต้องเปิด `generated_code/` ยืนยันเองทุกครั้ง ห้ามเชื่อว่า `ascending: false` ทำงานจากแค่โค้ด DSL
+
+**ใช้แล้วที่:** L8 (`HomeAdmin` — `admin_dashboard_stats`) · เช็คก่อนทุกครั้งที่ผูกหน้าใหม่เข้า view/table ที่สร้างเองใน Supabase ระหว่าง session เดียวกัน (ไม่ใช่ table เดิมที่มีอยู่แล้วใน `ff.Tables`)

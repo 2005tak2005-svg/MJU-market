@@ -422,3 +422,22 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - reference ของ user ปัจจุบัน**ทั้งโปรเจกต์**ต้อง rewrite `FIREBASE_AUTH_USER` → `SUPABASE_AUTH_USER` พร้อมกันใน push เดียว ไม่งั้น validate ไม่ผ่าน (วิธี + กับดัก: `PATTERNS.md` **PT-13**)
 - **`DISPLAY_NAME`/`PHOTO_URL` ไม่มีใน Supabase auth** → คำทักทายหน้า `Home` ถูก remap เป็น **อีเมล** — ✅ **pete ทดสอบแล้วรับได้ ถือเป็นพฤติกรรมที่ตั้งใจ ไม่ใช่งานค้าง** (ถ้าวันหลังอยากได้ `full_name` ผูก page-level query แบบ **PT-14**)
 - ⚠️ **ยัง regression test ไม่ครบ** — ทดสอบจริงแค่ `ProfileUser` ส่วนสมัคร/OTP/role-routing/upload ยังไม่ได้ไล่ (อยู่ในคิว `STATUS.md` ข้อ 0)
+
+---
+
+## D-22 — `HomeAdmin`: reuse template shell แทน redesign, ตัดชาร์ต/activity ปลอมทิ้งแทนที่จะผูกข้อมูลหลอก (2026-08-14)
+
+**บริบท:** `HomeAdmin` เดิมเป็น generic "check.io" project-management dashboard template ที่ import เข้ามาทั้งยวง — ทุกปุ่มแค่ `print('Button pressed ...')` ไม่มี binding อะไรเลย มีทั้ง fake ชื่อทีม (Randy Peterson, Rudy Fernandez, Abigail Rojas ฯลฯ), fake ตัวเลข task-completion/trend %, และปุ่ม "Assign"/"Create Task"/"Add New" ที่ไม่มี concept ที่ตรงกันในระบบซื้อขายนี้เลย
+
+**ตัดสินใจ (pete สั่งชัดเจน):** ใช้โครง widget เดิมต่อ ไม่ redesign ใหม่ทั้งหน้า — เปลี่ยนแค่ข้อความ + ผูก query จริงเข้าส่วนที่มี concept ตรงกัน:
+- side-nav identity card + stat card ตัวเลข → ผูกจริงผ่าน `admin_dashboard_stats` (view ใหม่, ดู `SCHEMA.md`)
+- "Upcoming Milestones" table → กลายเป็นคิวสินค้ารอตรวจ (`products_review_view` filter `moderation_status='pending'`) — **นับเป็นการเริ่มใช้คืนหนี้ L8 ข้อ "รวมหน้า Inspect เข้ามาเป็นส่วนหนึ่งของ dashboard"** เพราะ v2 ยังไม่มีหน้า Inspect แยก
+- ปุ่ม "Assign"/"Create Task"/"Add New" + avatar ทีมปลอม (`userRow`) → **ลบทิ้ง** (`page.ensureRemoved`) ไม่ใช่แค่ซ่อน — ปุ่มที่กดแล้วไม่ทำอะไรเลยในแผงแอดมินจริงแย่กว่าไม่มีปุ่ม
+- ชาร์ต "Dashboard_recentActivity" + panel "Activity" (feed เพื่อนร่วมทีมปลอม) → **ลบทิ้งทั้งคู่** แทนที่จะผูกข้อมูลหลอกหรือทิ้งไว้เฉย ๆ เพราะไม่มี concept ที่ตรงกันในระบบนี้เลย (ไม่มี "task completion" ไม่มีทีม) และไม่มีตาราง audit/activity-log จริงให้ผูก
+
+**เหตุผล:** งานนี้ scope คือ "ผูก query + เปลี่ยนข้อความ ไม่ต้อง redesign" — แต่ element ที่ **ไม่มี concept ตรงกันเลย** (ชาร์ต/activity feed) ไม่เข้าเงื่อนไข "fit this layer's spec" จึงตัดสินใจว่าดีกว่าที่จะเอาออกแทนที่จะฝืนผูกด้วยข้อมูลปลอมหรือทิ้งไว้ให้เข้าใจผิดว่าเป็นของจริง
+
+**ผลที่ตามมา:**
+- นับเป็นจุดเริ่มของ L8 (ก่อนหน้านี้ ⬜ ทั้ง Supabase/FlutterFlow) — ยังไม่ปิด layer เพราะ RLS admin-only "กันยิง API ตรง" ยังไม่ทำ (`products`/`chat` ยัง allow-all ตามหนี้เดิม), `"CAT"` CRUD ยังไม่มี, approve/reject action บนคิวสินค้ารอตรวจยังไม่ได้ wire (ตอนนี้กดแถวแค่ Navigate ไป `ProductDetails` เพื่อดูรายละเอียด ยังไม่มีปุ่มอนุมัติ/ปฏิเสธในหน้านี้)
+- feed "รายงานล่าสุด" (bind `reports` เข้า Activity panel) เป็น follow-up ที่ตั้งใจปล่อยไว้ ไม่ใช่ลืม — รอ L7 ตัดสินใจ `reports.status` vocabulary ก่อน (P-10)
+- กับดัก SDK 2 เรื่องที่เจอระหว่างทำ (selector พังหลัง `ensureRemoved`, ผูก view ใหม่ต้อง `postgres_helpers.addTable`) บันทึกไว้ที่ `PATTERNS.md` **PT-15**

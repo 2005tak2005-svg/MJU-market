@@ -1,7 +1,7 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว
+> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว ยังไม่ได้ทดสอบผ่านแอปจริง
 > **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
 
 > 🔴 **บทเรียนใหญ่ของ session 2026-08-14:** `currentUserUid` เคยผูกกับ **Firebase** ทั้งที่ login จริงวิ่งผ่าน Supabase → เป็น `''` ตลอด ทำให้ query ที่ filter ด้วย user ปัจจุบัน**หาแถวไม่เจอ**แล้ว crash · แก้โดยสลับ auth backend เป็น Supabase (D-21)
@@ -16,6 +16,8 @@
 ---
 
 ## 🔥 คิวถัดไป (3 อันดับ)
+
+0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ยังไม่ได้ทดสอบผ่านแอปจริง** ต้องเปิดแอปจริงด้วยบัญชี admin (`mju6577778888@mju.ac.th`) เช็ค: (1) การ์ด "ผู้ใช้ทั้งหมด/สินค้ารอตรวจ/ถูกระงับ" ขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) ก่อนปิดข้อนี้ให้รัน `db-verifier`/`ui-checker` ด้วยก็ได้
 
 0. **🔴 regression test ที่เหลือหลังสลับ auth backend (D-21)** — **สมัครใหม่ · OTP · role-routing** (user→`Home`, admin→`HomeAdmin`) · อัปรูปใน `addproduct`
    เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน
@@ -39,7 +41,7 @@
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | ⬜ ยังไม่มีตาราง | ⬜ | |
 | 7 | Reviews & Reports | 🟨 `reports` มีแล้ว (ไม่มี policy) / `reviews` ยังไม่มี | ⬜ | |
-| 8 | Admin Dashboard | ⬜ | ⬜ | |
+| 8 | Admin Dashboard | 🟨 **เริ่มแล้ว 2026-08-14** | 🟨 **`HomeAdmin` เริ่มผูกข้อมูลจริง** | `admin_dashboard_stats` + `admin_sales_by_seller` (view ใหม่) · `reports` มี admin-read policy แล้ว · `"Profile".is_banned` เพิ่มใหม่ (นับอย่างเดียว ยังไม่ enforce) · การ์ดสถิติ (ผู้ใช้ทั้งหมด/สินค้ารอตรวจ/ถูกระงับ) + คิวสินค้ารอตรวจ (แทน Inspect แยก) + กราฟยอดขายตามผู้ขาย (ว่างจริงเพราะยังไม่มี `transactions`, L5) ผูกจริงหมดแล้ว — เหลือ: RLS admin-only แบบเต็ม (กันยิง API ตรง — หัวใจ DoD ข้อนี้), `"CAT"` CRUD, ปุ่ม approve/reject บนคิวสินค้า (ตอนนี้แค่ Navigate ไปดูรายละเอียด) |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม
 
@@ -97,7 +99,12 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - `reviews` ใช้ RLS allow-all หรือ restrictive
 
 **Layer 8**
-- ยังไม่ได้เริ่มคุยรายละเอียด
+- 🟨 เริ่มคุยแล้ว 2026-08-14 (`HomeAdmin` stat cards + sales graph) — ค้างจริง:
+  - RLS admin-only แบบเต็ม (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all — D-03) ยังไม่ทำ ทั้งที่เป็นหัวใจของ L8 DoD
+  - หน้า `Inspect` แยกยังไม่มีใน v2 — ตอนนี้ "คิวสินค้ารอตรวจ" ใน `HomeAdmin` ทำหน้าที่แสดงรายการแทนบางส่วน แต่ยังไม่มีปุ่ม approve/reject จริง (แตะแถวแค่ Navigate ไป `ProductDetails`)
+  - `"CAT"` ยังจัดการ (CRUD) ผ่าน UI ไม่ได้ ยังต้อง seed ด้วยมือ
+  - กราฟยอดขาย (`admin_sales_by_seller`) เป็น**ทางลัดชั่วคราว**จาก `products.status='sold'` เพราะยังไม่มีตาราง `transactions` (L5) — ต้องตัดสินใจตอน L5 เริ่มว่าจะย้ายไปอ้างอิง `transactions` จริงไหม
+  - FlutterFlow AI DSL **ไม่มี** `Chart` widget constructor (เช็คแล้วจากทั้ง docs และ widget surface) — กราฟที่ทำได้ตอนนี้คือ ranked list ธรรมดา ไม่ใช่ chart จริง ถ้าต้องการกราฟจริงต้องไปทาง custom widget + pub package (`fl_chart` เป็นต้น) ซึ่งเป็นงานคนละขนาด
 
 ---
 
@@ -112,6 +119,7 @@ view ที่ join `public_profiles` ถูกพิสูจน์แล้ว
 - [ ] ข้อมูลทดสอบค้างอยู่ใน DB: user 4 คน + `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี (บุคลากร)`) — ต้องล้างก่อน production
       (`bio`/`phone` **ไม่ได้ค้าง** — ดูหมายเหตุเรื่อง auto-rollback ใน `checks/_common.sql`)
 - [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้ ถ้า L8 ให้ admin เพิ่มหมวดหมู่เองควรใส่
+- [ ] **`"Profile".is_banned` มีคอลัมน์แล้วแต่ไม่มี enforcement เลย** (เพิ่ม 2026-08-14 พร้อม L8) — ตอนนี้เป็นแค่ตัวนับให้แอดมินดูใน `HomeAdmin` ไม่มี RLS/Action Flow ไหนเช็คค่านี้จริง (login ได้ปกติ, โพสต์/แชทได้ปกติ แม้ `is_banned = true`) — ยังไม่มี UI ให้แอดมินกดแบนด้วยซ้ำ (แก้ค่าได้แค่ผ่าน SQL ตรง ๆ ตอนนี้) ต้องตัดสินใจพร้อมกันว่าจะ enforce ตรงไหนบ้างก่อนใช้จริง (RLS ปฏิเสธ insert/update ของ user ที่ถูกแบน, กัน login, หรือแค่ซ่อนสินค้า)
 - [ ] **ไฟล์กำพร้าใน `avatars`** — เปลี่ยนรูปโปรไฟล์แล้วไฟล์เก่าไม่ถูกลบ และ `avatar_url` ชี้ URL ที่ไฟล์อาจไม่มีแล้ว (D-15) — แก้พร้อมข้อถัดไป
 - [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
 - [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน

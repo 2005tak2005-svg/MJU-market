@@ -46,11 +46,23 @@
    **ต่างจาก PT-07 เดิมที่ร่างไว้ (Backend Query + Conditional เทียบ string):** `PostgresQuery` + `FieldAccess` ดึงฟิลด์เดียวจากแถวเดียวไม่ได้จริงในเวอร์ชัน SDK นี้ (compile error) จึงใช้ custom action แทน — เหตุผลเต็มที่ `../PATTERNS.md` **PT-10** (PT-07 เองก็แก้ไขให้ตรงกับของจริงแล้ว)
    ยืนยันด้วย server timestamp จริง (`auth.users.last_sign_in_at`) ว่าทั้ง 2 เส้นทางทำงาน: user → `Home`, admin → `HomeAdmin`
    🔴 **งานค้าง (D-17):** login ด้วยบัญชีที่ยังไม่ยืนยันอีเมล **ไม่ถูกดักเลย** — ผู้ใช้จะเห็น error ดิบจาก Supabase ("Email not confirmed") ตรง ๆ
-4. **⬜ หน้า Edit Profile — ยังไม่ได้ทำ** — Backend Query อ่าน/เขียน `"Profile"` ของ `auth.uid()` แก้ได้แค่ `full_name` / `avatar_url` / `phone` / `bio`
+4. **🟨 หน้า `ProfileUser` — ทำแล้ว 2026-08-14 (แทนแผน "Edit Profile" เดิม)** — แสดง avatar/ชื่อ/อีเมลของ user ที่ล็อกอิน + เปลี่ยนชื่อ + เปลี่ยนรูปโปรไฟล์ + Log Out
+   **วิธีผูกข้อมูล: page-level Backend Query** บน Scaffold (`Scaffold_8myjbpxe`) — `"Profile"` filter `id = SUPABASE_AUTH_USER.USER_ID`, `isSingleRow` + **`hideOnEmpty = true`** (ดู PT-14 ข้อ 1) แล้ว bind widget ตรง ๆ ด้วย `POSTGRES_QUERY` + `accessPostgresRowField` **ไม่ใช้ ListView/page state**
+   - visibility ของทุก field ใช้ `EXISTS_AND_NON_EMPTY` / `DOES_NOT_EXIST_OR_IS_EMPTY` (**ห้ามใช้ `EQUAL_TO ''`** — ดู PT-14 ข้อ 2)
+   - อัปรูป → bucket `avatars` path `<currentUserId>/<ไฟล์>` (PT-08) **ต้องตั้ง `maxResolution` + `imageQuality`** ไม่งั้นโดน 413 (PT-14 ข้อ 3)
+   - ทดสอบผ่านแอปจริงแล้ว: แสดงข้อมูลถูก · เปลี่ยนชื่อ/รูปได้ · Log Out ออกจริง
+   - ⬜ ยังไม่ได้ทำ: แก้ `phone` / `bio`
+   ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่
+
+<details><summary>แผนเดิม "Edit Profile" (ยังไม่ได้ทำ — เก็บไว้อ้างอิง)</summary>
+
+Backend Query อ่าน/เขียน `"Profile"` ของ `auth.uid()` แก้ได้แค่ `full_name` / `avatar_url` / `phone` / `bio`
    ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่ ใส่ลง Update Row เมื่อไหร่ทั้ง statement fail
    - **อัปรูปโปรไฟล์** → bucket **`avatars`** (public · 2 MB · jpeg/png/webp) path `<currentUserId>/<ชื่อไฟล์>` — ใช้ **PT-08** ท่าเดียวกับรูปสินค้า ต่างแค่ชื่อ bucket
    - เอา URL ที่ได้ไปใส่ `avatar_url` ใน Update Row เดียวกับ `full_name`/`phone`/`bio`
    - ⚠️ เปลี่ยนรูปแล้ว**ไฟล์เก่าไม่ถูกลบ** — `avatar_url` เป็นแค่ text ไม่ผูกกับไฟล์จริง (หนี้ใน D-15)
+
+</details>
 5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
 
 ## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราว 2026-08-10 ต้องแก้ email deliverability ก่อนถึงจะปิด L1 ฝั่ง FlutterFlow ได้
@@ -126,7 +138,8 @@
 
 | ที่ใช้ในเอกสาร | ประเภท | หมายเหตุ |
 |---|---|---|
-| `SignUp` · `Login` · `Home` · `HomeAdmin` · `ConfirmEmail` | ชื่อหน้า | `ConfirmEmail` ใหม่ 2026-08-09 (D-20, route `/confirm-email`) — 5 หน้าที่มีอยู่ใน v2 ตอนนี้ |
+| `SignUp` · `Login` · `Home` · `HomeAdmin` · `ConfirmEmail` · `ProfileUser` · `ProductDetails` · `addproduct` · `Mypost` | ชื่อหน้า | `ConfirmEmail` ใหม่ 2026-08-09 (D-20, route `/confirm-email`) · `ProfileUser`/`ProductDetails`/`Mypost` เพิ่ม 2026-08-14 — 9 หน้าที่มีอยู่ใน v2 ตอนนี้ |
+| `ProfileUser` widget keys | Node key | `Scaffold_8myjbpxe` (page query) · `Container_vxr167r8` AvatarUploadTrigger · `Image_lt96pnt8` AvatarStoredImage · `Container_r0wbdujg` placeholder · `Text_wonqknhq` full_name · `Text_8jg3asd2` fallback ชื่อ · `Text_1x2wui64` email · `Container_twiyefr8` Edit Profile (toggle) · `Button_wbzo87yz` Log Out — 🔴 **อ้างด้วย key เสมอ ห้ามใช้ positional path** (PT-14 ข้อ 4) |
 | `SignUpWithProfile` · `IsCurrentUserAdmin` · `LoginWithEmailPassword` · `VerifyOtp` · `ResendSignupOtp` | Custom Action | ทั้งหมดรับ 0 argument ตามเหตุผลใน PT-09 · `LoginWithEmailPassword` ใหม่ 2026-08-09 (D-17) แทนที่ built-in `LoginEmailPassword` — sync `AppStateNotifier` เอง ดู PT-11 · `VerifyOtp`/`ResendSignupOtp` ใหม่ 2026-08-09 (D-20) — `VerifyOtp` ก็ sync `AppStateNotifier` เองเหมือนกัน (PT-11 ใช้ซ้ำ) |
 | `email` · `password` · `fullName` · `phone` · `loginEmail` · `loginPassword` · `otpCode` | App State | `loginEmail`/`loginPassword` ใหม่ 2026-08-09 — ย้ายจาก Page State ของ `Login` มาเป็น App State เพราะ `LoginWithEmailPassword` (custom action 0 arg) อ่านได้แค่ App State ตาม PT-09 · `otpCode` ใหม่ 2026-08-09 (D-20) — อ่านโดย `VerifyOtp` |
 

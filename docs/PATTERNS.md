@@ -371,3 +371,17 @@ app.raw((project) {
 **ทางแก้:** หลัง `INSERT INTO auth.users` ต้อง (1) `INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, ...)` คู่กันเสมอ (2) explicit ใส่ `''` ให้ทุกคอลัมน์ `*_token`/`email_change`/`phone_change` แทนปล่อย default — สองข้อนี้ signup ผ่านแอปจริง/Admin API ทำให้อัตโนมัติอยู่แล้ว มีปัญหาเฉพาะตอน insert ตรงด้วย SQL เท่านั้น
 
 **ใช้แล้วที่:** L1 (สร้างบัญชีทดสอบ `mju6500000002@mju.ac.th` สำหรับเทส L7 report-a-listing) — ก่อนบอกว่าบัญชีทดสอบที่สร้างด้วย SQL "ใช้ได้" ต้อง curl ทดสอบ login จริงก่อนเสมอ อย่าเชื่อแค่ว่า insert สำเร็จ + trigger สร้าง Profile ได้
+
+---
+
+## PT-21 — 🔴 `ensure*` ที่ "ยังแมตช์อยู่" ก็อันตรายได้พอกับที่ key ตายไปแล้ว — ต้อง retire ทุกครั้งหลังสำเร็จ ไม่มีข้อยกเว้น (2026-08-15)
+
+PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto` ที่ key **ตายไปแล้ว** (ทำให้ validate fail หรือสร้าง orphan) — นี่คือกรณีที่ 3 ที่อันตรายไม่แพ้กัน: **`ensureReplaced` ที่ key ยังแมตช์ถูกต้องทุกครั้ง แต่เนื้อหาที่มัน replace เข้าไปเป็นเวอร์ชัน**เก่า**ที่ไม่รวมของที่เพิ่มเข้าไปทีหลัง**
+
+**เคสจริง:** `ProductDetailsBody`'s `ensureReplaced` (สร้างตอน L3 ยุคแรก) ถูกทิ้งไว้ active เดินทุก push โดยไม่มีใครสังเกต — พัง 1 push ให้หลังตอนเพิ่ม `ContactAdminButton` เข้าไปเป็น **child ของ subtree เดียวกัน** ผ่าน `ensureInsertedInto` แยกต่างหาก: ทุกครั้งที่ push ใด ๆ ก็ตาม (ไม่ต้องเกี่ยวกับ `ProductDetails` เลย) สคริปต์รันทั้งไฟล์ ทำให้ `ensureReplaced` ตัวเก่าคืนค่า subtree กลับไปเป็นเวอร์ชันดั้งเดิม (ไม่มีปุ่ม) ทับของใหม่ทุกครั้ง — ปุ่มหายไปเงียบ ๆ โดยไม่มี error ใด ๆ เลย ทั้ง validate และ push ผ่านปกติทุกรอบ
+
+**ทำไมเพิ่งเจอตอนนี้:** ตรวจสอบ `Reports`/`ReportDetail`/`Home` bell icon (ที่มี `ensureReplaced`/`ensureInsertedInto` เก่าทิ้งไว้ active เหมือนกัน) แล้วพบว่า**ไม่มีปัญหา** เพราะไม่เคยมีอะไรถูกเพิ่มเข้าไปใน subtree ของมันทีหลัง — สิ่งที่ทำให้ `ProductDetailsBody` ต่างออกไปคือมี `ensureInsertedInto` แยกต่างหากมาแตะ child ของมันในภายหลัง เป็น**combo**ที่อันตราย ไม่ใช่แค่การทิ้ง `ensureReplaced` ไว้เฉย ๆ
+
+**กฎใหม่ (เข้มกว่า PT-16 เดิม):** `ensureReplaced`/`ensureInsertedInto` ทุกตัวที่สำเร็จแล้ว **ต้อง retire ทันที** ไม่ว่า key จะยังแมตช์อยู่หรือไม่ก็ตาม และไม่ว่าจะเคยเห็นปัญหาจริงหรือยัง — "ยังไม่เจอปัญหา" ไม่ใช่ "ปลอดภัย" ถ้ามีอะไรมาแตะ subtree เดียวกันทีหลังเมื่อไหร่ก็พังทันทีแบบไม่มี error เตือน ก่อนแตะ `dsl/edit.dart` ทุกครั้ง: `grep -n "page.ensureReplaced(\|page.ensureInsertedInto("` แล้วเช็คว่าทุกก้อนที่เจอ**ต้องเป็นของ push นี้เท่านั้น** ถ้าเจอก้อนเก่าที่ค้างอยู่ (ไม่ใช่ `PendingProductsList` ที่มีข้อยกเว้นถาวรตาม PT-19) ให้ retire ทิ้งทันทีไม่ต้องรอให้พังก่อน
+
+**ใช้แล้วที่:** L3 `ProductDetails` (D-27) — สำรวจทั้งไฟล์แล้ว retire เพิ่ม `ReportsList`/`ReportDetailContent`/`Home` bell icon/ทิ้ง dead code `PendingProductsList` เวอร์ชันเก่าที่ target key ตายไปนานแล้ว (`ListView_mctnycd6`) ที่ไม่เคยถูกลบออกเลยตั้งแต่หลายรอบก่อนหน้า

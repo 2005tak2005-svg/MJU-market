@@ -464,3 +464,37 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ผล:** L6 ⬜→🟨 · L8 ปิดช่องโหว่ "approve/reject ยังไม่ wire" จาก D-22 · RLS admin-only ยังเหลือ (ปิดแค่ 2 คอลัมน์)
 
 **ผลที่ตามมา:** L6 ขยับจาก ⬜ เป็น 🟨 ทั้งสองฝั่ง (ไม่ใช่ ✅ — ยังไม่ทดสอบผ่านแอปจริง, ยังไม่มี push จริง) · L8 ปิดช่องโหว่ "approve/reject บนคิวสินค้ารอตรวจยังไม่ได้ wire" จาก D-22 แล้ว แต่ RLS admin-only แบบเต็มยังเป็นของค้างเหมือนเดิม (ตอนนี้ปิดแค่ 2 คอลัมน์ ไม่ใช่ทั้งตาราง)
+
+## D-24 — root cause ของบั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) + เปิดใช้ `reports` จริง (2026-08-15)
+
+**Root cause ที่ยืนยันแล้ว (ไม่ใช่เดา):** `NotificationsTable().insert()` ที่ codegen สร้างให้ ทำ `.insert(data).select().limit(1).single()` เสมอ (ไม่มีทางปิด select-back ได้จาก DSL) — select-back โดน RLS **SELECT** policy กรอง ไม่ใช่ INSERT policy เดิม `notifications` มีแค่ policy `user_id = auth.uid()` → admin insert แจ้งเตือนให้ seller คนอื่นแล้ว select-back เห็น 0 แถว → PostgREST error → ทั้ง insert rollback → exception ทำให้ action chain หยุดก่อนถึง `context.pop()` (สาเหตุเดียวอธิบายทั้ง "sheet ไม่ปิด" และ "ไม่มี notification" — ไม่ใช่ 2 บั๊ก)
+
+**ตัดสินใจ:**
+- เพิ่ม policy `admin can read all notifications` (SELECT, `private.is_admin()`) — OR กับ policy เดิม แก้ root cause ตรง ๆ
+- เปิดใช้ `reports` จริง: **ทั้งสองทาง** — (1) user รายงานสินค้าได้เอง (`ReportProductSheet` บน `ProductDetails`) (2) admin reject ก็ log เข้า `reports` ด้วย (เขียนที่ 3 ต่อจาก update products + insert notifications เดิม ไม่ใช่แทนที่)
+- พบกับดักเดียวกันซ้ำล่วงหน้าที่ `reports`: ถ้าเปิดแค่ INSERT policy โดยไม่มี SELECT ให้ reporter อ่านแถวตัวเอง จะพังแบบเดียวกันตอน user ทั่วไปรายงาน (ไม่ใช่แค่ admin) — เพิ่ม policy `reporter can read own reports` (SELECT, `reporter_id = auth.uid()`) กันไว้ล่วงหน้า ไม่ต้องเจอเองอีกรอบ
+- `status`: `'pending'` (user รายงาน) / `'resolved'` (admin log ตอน reject, ถือว่า action แล้วตั้งแต่สร้าง) — เพิ่ม `CHECK (status IN ('pending','resolved'))` + `DEFAULT 'pending'`
+- `reported_product_id` FK เปลี่ยนจาก `ON DELETE CASCADE` เป็น **`ON DELETE SET NULL`** — ลบสินค้าไม่ควรลบประวัติ report ทิ้งไปด้วย (`reports_admin_view` มี `LEFT JOIN products` อยู่แล้วเลยไม่กระทบ)
+- กันสแปมรายงานซ้ำด้วย **partial unique index** `(reporter_id, reported_product_id) WHERE status = 'pending'` — เปิดรายงานซ้ำได้ใหม่หลัง resolved แล้วเท่านั้น ไม่บล็อกถาวร
+- `reports_admin_view` (มี `security_invoker = true` เหมือน `products_review_view`) join `products` + `public_profiles` 2 รอบ (reporter/seller name) — ดู D-01 สำหรับ pattern นี้
+
+**ตัดออกจากสโคปนี้:** ไม่ส่ง notification ตอนรายงาน (pete เลือก, เก็บเงียบไว้ให้ admin ไปดูเอง) · ไม่มี resolve/dismiss UI · admin mailbox แค่ list+detail พื้นฐาน
+
+**พบว่าทำไม่ได้ตามแผนเดิม:** ตั้งใจจะใส่ `onFailure`/`onSuccess` Snackbar ให้ทุก Postgres write ใน reject chain (กันเงียบซ้ำแบบ root cause) — เช็ค SDK source ตรง ๆ แล้วพบว่า `onSuccess`/`onFailure` มีแค่บน `ApiCall` เท่านั้น `PostgresCreate`/`PostgresUpdate`/`PostgresQuery`/`PostgresDelete` ไม่มี parameter นี้เลย และไม่มี chain-level try/catch ใด ๆ ใน SDK เวอร์ชันนี้ — ตัด scope นี้ออก บันทึกเป็น **PT-18**
+
+**สถานะ ณ จบ session:** SQL ทั้งหมด apply แล้วจริงและ verify ผ่านครบ (ดู `checks/L7.sql` และ impersonation test ใน session log) — DSL (`ReportProductSheet`, `ProductDetails` entry point, `RejectProductSheet` 3rd write, `Reports`/`ReportDetail` pages) เขียนเสร็จใน `dsl/edit.dart` แล้วแต่**ยังไม่ push** เพราะเจอบล็อกใหม่ที่ไม่เกี่ยวกัน — ดู **D-25**
+
+## D-25 — 🔴 พบ regression บล็อกทุก push บนโปรเจกต์ FlutterFlow ไม่เกี่ยวกับงานวันนี้เลย (2026-08-15)
+
+**อาการ:** `flutterflow ai run`/`validate` ทุกครั้งวันนี้ (ตั้งแต่ ~08:25 เป็นต้นมา) fail ด้วย validation error ใหม่ 7 ตัวที่ไม่เคยมีมาก่อน:
+- `VALIDATION_PARAMETER_PASSING` x4 — พารามิเตอร์ `productId`/`productTitle`/`sellerId` ที่ `PendingProductItem`/`IconButton` ส่งให้ `ProductDetails`/`RejectProductSheet` "not properly set"
+- `VALIDATION_SUPABASE_DATABASE_ACTION` x1 — filter ผิดใน Supabase action ของ `IconButton`
+- `VALIDATION_PROPERTY_OVERRIDE` x2 — "Generator variable does not exist" บน `Text` widget 2 ตัว
+
+**ยืนยันแล้วว่าไม่เกี่ยวกับงานวันนี้:** รัน `dsl/edit.dart` เวอร์ชัน**เดิมเป๊ะ**ที่ push สำเร็จล่าสุด (commit `UwVD988G`, 02:47:29Z, ผ่านแล้วตอนนั้นด้วย warning เดิม 12 ตัวล้วน — border radius/shrinkWrap/auth-navigate ไม่มีตัวไหนเป็น error บล็อก) ผ่าน `flutterflow ai validate` ตรง ๆ **ได้ error ชุดใหม่ 7 ตัวเดียวกันทุกตัว** ⇒ เป็นการเปลี่ยนแปลงฝั่ง **server-side** ของโปรเจกต์ FlutterFlow เองระหว่าง 02:47–08:25 ไม่ใช่จากสคริปต์ฝั่งนี้
+
+**สงสัยแหล่งที่มา:** session นี้มี FlutterFlow Desktop live-paired (`live.status` → `paired: true`) ระหว่างที่ pete ทดสอบ reject flow/admin login ผ่านแอปจริง — เข้าข่ายเดียวกับที่ `PATTERNS.md` PT-16/PT-17 เคยบันทึกไว้ (orphan node ไม่ error แต่ validate เจอ) แต่ key ของ node ที่ error (เช่น `Container_r7ef6frs`, `IconButton_o8lcyzzx`) **สุ่มใหม่ทุกครั้งที่ validate** — ไม่ใช่ key คงที่แบบ orphan ที่เคยเจอ จึงยังไม่ยืนยันกลไกแน่ชัด
+
+**ตัดสินใจ:** **ไม่แตะ sweep/แก้อัตโนมัติ** — PT-17 §2 บันทึกไว้ชัดว่า sweep แบบ reflection เคยลบ content จริงที่ยัง reachable ไปด้วยมาแล้วครั้งหนึ่ง ความเสี่ยงสูงกว่าจะลองแก้เอง ต้องเปิด FlutterFlow web/desktop editor ดู `HomeAdmin` ตรง ๆ (canvas) หรือเปิด support case ก่อน
+
+**ผล:** บล็อกทุก push ในโปรเจกต์นี้ ไม่ใช่แค่งาน reports feature — DSL ของ D-24 เขียนเสร็จรอ push อยู่ใน `dsl/edit.dart` ท้ายไฟล์ (ยังไม่ commit เข้า push จริง)

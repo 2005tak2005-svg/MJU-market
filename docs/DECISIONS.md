@@ -530,3 +530,14 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **แก้แล้ว:** retire `ProductDetailsBody`'s `ensureReplaced`, เพิ่มปุ่มกลับเข้าไปใหม่ผ่าน `ensureInsertedInto` แยก แล้ว retire ตัวนั้นด้วยหลัง push สำเร็จ — ยืนยันจาก `generated_code/` ว่า `if (widget!.fromNotifications)` ครอบปุ่มถูกต้อง และเนื้อหาส่วนอื่นของ `ProductDetailsBody` (รูป/ชื่อ/ราคา/คำอธิบาย/ผู้ขาย) ไม่กระทบ (commit `wU20KxD0sL9ENyFQZdgY`)
 
 **บทเรียนสำคัญ:** "ตรวจไม่เจอปัญหา" ไม่เท่ากับ "ปลอดภัยที่จะทิ้งไว้" — กฎ retire-หลัง-สำเร็จ (PT-16 เดิม) ต้องใช้กับ`ensure*`ทุกตัวไม่มีข้อยกเว้น ไม่ใช่แค่ตัวที่เคยเห็นพังจริงแล้ว
+
+## D-28 — ข้อจำกัดจริงของการเรียก subagent (`.claude/agents/`) ที่เจอตอนใช้งานจริง (2026-08-07, ย้ายมาจาก `AGENTS.md`)
+
+**1. เรียก subagent ได้เฉพาะบน Claude Code CLI ในเทอร์มินัล** — Cowork/เดสก์ท็อปเรียกไม่ได้ (รายชื่อ agent ล็อกตายตัว ขึ้น `Agent type 'db-verifier' not found`)
+ทางแก้เมื่อเรียกไม่ได้: implementer รันเองตาม checklist ใน `.claude/agents/db-verifier.md` เป๊ะ ๆ — เสียแค่ context isolation ไม่เสียความเข้มของการตรวจ
+
+**2. ห้าม hardcode ชื่อ Supabase MCP ในบรรทัด `tools:`** — โปรเจกต์นี้ไม่มี `.mcp.json` ชื่อ MCP จึงไม่คงที่ (Cowork = UUID เปลี่ยนทุก session, CLI = แล้วแต่ config ที่ยังไม่มี) ชื่อ `mcp__supabase__*` ที่เคยเขียนไว้เป็นแค่ placeholder ที่ไม่เคยมีจริง — hardcode แล้ว agent เรียก tool ไม่ได้แบบเงียบ ๆ
+**ตัดสินใจ:** ตัดบรรทัด `tools:` ออกจาก `db-verifier`/`doc-syncer` ให้ inherit จาก session แม่ (`ui-checker` คงไว้ได้ เพราะใช้ `Read, Glob, Grep, Bash` built-in ล้วน)
+**ผลข้างเคียง:** `db-verifier` ได้ `Write`/`Edit` ติดมาด้วยจากการ inherit ทั้งหมด — กติกา READ-ONLY จึงบังคับด้วย prompt เท่านั้น ไม่มีรั้วระดับ tool แล้ว (ถ้าอยากได้รั้วจริงคืนมา ต้องสร้าง `.mcp.json` ชื่อ `supabase` ด้วย Supabase access token ที่ pete เป็นคนใส่ แล้วค่อย pin `tools:` กลับ)
+
+**3. นิยาม subagent อยู่ที่ `.claude/agents/` ที่เดียว** — ห้ามทำสำเนาไว้ใน `docs/`, Claude Code โหลดจาก `.claude/` เท่านั้น สำเนาที่ไหนก็ตามจะกลายเป็นของเก่าที่ดูเหมือนของจริง

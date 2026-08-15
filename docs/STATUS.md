@@ -1,7 +1,8 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-15** — ✅ **D-26: แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ** (root cause: เป็น `NavBarPage` tab ไม่ใช่ pushed route, `NavigateBack()` ท้าย action chain ไม่มีอะไรให้ pop แล้วไปโดน router root/error builder — ลบเฉพาะ action นั้นแบบ surgical ไม่แตะส่วนอื่น) · เพิ่ม `Notifications` → `ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" (mock, เตรียมไว้สำหรับ L4) — push สำเร็จจริง ยืนยันผ่าน `generated_code/`
+> อัปเดตล่าสุด: **2026-08-15** — ✅ **D-27: ปุ่ม "ติดต่อแอดมิน" หายไปเงียบ ๆ 1 push หลัง D-26 — แก้แล้ว** root cause กว้างกว่าที่คิด: `ProductDetailsBody`'s `ensureReplaced` เก่า (จาก L3 ยุคแรก) ยัง active อยู่ ทุก push ที่รันทั้งไฟล์ (ไม่ต้องเกี่ยวกับ `ProductDetails`) จะคืนค่า body กลับเป็นเวอร์ชันดั้งเดิมทับปุ่มที่เพิ่มทีหลัง — ไม่มี error เตือนเลย ดู **PT-21** (กฎใหม่: `ensure*` ต้อง retire ทันทีหลังสำเร็จ ไม่ว่า key จะยังแมตช์อยู่หรือไม่) — สำรวจทั้งไฟล์แล้ว retire ก้อนเก่าที่ตกค้างอีก 4 ก้อน (`ReportsList`/`ReportDetailContent`/`Home` bell/`PendingProductsList` เวอร์ชันตายแล้ว) เผื่อไว้ล่วงหน้า
+> ก่อนหน้านั้น: ✅ **D-26: แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ** (root cause: เป็น `NavBarPage` tab ไม่ใช่ pushed route, `NavigateBack()` ท้าย action chain ไม่มีอะไรให้ pop แล้วไปโดน router root/error builder — ลบเฉพาะ action นั้นแบบ surgical ไม่แตะส่วนอื่น) · เพิ่ม `Notifications` → `ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" (mock, เตรียมไว้สำหรับ L4)
 > ก่อนหน้านั้น: ✅ **D-25 regression แก้แล้ว + push สำเร็จจริง** (root cause: `PendingProductsList` validate ผ่านเฉพาะตอน authored สดในพุชเดียวกัน — ดู PATTERNS.md PT-19) · root cause บั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) ปิดแล้วที่ชั้น RLS (D-24) · เปิดใช้ `reports` จริงทั้ง user-report + admin-log + admin mailbox (`Reports`/`ReportDetail` + sidebar icon)
 > อัปเดตก่อนหน้า 2026-08-14 — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **approve/reject + `notifications` table (L6) + `Notifications` page + bell icon** (D-23) — push แล้ว ยืนยันผ่าน `generated_code/` + impersonation test ยังไม่ได้ทดสอบผ่านแอปจริง (pete ทดสอบแล้วเจอบั๊กจริง → นำไปสู่ D-24)
 > **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
@@ -19,10 +20,11 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1.0. **🆕 D-26 push สำเร็จจริงแล้ว รอ pete เทสผ่านแอปเป็นด่านสุดท้าย**
+1.1. **🆕 D-27 push สำเร็จจริงแล้ว รอ pete เทสผ่านแอปเป็นด่านสุดท้าย (รอบ 2 ของปุ่มติดต่อแอดมิน)**
     ✅ แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ — ยืนยันผ่าน `generated_code/` ว่า insert/snackbar/reset รูปยังอยู่ครบ เหลือแค่ `NavigateBack()` ที่ผิดพลาดหายไป (commit `bxujSHgcJpXUCibPheEe`)
-    ✅ `Notifications` แตะ item แล้วไป `ProductDetails` ของสินค้านั้นจริง + ปุ่ม "ติดต่อแอดมิน" (mock เตรียม L4) โผล่เฉพาะตอนมาจาก notification — ยืนยันผ่าน `generated_code/` (commit `Paj09FrVxaQrzsx0OJeE`)
-    ⚠️ **ยังไม่ได้ทดสอบผ่านแอปจริง** เช็คก่อนปิด: (1) ลงขายสินค้าสำเร็จ → **ไม่**เด้งไป Login, ฟอร์มเคลียร์ตามเดิม (2) แตะ notification การถูกปฏิเสธ → เข้า `ProductDetails` ของสินค้านั้นถูกตัว → เห็นปุ่มติดต่อแอดมิน (3) เข้า `ProductDetails` จากทางอื่น (เช่น `AllList`) → **ไม่**เห็นปุ่มติดต่อแอดมิน
+    ✅ `Notifications` แตะ item แล้วไป `ProductDetails` ของสินค้านั้นจริง (commit `Paj09FrVxaQrzsx0OJeE`)
+    ✅ ปุ่ม "ติดต่อแอดมิน" **หายไปรอบแรกเพราะ script bug (D-27) ไม่ใช่บั๊กแอป** — แก้ root cause (`ensureReplaced` เก่าทับ) แล้วเพิ่มกลับเข้าไปใหม่ ยืนยันผ่าน `generated_code/` ว่า `if (widget!.fromNotifications)` ครอบถูกต้อง (commit `wU20KxD0sL9ENyFQZdgY`)
+    ⚠️ **ยังไม่ได้ทดสอบผ่านแอปจริง** เช็คก่อนปิด: (1) ลงขายสินค้าสำเร็จ → **ไม่**เด้งไป Login, ฟอร์มเคลียร์ตามเดิม (2) แตะ notification การถูกปฏิเสธ → เข้า `ProductDetails` ของสินค้านั้นถูกตัว → เห็นปุ่มติดต่อแอดมิน**จริงในแอป** (3) เข้า `ProductDetails` จากทางอื่น (เช่น `AllList`) → **ไม่**เห็นปุ่มติดต่อแอดมิน
 
 0.9. **✅ regression D-25 แก้แล้ว จริง** — root cause: `PendingProductsList` (`HomeAdmin`) validate ผ่านเฉพาะตอนสคริปต์ authored มันสดในพุชเดียวกัน ไม่ใช่ orphan สะสม (ดู `PATTERNS.md` **PT-19**)
     🔴 **ภาระถาวรที่เหลือ:** ก้อน `ensureReplaced` นี้**ห้ามลบออกจากสคริปต์** — ทุก push ที่แตะ `dsl/edit.dart` ต่อจากนี้ (ไม่ใช่แค่งาน `HomeAdmin`) ต้อง verify key สดก่อนเสมอไม่งั้น validate fail — อ่าน PT-19 ก่อนแตะไฟล์นี้ทุกครั้ง

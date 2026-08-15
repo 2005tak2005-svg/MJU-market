@@ -518,3 +518,15 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **กับดัก SDK ที่เจอเพิ่ม:** `page.findByKey(...)` (dynamic search) คืน "found no matches" สำหรับทุก key บน `ProductDetails` แม้ `inspect --outline` ยืนยันว่า key นั้น live อยู่จริง — หน้านี้ไม่เคยใช้ `page.findByKey` สำเร็จมาก่อน (edit เดิมทั้งหมดผ่าน `ff.Pages.productDetails.widgets.byPath/byKey` ของ typed SDK) สลับไปใช้ typed SDK selector แทนก็ผ่านทันที — ยังไม่รู้กลไกที่แท้จริง บันทึกไว้เป็นข้อสังเกต ไม่ใช่กฎทั่วไป (เพจอื่นที่ใช้ `page.findByKey` มาตลอดเช่น `HomeAdmin`/`Reports`/`Notifications` ไม่มีปัญหานี้)
 
 **ผล:** ทั้ง 3 อย่าง push สำเร็จจริง ยืนยันผ่าน `generated_code/` ครบ (commit `bxujSHgcJpXUCibPheEe`, `Paj09FrVxaQrzsx0OJeE`) — รอ pete เทสผ่านแอปจริงเป็นด่านสุดท้าย
+
+## D-27 — `ContactAdminButton` หายไปเงียบ ๆ 1 push ให้หลัง D-26 — พบ + แก้ root cause ที่กว้างกว่านั้นมาก (2026-08-15)
+
+**อาการที่ pete รายงาน:** ปุ่ม "ติดต่อแอดมิน" ที่เพิ่งเพิ่มใน D-26 ไม่โผล่เลยในแอปจริง
+
+**root cause:** ปุ่มถูกใส่เข้าไปจริงและ push สำเร็จใน D-26 (ยืนยันจาก `generated_code/` ตอนนั้น) — แต่ push ถัดมา (D-26's ส่วนที่ 2, wiring การเชื่อม `Notifications`) ทำให้มัน**หายไปเงียบ ๆ** เพราะ `ProductDetailsBody`'s `ensureReplaced` (สร้างไว้ตั้งแต่ L3 ยุคแรก ไม่เคย retire) ยังคง active อยู่ในสคริปต์ — ทุกครั้งที่ `flutterflow ai run` รันทั้งไฟล์ (ไม่ว่า push นั้นจะเกี่ยวกับ `ProductDetails` หรือไม่) มันคืนค่า body ทั้ง subtree กลับเป็นเวอร์ชันดั้งเดิม (ไม่มีปุ่ม) ทับปุ่มที่เพิ่มเข้าไปทีหลังผ่าน `ensureInsertedInto` แยกต่างหาก — ไม่มี error ใด ๆ เลยทั้ง validate และ push เพราะ key ยังแมตช์ถูกต้องทุกครั้ง (ต่างจาก D-25/PT-19 ที่ key ตายไปแล้ว) รายละเอียดกลไกเต็ม ๆ ดู `PATTERNS.md` **PT-21**
+
+**สำรวจเพิ่ม:** grep ทั้งไฟล์หา `ensureReplaced`/`ensureInsertedInto` ที่ยัง active พบก้อนเก่าที่ควร retire ไปนานแล้วอีก 4 ก้อน — `ReportsList`, `ReportDetailContent`, `Home`'s bell icon (ทั้ง 3 นี้ยังไม่เคยเสียหายจริง เพราะไม่มีอะไรมาแตะ subtree ทีหลัง) และ dead code เก่าอีก 1 ก้อนที่ target key ตายไปนานแล้ว (`ListView_mctnycd6`, เป็นเวอร์ชัน `PendingProductsList` ก่อน D-23 เลย ไม่มี approve/reject) — retire/ลบทิ้งทั้งหมดในพุชเดียวกัน
+
+**แก้แล้ว:** retire `ProductDetailsBody`'s `ensureReplaced`, เพิ่มปุ่มกลับเข้าไปใหม่ผ่าน `ensureInsertedInto` แยก แล้ว retire ตัวนั้นด้วยหลัง push สำเร็จ — ยืนยันจาก `generated_code/` ว่า `if (widget!.fromNotifications)` ครอบปุ่มถูกต้อง และเนื้อหาส่วนอื่นของ `ProductDetailsBody` (รูป/ชื่อ/ราคา/คำอธิบาย/ผู้ขาย) ไม่กระทบ (commit `wU20KxD0sL9ENyFQZdgY`)
+
+**บทเรียนสำคัญ:** "ตรวจไม่เจอปัญหา" ไม่เท่ากับ "ปลอดภัยที่จะทิ้งไว้" — กฎ retire-หลัง-สำเร็จ (PT-16 เดิม) ต้องใช้กับ`ensure*`ทุกตัวไม่มีข้อยกเว้น ไม่ใช่แค่ตัวที่เคยเห็นพังจริงแล้ว

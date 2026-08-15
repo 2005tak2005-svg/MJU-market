@@ -342,3 +342,15 @@ app.raw((project) {
 2. เขียน `CustomAction` เอง เรียก Supabase client ตรง ๆ ด้วย try/catch — ได้ error handling จริง แต่เสียประโยชน์ของ `PostgresCreate`/`PostgresUpdate` ที่ codegen ให้ฟรี ต้อง maintain เอง
 
 **ใช้แล้วที่:** L7 (`RejectProductSheet` 3rd write, `ReportProductSheet`) — ก่อนเสนอ error-handling ผ่าน Postgres action ใด ๆ ให้เช็ค SDK source ก่อนเสมอ อย่าเดาจากตัวอย่าง `ApiCall`
+
+---
+
+## PT-19 — 🔴 root cause แท้จริงของ D-25: `HomeAdmin`'s `PendingProductsList` validate ผ่านเฉพาะตอน authored สดในสคริปต์เดียวกัน ไม่ผ่านถ้าเช็คกับของที่ push ไปแล้ว (2026-08-15)
+
+**นี่คือคำอธิบายที่แท้จริงของ saga ทั้งชุดที่เคยบันทึกไว้ใน PT-16/PT-17/D-25** (`ListView` เปลี่ยน key ไปเรื่อย ๆ 3bb20t2z → 394zgxi8 → mctnycd6 → 8rll5xbc → g0lsh0pi → 1lqaxuzf → ol78bkha) — ไม่ใช่ orphan node สะสมอย่างที่เข้าใจตอนแรก แต่คือ:
+
+**`PendingProductsList` (ListView ที่มี itemBuilder ผูก `item['id']`/`item['seller_id']` ฯลฯ) validate ผ่าน (`[OK]`) ก็ต่อเมื่อสคริปต์ authored มัน** สด**ในพุชนั้นเอง (ผ่าน `ensureReplaced`) เท่านั้น — ถ้าลบ `ensureReplaced` ออกจากสคริปต์ (ปล่อยให้ validate เทียบกับของที่ push ไปแล้วซึ่งใช้งานได้จริงบนแอปปกติทุกอย่าง) validate จะ fail ทันทีด้วย `"Parameter productId... not properly set"` + `"Generator variable does not exist"` x2 — ยืนยันซ้ำแล้วซ้ำอีกในเซสชันเดียวกัน (ลบแล้ว fail, ใส่กลับพร้อม key ใหม่แล้วผ่าน, ลบอีกครั้ง fail อีก) ไม่ใช่ความผิดพลาดของสคริปต์เรา
+
+**ผลที่ตามมาที่สำคัญที่สุด:** **ทุก push ที่แตะไฟล์นี้ (ไม่ใช่แค่ push ที่แก้ `HomeAdmin`) จะ validate fail ถ้าไม่มี `ensureReplaced` ของ `PendingProductsList` อยู่ในสคริปต์** — ต่างจาก orphan/stale-key ธรรมดาที่ PT-16 สอนให้ลบทิ้งหลังใช้เสร็จ **ก้อนนี้ห้ามลบ** ต้องเก็บไว้ถาวรและอัปเดต `key:` ใน `findByKey(...)` ให้ตรงกับของจริงก่อน push ทุกครั้ง (เช็คด้วย `flutterflow ai inspect --page HomeAdmin --outline`) — เป็นภาระถาวรจนกว่า FlutterFlow จะแก้ที่ต้นตอ (ยังไม่รู้ว่าทำไม เข้าข่าย SDK/validator bug ไม่ใช่บั๊กจากฝั่งเรา)
+
+**ใช้แล้วที่:** L8 `HomeAdmin` — ก่อน push ใด ๆ ที่แตะ `dsl/edit.dart` เช็ค `PendingProductsList`'s `ensureReplaced` (มี comment เตือนกำกับอยู่) ว่า key ยังตรงกับของจริงไหม

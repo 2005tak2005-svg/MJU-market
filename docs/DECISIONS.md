@@ -495,6 +495,10 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 **สงสัยแหล่งที่มา:** session นี้มี FlutterFlow Desktop live-paired (`live.status` → `paired: true`) ระหว่างที่ pete ทดสอบ reject flow/admin login ผ่านแอปจริง — เข้าข่ายเดียวกับที่ `PATTERNS.md` PT-16/PT-17 เคยบันทึกไว้ (orphan node ไม่ error แต่ validate เจอ) แต่ key ของ node ที่ error (เช่น `Container_r7ef6frs`, `IconButton_o8lcyzzx`) **สุ่มใหม่ทุกครั้งที่ validate** — ไม่ใช่ key คงที่แบบ orphan ที่เคยเจอ จึงยังไม่ยืนยันกลไกแน่ชัด
 
-**ตัดสินใจ:** **ไม่แตะ sweep/แก้อัตโนมัติ** — PT-17 §2 บันทึกไว้ชัดว่า sweep แบบ reflection เคยลบ content จริงที่ยัง reachable ไปด้วยมาแล้วครั้งหนึ่ง ความเสี่ยงสูงกว่าจะลองแก้เอง ต้องเปิด FlutterFlow web/desktop editor ดู `HomeAdmin` ตรง ๆ (canvas) หรือเปิด support case ก่อน
+**root cause ที่แท้จริง (พบหลัง):** ไม่ใช่ orphan node สะสม — คือ `PendingProductsList` (ListView ใน `HomeAdmin`) validate ผ่านเฉพาะตอนสคริปต์ authored มัน**สดในพุชนั้นเอง**ผ่าน `ensureReplaced` เท่านั้น ลบ `ensureReplaced` ออก (เทียบกับของที่ push ไปแล้วซึ่งทำงานปกติทุกอย่างบนแอปจริง) validate fail ทันที ยืนยันซ้ำหลายรอบในเซสชันเดียวกัน — รายละเอียดเต็มดู `PATTERNS.md` **PT-19** ไม่ใช่ sweep อัตโนมัติแบบที่ PT-17 §2 เคยเสียหาย เป็นการ retarget `ensureReplaced` ที่มีอยู่แล้วด้วย key จริงที่ verify สดก่อนทุกครั้ง (ปลอดภัย ไม่ใช่ automated sweep)
 
-**ผล:** บล็อกทุก push ในโปรเจกต์นี้ ไม่ใช่แค่งาน reports feature — DSL ของ D-24 เขียนเสร็จรอ push อยู่ใน `dsl/edit.dart` ท้ายไฟล์ (ยังไม่ commit เข้า push จริง)
+**แก้แล้ว:** retarget `ensureReplaced` ที่ key จริง (`flutterflow ai inspect --page HomeAdmin` ตรง ๆ ไม่ใช่ `--outline`/`--dsl-json` ที่เดินแค่ reachable tree) → validate ผ่าน `[OK]` → push สำเร็จ (commit `iO73cDkL9bGAf4hcfKpP`) ตามด้วย D-24's Reports/ReportDetail pages + HomeAdmin sidebar entry point (commit `6hlHqRlpvnKvWYM8oUo4`) — ทั้งหมด**live แล้วจริง** ไม่ใช่แค่เขียนรอ
+
+**ภาระถาวรที่เหลือ:** `PendingProductsList`'s `ensureReplaced` **ห้ามลบออกจากสคริปต์** ต่างจาก pattern ปกติที่ลบทิ้งหลังใช้เสร็จ — ทุก push ที่แตะ `dsl/edit.dart` (ไม่ใช่แค่ push ที่แก้ `HomeAdmin`) ต้อง verify key สดก่อนเสมอ ไม่งั้น validate fail — ดู PT-19
+
+**ผล:** ปลดบล็อกแล้ว L7 ทั้งสองฝั่ง (Supabase + FlutterFlow) เสร็จจริง — user รายงานสินค้าได้ (`ReportProductSheet`), admin log ตอน reject (`RejectProductSheet` 3rd write), admin mailbox ใช้งานได้ (`Reports`/`ReportDetail` + sidebar icon)

@@ -1,7 +1,8 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-14** — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **🆕 approve/reject + `notifications` table (L6) + `Notifications` page + bell icon** (D-23) — push แล้ว ยืนยันผ่าน `generated_code/` + impersonation test ยังไม่ได้ทดสอบผ่านแอปจริง
+> อัปเดตล่าสุด: **2026-08-15** — 🔴 **พบ regression บล็อกทุก `flutterflow ai run`/`validate`** ไม่เกี่ยวกับงานวันนี้เลย (D-25) — **นี่คือของด่วนที่สุดตอนนี้** ก่อนแตะ FlutterFlow DSL อะไรต่อ · root cause บั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) หาเจอและปิดแล้วที่ชั้น RLS (D-24) · เปิดใช้ `reports` จริงทั้ง user-report + admin-log (D-24) — **SQL apply+verify ผ่านหมดแล้ว, DSL เขียนเสร็จรอ push ค้างอยู่เพราะ D-25**
+> อัปเดตก่อนหน้า 2026-08-14 — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **approve/reject + `notifications` table (L6) + `Notifications` page + bell icon** (D-23) — push แล้ว ยืนยันผ่าน `generated_code/` + impersonation test ยังไม่ได้ทดสอบผ่านแอปจริง (pete ทดสอบแล้วเจอบั๊กจริง → นำไปสู่ D-24)
 > **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
 
 > 🔴 **บทเรียนใหญ่ของ session 2026-08-14:** `currentUserUid` เคยผูกกับ **Firebase** ทั้งที่ login จริงวิ่งผ่าน Supabase → เป็น `''` ตลอด ทำให้ query ที่ filter ด้วย user ปัจจุบัน**หาแถวไม่เจอ**แล้ว crash · แก้โดยสลับ auth backend เป็น Supabase (D-21)
@@ -17,13 +18,22 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0.7. **🆕 approve/reject + Notifications (D-23) — รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
-    ✅ ยืนยันผ่าน `generated_code/` + impersonation test: action chain อนุมัติ/ปฏิเสธ, `RejectProductSheet`, `Notifications` query, bell icon, trigger กัน non-admin — ครบทุกจุด
-    ⚠️ ยังไม่ได้กดผ่านแอปจริง (สภาพแวดล้อมนี้รัน `flutter` ไม่ได้) เช็คก่อนปิด: (1) อนุมัติ→สินค้าขึ้น `Home` (2) ปฏิเสธ→seller เห็นแจ้งเตือนจริง (3) ยิง API ตรงแก้ `moderation_status` ต้องโดน trigger บล็อก
+0.9. **🔴 ด่วนที่สุด — regression บล็อกทุก push (D-25)** ก่อนแตะ FlutterFlow DSL อะไรต่อต้องแก้ตรงนี้ก่อน
+    `flutterflow ai run`/`validate` ทุกครั้ง fail ด้วย error ใหม่ 7 ตัวที่ไม่เคยมีมาก่อน (`VALIDATION_PARAMETER_PASSING` x4 บน `PendingProductItem`/`IconButton`→`RejectProductSheet`/`ProductDetails`, `VALIDATION_SUPABASE_DATABASE_ACTION` x1, `VALIDATION_PROPERTY_OVERRIDE` "Generator variable does not exist" x2) — ยืนยันแล้วว่าเป็น server-side regression เกิดระหว่าง 02:47–08:25 วันที่ 2026-08-15 ไม่เกี่ยวกับ DSL ที่แก้วันนี้ (รันสคริปต์เดิมที่เคย push สำเร็จ (`UwVD988G`) ตรง ๆ ก็ error ชุดเดียวกัน) ดู `DECISIONS.md` **D-25**
+    ⚠️ **ห้าม sweep อัตโนมัติ** — PT-17 §2 มีบทเรียนจริงว่า sweep แบบ reflection เคยลบ content ที่ยัง reachable ไปด้วย ต้องเปิด FlutterFlow web/desktop editor ดู `HomeAdmin` ตรง ๆ ก่อน หรือเปิด support case
+    เมื่อแก้แล้ว: push `dsl/edit.dart` ที่เขียนเสร็จรออยู่ท้ายไฟล์ (reports_admin_view + `ReportProductSheet` + `ProductDetails` entry point + `RejectProductSheet` 3rd write) แล้วต่อด้วย push สร้าง `Reports`/`ReportDetail` pages + ไอคอน entry point บน `HomeAdmin`
+
+0.8. **🆕 root cause บั๊ก reject-flow ปิดแล้ว + เปิดใช้ `reports` จริง (D-24) — SQL เสร็จ, DSL เขียนเสร็จรอ push (บล็อกอยู่ที่ 0.9)**
+    ✅ SQL apply + verify ผ่านครบแล้ว: policy ใหม่ 4 ตัว (`notifications` admin-read, `reports` insert/reporter-read), FK `reported_product_id` เปลี่ยนเป็น `ON DELETE SET NULL`, CHECK+default บน `status`, partial unique index กันรายงานซ้ำ, view `reports_admin_view` — ทุกจุดทดสอบผ่าน impersonation จริงแล้ว (non-admin insert+read เอง, กันซ้ำ, กัน status ผิด, deletion ไม่ลบประวัติ, admin insert-then-select-back สำเร็จ = regression check ของบั๊กเดิมผ่าน)
+    ✅ DSL เขียนเสร็จใน `dsl/edit.dart`: component `ReportProductSheet` + ปุ่ม report บน `ProductDetails`, เขียนที่ 3 (`reports`) บน `RejectProductSheet`, หน้า `Reports`/`ReportDetail` (bare shell รอ push ต่อ)
+    ⚠️ พบว่า `PostgresCreate`/`PostgresUpdate` ไม่มี `onFailure`/`onSuccess` ใน SDK เวอร์ชันนี้เลย (มีแค่ `ApiCall`) — ตัด scope "error Snackbar" ออก บันทึกเป็น PT-18
+
+0.7. **approve/reject + Notifications (D-23) — pete เทสจริงแล้ว เจอบั๊กจริง 3 จุด → root cause หาเจอแล้ว ดู 0.8**
+    pete รายงาน: (1) sheet ไม่ปิดอัตโนมัติหลังกดปฏิเสธ (2) seller ไม่เห็นแจ้งเตือน (3) ไม่มีอะไรถูกบันทึกลง `reports` — ทั้งหมดคือ**อาการเดียวกัน**จาก root cause เดียว (select-back หลัง insert โดน RLS SELECT policy บล็อก → exception หยุดก่อนถึง `context.pop()`) แก้แล้วที่ D-24 (ค้างแค่ push ตาม D-25)
 
 0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ตรวจ structure/binding ผ่าน FF Desktop live session + `generated_code/` แล้ว รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
     ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `ide.query_nodes` + `flutterflow ai inspect --outline` + อ่าน `generated_code/` ตรง ๆ): การ์ด 3 ใบ (`ผู้ใช้ทั้งหมด`/`สินค้ารอตรวจสอบ`/`ผู้ใช้ถูกระงับ`) ผูกกับ `admin_dashboard_stats` ถูกต้อง ไม่ใช่ placeholder, โครง widget tree ของ `Row_zau657ld` ถูกต้อง (3 การ์ดจริง ไม่ใช่ list ซ้ำ — เจอบั๊ก canvas render ซ้ำ 4 ชุดระหว่างทำ แก้แล้ว ดู `PATTERNS.md` **PT-16**)
-    ⚠️ **สภาพแวดล้อมนี้รัน `flutter` ไม่ได้** (`local_run.list_devices` คืนค่าว่าง, ไม่มี Flutter SDK บน PATH) และ Test Pilot ถูก auto-mode classifier บล็อกไม่ให้สร้าง test — เลยทดสอบได้แค่ระดับ proto/canvas ไม่ใช่แอปที่รันจริง **pete รับเทสเองผ่านแอปจริง** (ตกลงในเซสชัน 2026-08-14) ด้วยบัญชี admin `mju6577778888@mju.ac.th` (รหัสผ่านคุยกันในแชท ไม่ใช่ในไฟล์นี้ — เดิมไม่รู้ค่า เพิ่งตั้งใหม่ผ่าน SQL วันนี้แบบเดียวกับ `mju6512345678` ด้านบน) เช็คก่อนปิดข้อนี้: (1) การ์ดขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) — รัน `db-verifier`/`ui-checker` ประกอบก็ได้
+    ⚠️ **สภาพแวดล้อมนี้รัน `flutter` ไม่ได้** (`local_run.list_devices` คืนค่าว่าง, ไม่มี Flutter SDK บน PATH) และ Test Pilot ถูก auto-mode classifier บล็อกไม่ให้สร้าง test — เลยทดสอบได้แค่ระดับ proto/canvas ไม่ใช่แอปที่รันจริง **pete รับเทสเองผ่านแอปจริง** ด้วยบัญชี admin `mju6577778888@mju.ac.th` — 🔴 **บทเรียน 2026-08-15:** รหัสผ่านที่ตั้งไว้วันที่ 2026-08-14 (คุยกันในแชท ไม่ได้บันทึกไว้) หายไปพร้อม session context เดิม ทำให้ pete login ไม่ได้รอบถัดมา — **แก้แล้ว: reset รหัสผ่านให้ตรงกับอีเมลตัวเอง** (`mju6577778888@mju.ac.th` เป็นทั้ง user และ password) แบบเดียวกับบัญชีทดสอบอื่น ๆ — **ห้ามตั้งรหัสผ่านทดสอบแบบ "บอกแค่ในแชท" อีก** ให้ใช้ pattern email-เป็น-password นี้เสมอสำหรับบัญชีทดสอบ จะได้ไม่ต้องพึ่ง context ข้าม session เช็คก่อนปิดข้อนี้: (1) การ์ดขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) — รัน `db-verifier`/`ui-checker` ประกอบก็ได้
 
 0. **🔴 regression test ที่เหลือหลังสลับ auth backend (D-21)** — **สมัครใหม่ · OTP · role-routing** (user→`Home`, admin→`HomeAdmin`) · อัปรูปใน `addproduct`
    เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน
@@ -46,7 +56,7 @@
 | 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
 | 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 **ตาราง + RLS apply แล้ว 2026-08-14** | 🟨 **`Notifications` page + bell icon บน `Home` เพิ่มแล้ว** | เขียนได้ทางเดียว: reject → insert `type='listing_rejected'` (ดู `SCHEMA.md`) · ไม่มี notification ตอน approve, ไม่มี push จริง (FCM), ไม่มี unread badge/realtime |
-| 7 | Reviews & Reports | 🟨 `reports` มีแล้ว (ไม่มี policy) / `reviews` ยังไม่มี | ⬜ | |
+| 7 | Reviews & Reports | 🟨 **`reports` RLS+constraint เสร็จแล้ว (D-24)** — insert/select policy, CHECK, unique index กันซ้ำ, view `reports_admin_view` / `reviews` ยังไม่มี | 🟨 **DSL เขียนเสร็จรอ push** (`ReportProductSheet`, `Reports`/`ReportDetail` pages) — บล็อกอยู่ที่ D-25 | ยังไม่ทดสอบผ่านแอปจริง (รอ push ก่อน) |
 | 8 | Admin Dashboard | 🟨 **เริ่มแล้ว 2026-08-14** | 🟨 **`HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้แล้ว** | `admin_dashboard_stats` + `admin_sales_by_seller` (view ใหม่) · `reports` มี admin-read policy แล้ว · `"Profile".is_banned` นับอย่างเดียว ยังไม่ enforce · **🆕 ปุ่มอนุมัติ/ปฏิเสธคุ้มกันด้วย trigger `enforce_moderation_admin_only`** (D-23) — เหลือ: RLS admin-only เต็มรูปแบบ (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all, D-03), `"CAT"` CRUD |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม

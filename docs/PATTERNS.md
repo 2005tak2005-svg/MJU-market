@@ -354,3 +354,20 @@ app.raw((project) {
 **ผลที่ตามมาที่สำคัญที่สุด:** **ทุก push ที่แตะไฟล์นี้ (ไม่ใช่แค่ push ที่แก้ `HomeAdmin`) จะ validate fail ถ้าไม่มี `ensureReplaced` ของ `PendingProductsList` อยู่ในสคริปต์** — ต่างจาก orphan/stale-key ธรรมดาที่ PT-16 สอนให้ลบทิ้งหลังใช้เสร็จ **ก้อนนี้ห้ามลบ** ต้องเก็บไว้ถาวรและอัปเดต `key:` ใน `findByKey(...)` ให้ตรงกับของจริงก่อน push ทุกครั้ง (เช็คด้วย `flutterflow ai inspect --page HomeAdmin --outline`) — เป็นภาระถาวรจนกว่า FlutterFlow จะแก้ที่ต้นตอ (ยังไม่รู้ว่าทำไม เข้าข่าย SDK/validator bug ไม่ใช่บั๊กจากฝั่งเรา)
 
 **ใช้แล้วที่:** L8 `HomeAdmin` — ก่อน push ใด ๆ ที่แตะ `dsl/edit.dart` เช็ค `PendingProductsList`'s `ensureReplaced` (มี comment เตือนกำกับอยู่) ว่า key ยังตรงกับของจริงไหม
+
+---
+
+## PT-20 — 🔴 สร้าง Supabase auth user ด้วย SQL ตรง (`INSERT INTO auth.users`) ล็อกอินไม่ได้ถ้าไม่ทำ 2 อย่างนี้เพิ่ม (2026-08-15)
+
+สร้าง user ทดสอบใหม่ด้วย `INSERT INTO auth.users (...)` ตรง ๆ (ไม่ผ่าน signup flow จริง หรือ Admin API) — `handle_new_user()` trigger สร้างแถว `"Profile"` ให้ถูกต้อง แต่ **ล็อกอินผ่าน `/auth/v1/token?grant_type=password` fail ด้วย `500 Database error querying schema`** ทั้งที่ password ถูก แม้ `email_confirmed_at` ตั้งไว้แล้วก็ตาม
+
+**สาเหตุจริง (ยืนยันจาก `auth_logs` ไม่ใช่เดา) — ขาด 2 อย่าง:**
+
+1. **ไม่มีแถวคู่กันใน `auth.identities`** — GoTrue ต้องการ identity row (provider `email`) ผูกกับ `user_id` เสมอ ไม่ใช่แค่แถวใน `auth.users` เพียว ๆ (`provider_id` = `user_id` สำหรับ email provider, `identity_data` เป็น jsonb มี `sub`/`email`, คอลัมน์ `email` ของตารางนี้เป็น generated column `lower(identity_data->>'email')` ห้าม insert ตรง)
+2. **คอลัมน์ `*_token` เป็น NULL แทนที่จะเป็น `''`** — `confirmation_token`/`recovery_token`/`email_change_token_new`/`email_change`/`phone_change`/`phone_change_token`/`reauthentication_token`/`email_change_token_current` ทั้งหมดต้องเป็น empty string ไม่ใช่ NULL (ค่า default ของคอลัมน์ตอน INSERT แบบไม่ระบุ) — GoTrue (Go) scan คอลัมน์พวกนี้เป็น `string` ธรรมดา ไม่ใช่ `sql.NullString` ได้ NULL มาแล้ว panic ที่ scan layer พอดี error จริงคือ `"error finding user: sql: Scan error on column index 3, name \"confirmation_token\": converting NULL to string is unsupported"` — GoTrue ครอบ error นี้เป็น `500 Database error querying schema` ที่ REST response เห็นข้อความจริงไม่ได้ ต้องดูจาก `auth_logs` (`query_logs` MCP tool, `source = 'auth_logs'`) เท่านั้น
+
+**วิธีตรวจ error จริงเมื่อ login พังแบบ generic:** `curl -X POST '<PROJECT_URL>/auth/v1/token?grant_type=password' -H "apikey: <anon key>" -d '{"email":...,"password":...}'` แล้วดู `auth_logs` ถ้า response แค่ `500 unexpected_failure` — REST response ไม่มีรายละเอียดพอ
+
+**ทางแก้:** หลัง `INSERT INTO auth.users` ต้อง (1) `INSERT INTO auth.identities (id, provider_id, user_id, identity_data, provider, ...)` คู่กันเสมอ (2) explicit ใส่ `''` ให้ทุกคอลัมน์ `*_token`/`email_change`/`phone_change` แทนปล่อย default — สองข้อนี้ signup ผ่านแอปจริง/Admin API ทำให้อัตโนมัติอยู่แล้ว มีปัญหาเฉพาะตอน insert ตรงด้วย SQL เท่านั้น
+
+**ใช้แล้วที่:** L1 (สร้างบัญชีทดสอบ `mju6500000002@mju.ac.th` สำหรับเทส L7 report-a-listing) — ก่อนบอกว่าบัญชีทดสอบที่สร้างด้วย SQL "ใช้ได้" ต้อง curl ทดสอบ login จริงก่อนเสมอ อย่าเชื่อแค่ว่า insert สำเร็จ + trigger สร้าง Profile ได้

@@ -328,3 +328,17 @@ app.raw((project) {
 **ใช้แล้วที่:** L6/L8 (notifications table registration, `HomeAdmin` itemBuilder rebuild)
 
 **ใช้แล้วที่:** L6/L8 (`notifications` table registration + `HomeAdmin` approve/reject itemBuilder rebuild) — เช็คทุกครั้งที่ push เดียวกันทั้งสร้างตาราง/view ใหม่ **และ** อ้างมันจาก page/component ใหม่ หรือสงสัยว่ามี `ensureReplaced`/`ensureInsertedInto` ค้างจากหลาย session ก่อนหน้าที่ไม่เคยถูกลบออกจากสคริปต์ตาม PT-16
+
+---
+
+## PT-18 — 🔴 `PostgresCreate`/`PostgresUpdate`/`PostgresQuery`/`PostgresDelete` ไม่มี `onSuccess`/`onFailure` เลย (พบทำ L7 reports feature 2026-08-15)
+
+`onSuccess`/`onFailure` (ตัวอย่างที่เห็นใน `references/shopflow_dsl.dart`, `references/multi_api_call_dsl.dart`) มีประกาศอยู่ **แค่บน `ApiCall`** เท่านั้น — เช็ค SDK source (`flutterflow_ai/lib/src/dsl/actions.dart`) แล้วยืนยันว่า `PostgresCreate`/`PostgresUpdate`/`PostgresQuery`/`PostgresDelete` ไม่มี parameter นี้เลยสักตัว และไม่มี chain-level try/catch หรือ error-handling wrapper อื่นใดใน SDK เวอร์ชันนี้ (0.0.40) สำหรับ Postgres/Supabase write action โดยเฉพาะ
+
+**ผลที่ตามมา:** ถ้า Postgres action ล้มเหลว (RLS ปฏิเสธ, constraint violation ฯลฯ) exception จะหลุดออกจาก action chain แบบไม่มีการดักจับใด ๆ — ไม่มีทาง surface error ให้ user เห็นผ่าน DSL ได้เลยในตอนนี้ (นี่คือกลไกที่ทำให้บั๊ก `RejectProductSheet` เงียบ — ดู `DECISIONS.md` D-24)
+
+**ทางแก้ที่มี (ทั้งคู่ยังไม่ได้ลองทำจริง):**
+1. ปิด root cause ที่ RLS/constraint แทน (สิ่งที่ D-24 ทำจริง) — ไม่ใช่ error handling แต่ตัดโอกาส error ตั้งแต่ต้น
+2. เขียน `CustomAction` เอง เรียก Supabase client ตรง ๆ ด้วย try/catch — ได้ error handling จริง แต่เสียประโยชน์ของ `PostgresCreate`/`PostgresUpdate` ที่ codegen ให้ฟรี ต้อง maintain เอง
+
+**ใช้แล้วที่:** L7 (`RejectProductSheet` 3rd write, `ReportProductSheet`) — ก่อนเสนอ error-handling ผ่าน Postgres action ใด ๆ ให้เช็ค SDK source ก่อนเสมอ อย่าเดาจากตัวอย่าง `ApiCall`

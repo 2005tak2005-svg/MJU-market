@@ -54,38 +54,19 @@
    - ⬜ ยังไม่ได้ทำ: แก้ `phone` / `bio`
    ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่
 
-<details><summary>แผนเดิม "Edit Profile" (ยังไม่ได้ทำ — เก็บไว้อ้างอิง)</summary>
-
-Backend Query อ่าน/เขียน `"Profile"` ของ `auth.uid()` แก้ได้แค่ `full_name` / `avatar_url` / `phone` / `bio`
-   ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่ ใส่ลง Update Row เมื่อไหร่ทั้ง statement fail
-   - **อัปรูปโปรไฟล์** → bucket **`avatars`** (public · 2 MB · jpeg/png/webp) path `<currentUserId>/<ชื่อไฟล์>` — ใช้ **PT-08** ท่าเดียวกับรูปสินค้า ต่างแค่ชื่อ bucket
-   - เอา URL ที่ได้ไปใส่ `avatar_url` ใน Update Row เดียวกับ `full_name`/`phone`/`bio`
-   - ⚠️ เปลี่ยนรูปแล้ว**ไฟล์เก่าไม่ถูกลบ** — `avatar_url` เป็นแค่ text ไม่ผูกกับไฟล์จริง (หนี้ใน D-15)
-
-</details>
 5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
 
-## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราว 2026-08-10 ต้องแก้ email deliverability ก่อนถึงจะปิด L1 ฝั่ง FlutterFlow ได้
+## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราวตั้งแต่ 2026-08-10
 
-> 🟡 **สถานะ: หยุดงานนี้ไว้ตรงนี้ ย้ายไปทำ L2/L4 ก่อน** — ไม่ใช่ปิดเรื่องนี้ทิ้ง แค่ไม่ใช่คิวด่วนแล้วเพราะติดปัญหาที่แก้จาก Supabase/FlutterFlow config ไม่ได้ตรง ๆ อ่าน `../DECISIONS.md` **D-20** ให้ครบก่อนแตะเรื่องนี้ต่อ
+**สถานะ:** ไม่ใช่คิวด่วน (ย้ายไปทำ L2/L4/L6/L7 ก่อน) แต่ยังไม่ปิด — บล็อกอยู่ที่ email deliverability ฝั่ง tenant ไม่ใช่โค้ด อ่าน `../DECISIONS.md` **D-19**/**D-20** ก่อนแตะต่อ
 
-**ลิงก์ (D-19) สร้างเสร็จแล้วแต่ใช้งานจริงไม่ได้** — Microsoft 365 Education Safe Links ของ tenant มหาลัยดึงลิงก์ยืนยันไปสแกน/ใช้ token ทิ้งอัตโนมัติก่อนผู้ใช้จะกด (ยืนยันด้วย WHOIS ของ IP ที่ยิง `/verify` เจอ `mnt-by: MICROSOFT-MAINT` + `/verify` คืน `400: Invalid email verification type` เร็ว ~17 วินาทีหลังสมัครทุกครั้ง) — ปัญหาเชิงโครงสร้าง ไม่ใช่ตั้งค่าผิด ดู `../DECISIONS.md` **D-19**/**D-20**
+**สร้างเสร็จแล้วทั้งหมด** (ลิงก์ยืนยัน → ใช้ไม่ได้เพราะ Microsoft Safe Links ดึง token ทิ้งก่อน (D-19) → เปลี่ยนเป็น OTP แทน (D-20)): หน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`, `LoginWithEmailPassword` ดักเคส "email not confirmed", email template ส่ง `{{ .Token }}` เป็นตัวเลข — ยืนยันจาก `generated_code/` ครบ, Supabase ส่งอีเมลออกจริง (`POST /signup` 200, เห็นเมลจริงใน Gmail Sent พร้อม OTP)
 
-**เปลี่ยนกลับเป็น OTP (D-20) — สร้างเสร็จแล้ว 2026-08-09 (ยืนยันจาก generated code จริง, กับดัก build ดู `PATTERNS.md` PT-11) แต่ทดสอบจริงแล้วติด email deliverability:**
+**🔴 บล็อกอยู่ตรงนี้:** OTP ไปไม่ถึงกล่อง `@mju.ac.th` เลย (ไม่ Inbox/Junk/bounce/quarantine) — เข้าข่าย Microsoft Zero-hour Auto Purge เพราะ custom SMTP ไม่มี sending reputation กับ tenant นี้ รายละเอียดเต็ม `../DECISIONS.md` **D-20**
 
-- [x] หน้า/ข้อความหลังสมัครสำเร็จบอกผู้ใช้ให้ไปกดยืนยันในอีเมลก่อน — snackbar ปุ่ม `SignUpButton` ยืนยันจาก `generated_code/lib/pages/sign_up/sign_up_widget.dart` แล้ว
-- [x] ดักเคส login แล้วเจอ "email not confirmed" ที่ปุ่ม `Login` — custom action `LoginWithEmailPassword` (0 arg ตาม PT-09) แทน built-in `LoginEmailPassword` — ยืนยันข้อความจริงจาก Supabase ตรง ๆ ด้วย curl
-- [x] **แก้กับดัก PT-11:** custom action sync `AppStateNotifier.instance.update(...)` เอง เพราะ auth stream ของแอปถูก debounce ไว้ — ยืนยันจาก generated code
-- [x] **สร้างหน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`** — ยืนยันจาก `generated_code/lib/confirm_email/confirm_email_widget.dart` ว่าตรงกับที่ตั้งใจเป๊ะ (ปุ่มยืนยันเรียก `verifyOtp()` แล้ว route ตาม `isCurrentUserAdmin`, ปุ่ม resend เรียก `resendSignupOtp()`)
-- [x] **แก้ email template "Confirm signup"** ให้โชว์ `{{ .Token }}` เป็นตัวเลขล้วน ไม่ใช่ลิงก์ — เจอ syntax bug ระหว่างแก้ (`href={{ .Token }}"` ขาด quote เปิด ทำให้ Supabase render template fail ตอนสมัครจริง, error `unexpected_failure`) แก้แล้วโดยตัด `<a href>` ออกทั้งหมด
-- [x] ยืนยันแล้วว่า Supabase **ส่งอีเมลออกจริง** — `POST /signup` status 200, เจอเมลจริงใน Gmail "ส่งแล้ว" (Sent) พร้อมรหัส OTP จริง (เช่น `80240827`)
-- [ ] 🔴 **บล็อกอยู่ตรงนี้: อีเมล OTP ไปไม่ถึงกล่องผู้รับ `@mju.ac.th` เลย** — เช็คครบ 4 จุดแล้วไม่เจอ: ไม่อยู่ Inbox, ไม่อยู่ Junk, ไม่มี bounce-back กลับ Gmail, ไม่อยู่ Microsoft 365 Defender quarantine — เข้าข่าย **Zero-hour Auto Purge (ZAP)** เพราะ custom SMTP (Gmail ส่วนตัว) ไม่มี sending reputation กับ tenant นี้มาก่อนเลย รายละเอียดเต็ม `../DECISIONS.md` **D-20**
-- [ ] **ยังไม่ได้ลอง:** ปิด custom SMTP ชั่วคราว กลับไปใช้ default mailer ของ Supabase เทส 1 รอบ เพื่อแยกว่าปัญหาอยู่ที่ Gmail relay เจาะจง หรือ tenant บล็อกอีเมลลักษณะนี้ทั้งหมด
-- [ ] **ยังไม่ทดสอบ end-to-end ผ่านแอปจริงเลยสักครั้ง** เพราะไม่เคยมี OTP ไปถึงผู้ทดสอบ — ต้องแก้ deliverability ก่อนถึงจะเทสต่อได้
-- [ ] **บัญชีทดสอบ `mju6577778888@mju.ac.th` ยังไม่ถูกล้าง** — ตาม D-17 ต้องล้างแล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น ก่อนปิด L1 ได้เต็มตัว
-- [ ] 🔴 **ไม่มีบัญชีทดสอบสดพร้อมใช้แล้ว** — `mju6500000099@mju.ac.th` (บัญชีที่เคยเตรียมไว้เทส confirm flow) **ถูกลบไปแล้ว 2026-08-10** พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี (`mju6500000101`, `mju6606105382`, `mju6606105383`) เพื่อเคลียร์ข้อมูลค้างระหว่างเทส D-19/D-20 — ต้องสมัครใหม่เมื่อกลับมาทำต่อ
+**ค้างก่อนปิด L1 เต็มตัว:** (1) ยังไม่ได้ลองปิด custom SMTP กลับไปใช้ default mailer เพื่อแยกปัญหา (2) ยังไม่เคยเทส end-to-end ผ่านแอปจริงเลย (3) ไม่มีบัญชีทดสอบสดพร้อมใช้แล้ว — บัญชีเดิม 4 บัญชี (`mju6500000099`/`101`, `mju6606105382`/`83`) ถูกลบไปแล้ว 2026-08-10 ต้องสมัครใหม่ (4) `mju6577778888@mju.ac.th` ยังไม่ถูกล้าง (D-17)
 
-**คำแนะนำระหว่างพัก:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL ไว้แล้ว เข้า Home/HomeAdmin ได้จริง) ทดสอบ layer อื่น — **ห้ามใช้บัญชีนี้เทส confirm-email เอง** สภาพถูกลัดผ่านไปแล้ว
+**ระหว่างพัก:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL, login ได้จริง) ทดสอบ layer อื่นได้ — **ห้ามใช้เทส confirm-email เอง** สภาพถูกลัดผ่านไปแล้ว
 
 ## 🧪 Definition of Done
 

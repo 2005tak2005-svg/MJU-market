@@ -164,7 +164,7 @@ FOREIGN KEY (chat_id) REFERENCES chat(id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 ```
 
-### `public.reports`
+### `public.reports` (แก้ 2026-08-15, D-24)
 
 | # | คอลัมน์ | ชนิด | null? | default |
 |---|---|---|---|---|
@@ -172,17 +172,20 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 | 2 | `reporter_id` | uuid | **NOT NULL** | – |
 | 3 | `reported_product_id` | uuid | nullable | – |
 | 4 | `reason` | text | nullable | – |
-| 5 | `status` | varchar | nullable | – |
+| 5 | `status` | varchar | nullable | `'pending'` |
 | 6 | `created_at` | timestamptz | **NOT NULL** | `now()` |
 
 ```sql
 PRIMARY KEY (id)
 FOREIGN KEY (reporter_id)         REFERENCES "Profile"(id) ON UPDATE CASCADE ON DELETE CASCADE
-FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON UPDATE CASCADE ON DELETE CASCADE
+FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON DELETE SET NULL   -- เปลี่ยนจาก CASCADE (D-24) — ลบสินค้าไม่ลบประวัติ report
+CHECK (status IN ('pending', 'resolved'))                                       -- เพิ่ม (D-24)
+CREATE UNIQUE INDEX reports_unique_pending_per_reporter_product
+  ON reports (reporter_id, reported_product_id) WHERE status = 'pending'        -- กันรายงานซ้ำ (D-24)
 ```
 
-- `status` **ไม่มี CHECK** — ค่าที่ใช้ได้ (`open`/`resolved`/…) ยังไม่บังคับ รอทำพร้อม P-10
-- 🔴 RLS เปิดอยู่ **แต่ 0 policy = deny-all** — ต้องเพิ่มก่อนใช้จริง (Layer 7, ดู P-10)
+- ใช้จริงแล้ว 2 ทาง: user รายงานสินค้าเอง (`status='pending'`) และ admin log ตอน reject (`status='resolved'`, เขียนที่ 3 ต่อจาก update `products` + insert `notifications` ใน `RejectProductSheet`)
+- `reported_product_id` เป็น NULL ได้จริงหลังลบสินค้า (`ON DELETE SET NULL`) — แถว report ยังอยู่ (`reports_admin_view` ใช้ `LEFT JOIN` รองรับอยู่แล้ว)
 
 ### `public.notifications` (L6, เพิ่ม 2026-08-14)
 
@@ -218,7 +221,7 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 
 ## Views
 
-6 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+7 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
@@ -313,6 +316,27 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
 
 > 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" จาก `products.status = 'sold'` — **ไม่มีตาราง `transactions`/`orders` จริง** (L5 ยังไม่เริ่ม) นี่คือ view ชั่วคราวที่ใช้คอลัมน์ที่มีอยู่แล้ว (`products.status`/`price`/`seller_id`) แทน · `status` **ไม่มี CHECK** (ดูหัวข้อ `products` ด้านบน) ตอนนี้ทุกแถวเป็น `NULL` จริง (ยังไม่มีใครขายของสำเร็จ) → view นี้คืน **0 แถว** ในสภาพปัจจุบัน ซึ่งเป็นค่าจริงของระบบ ไม่ใช่บั๊ก ถ้า L5 เปลี่ยนไปใช้ตาราง `transactions` แยกในอนาคต ต้องพิจารณาว่า view นี้ยังจำเป็นไหมหรือย้ายไปอ้างอิง `transactions` แทน
 
+```sql
+-- reloptions: security_invoker=true
+CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
+ SELECT r.id,
+    r.created_at,
+    r.status,
+    r.reason,
+    r.reporter_id,
+    reporter.full_name AS reporter_name,
+    r.reported_product_id,
+    p.title AS product_title,
+    p.seller_id,
+    seller.full_name AS seller_name
+   FROM reports r
+     LEFT JOIN products p ON p.id = r.reported_product_id
+     LEFT JOIN public_profiles reporter ON reporter.id = r.reporter_id
+     LEFT JOIN public_profiles seller ON seller.id = p.seller_id;
+```
+
+> 📌 `reports_admin_view` (L7, เพิ่ม 2026-08-15, D-24) — mailbox สำหรับหน้า `Reports`/`ReportDetail` (admin) `security_invoker = true` พึ่ง RLS ของ `reports` เอง (`admin can read reports`) ในการกรองแถว ส่วน `public_profiles` 2 รอบ (reporter/seller) join แบบ D-01 ปกติ · `LEFT JOIN products` รองรับกรณี `reported_product_id` เป็น NULL หลังสินค้าโดนลบ (`ON DELETE SET NULL`)
+
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**
@@ -334,8 +358,8 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | `chat_user` | 1 | allow-all |
 | `chat_message` | 1 | allow-all |
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
-| `reports` | **1** | admin-read เท่านั้น (SELECT) — insert ยังไม่มี policy = insert ยังทำไม่ได้ (L7 P-10 ยังไม่ apply ครึ่งนั้น) |
-| `notifications` | **3** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert เท่านั้น (L6, เพิ่ม 2026-08-14) |
+| `reports` | **3** | admin อ่านทั้งหมด, reporter อ่าน/insert ของตัวเอง (D-24, 2026-08-15) |
+| `notifications` | **4** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert **และอ่านทั้งหมด** (D-24 เพิ่ม admin-read แก้ root cause select-back RLS) |
 
 **ค่าจริงจาก `pg_policies` — ทุก policy เป็น `PERMISSIVE` ไม่มี `RESTRICTIVE` สักตัว**
 
@@ -351,7 +375,10 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | `"Profile"` | Admins can update all profiles | UPDATE | `{public}` | `private.is_admin()` | – |
 | `"Profile"` | Users can update own profile | UPDATE | `{authenticated}` | `(auth.uid() = id)` | ↓ |
 | `reports` | admin can read reports | SELECT | `{authenticated}` | `private.is_admin()` | – |
+| `reports` | reporter can read own reports | SELECT | `{authenticated}` | `(reporter_id = auth.uid())` | – |
+| `reports` | authenticated can report | INSERT | `{authenticated}` | – | `(reporter_id = auth.uid())` |
 | `notifications` | users can read own notifications | SELECT | `{authenticated}` | `(user_id = auth.uid())` | – |
+| `notifications` | admin can read all notifications | SELECT | `{authenticated}` | `private.is_admin()` | – |
 | `notifications` | users can mark own notifications read | UPDATE | `{authenticated}` | `(user_id = auth.uid())` | `(user_id = auth.uid())` |
 | `notifications` | admin can insert notifications | INSERT | `{authenticated}` | – | `private.is_admin()` |
 

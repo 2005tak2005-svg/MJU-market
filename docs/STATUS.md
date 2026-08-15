@@ -1,51 +1,21 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-15** — ✅ **D-27: ปุ่ม "ติดต่อแอดมิน" หายไปเงียบ ๆ 1 push หลัง D-26 — แก้แล้ว** root cause กว้างกว่าที่คิด: `ProductDetailsBody`'s `ensureReplaced` เก่า (จาก L3 ยุคแรก) ยัง active อยู่ ทุก push ที่รันทั้งไฟล์ (ไม่ต้องเกี่ยวกับ `ProductDetails`) จะคืนค่า body กลับเป็นเวอร์ชันดั้งเดิมทับปุ่มที่เพิ่มทีหลัง — ไม่มี error เตือนเลย ดู **PT-21** (กฎใหม่: `ensure*` ต้อง retire ทันทีหลังสำเร็จ ไม่ว่า key จะยังแมตช์อยู่หรือไม่) — สำรวจทั้งไฟล์แล้ว retire ก้อนเก่าที่ตกค้างอีก 4 ก้อน (`ReportsList`/`ReportDetailContent`/`Home` bell/`PendingProductsList` เวอร์ชันตายแล้ว) เผื่อไว้ล่วงหน้า
-> ก่อนหน้านั้น: ✅ **D-26: แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ** (root cause: เป็น `NavBarPage` tab ไม่ใช่ pushed route, `NavigateBack()` ท้าย action chain ไม่มีอะไรให้ pop แล้วไปโดน router root/error builder — ลบเฉพาะ action นั้นแบบ surgical ไม่แตะส่วนอื่น) · เพิ่ม `Notifications` → `ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" (mock, เตรียมไว้สำหรับ L4)
-> ก่อนหน้านั้น: ✅ **D-25 regression แก้แล้ว + push สำเร็จจริง** (root cause: `PendingProductsList` validate ผ่านเฉพาะตอน authored สดในพุชเดียวกัน — ดู PATTERNS.md PT-19) · root cause บั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) ปิดแล้วที่ชั้น RLS (D-24) · เปิดใช้ `reports` จริงทั้ง user-report + admin-log + admin mailbox (`Reports`/`ReportDetail` + sidebar icon)
-> อัปเดตก่อนหน้า 2026-08-14 — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **approve/reject + `notifications` table (L6) + `Notifications` page + bell icon** (D-23) — push แล้ว ยืนยันผ่าน `generated_code/` + impersonation test ยังไม่ได้ทดสอบผ่านแอปจริง (pete ทดสอบแล้วเจอบั๊กจริง → นำไปสู่ D-24)
-> **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
-
-> 🔴 **บทเรียนใหญ่ของ session 2026-08-14:** `currentUserUid` เคยผูกกับ **Firebase** ทั้งที่ login จริงวิ่งผ่าน Supabase → เป็น `''` ตลอด ทำให้ query ที่ filter ด้วย user ปัจจุบัน**หาแถวไม่เจอ**แล้ว crash · แก้โดยสลับ auth backend เป็น Supabase (D-21)
-> **ก่อนแตะ custom code ต้อง inspect widget tree + binding + Supabase ก่อนเสมอ** (กฎข้อ 9 ใน `CLAUDE.md`) — session นี้เสียหลายรอบเพราะแก้ผิดชั้น
-
-> 🔴 **บทเรียนสะสม:** (1) SMTP ตอบ 200 ไม่ใช่หลักฐานว่าอีเมลถึงกล่อง ต้องเช็คกล่องจริง (D-20) (2) ห้ามเชื่อ AI vision test/`inspect` ว่า action ทำงานถูก ต้องเปิด `generated_code/` ดู (PT-09) — evidence ที่เชื่อถือได้สุดคือ query ตรงจาก DB
-
-> 🟡 **L2 — doc drift ที่พบ 2026-08-10:** หน้า `addproduct` มีอยู่แล้วจริงก่อน session นี้ (ตารางด้านล่างเคยเขียนผิดว่ายังไม่เริ่ม) แต่ไม่มี backend ต่อเลย — session นี้ผูกครบแล้ว (กับดัก SDK ที่เจอ ดู PT-12)
->
-> ✅ **pete ทดสอบจริงแล้ว: insert เข้า `products` สำเร็จ** — เจอบั๊ก UI (รูปพรีวิวขึ้นขาวเปล่า จาก `app.raw` guard ที่ทำให้ field ใหม่ไม่ถูกเขียน ดู PT-12 ข้อ 9) แก้แล้ว ยืนยันจาก `generated_code/` **แต่ยังไม่ได้ทดสอบซ้ำบนแอปจริง**
+> อัปเดตล่าสุด: **2026-08-15**
+> ✅ **D-24–D-27 เสร็จและทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด** (ไม่ใช่แค่ยืนยันจาก `generated_code/` อีกต่อไป):
+> reject-flow root cause (RLS select-back) แก้แล้ว + `reports` ใช้งานจริงทั้ง user-report/admin-log/admin mailbox (D-24) · แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ + `Notifications`→`ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" mock (D-26) · แก้ `ensureReplaced` เก่าทับปุ่มติดต่อแอดมินเงียบ ๆ (D-27, กฎใหม่ดู `PATTERNS.md` **PT-21**)
+> ก่อนหน้า 2026-08-14: auth backend = Supabase (D-21) · L8 `HomeAdmin` approve/reject + `notifications` table + `Notifications` page + bell icon (D-22/D-23)
+> **L1 confirm-email ยังหยุดที่ D-20** (OTP สร้างเสร็จ ติด email deliverability ฝั่ง tenant — ไม่ใช่คิวด่วน)
 
 ---
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1.1. **🆕 D-27 push สำเร็จจริงแล้ว รอ pete เทสผ่านแอปเป็นด่านสุดท้าย (รอบ 2 ของปุ่มติดต่อแอดมิน)**
-    ✅ แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ — ยืนยันผ่าน `generated_code/` ว่า insert/snackbar/reset รูปยังอยู่ครบ เหลือแค่ `NavigateBack()` ที่ผิดพลาดหายไป (commit `bxujSHgcJpXUCibPheEe`)
-    ✅ `Notifications` แตะ item แล้วไป `ProductDetails` ของสินค้านั้นจริง (commit `Paj09FrVxaQrzsx0OJeE`)
-    ✅ ปุ่ม "ติดต่อแอดมิน" **หายไปรอบแรกเพราะ script bug (D-27) ไม่ใช่บั๊กแอป** — แก้ root cause (`ensureReplaced` เก่าทับ) แล้วเพิ่มกลับเข้าไปใหม่ ยืนยันผ่าน `generated_code/` ว่า `if (widget!.fromNotifications)` ครอบถูกต้อง (commit `wU20KxD0sL9ENyFQZdgY`)
-    ⚠️ **ยังไม่ได้ทดสอบผ่านแอปจริง** เช็คก่อนปิด: (1) ลงขายสินค้าสำเร็จ → **ไม่**เด้งไป Login, ฟอร์มเคลียร์ตามเดิม (2) แตะ notification การถูกปฏิเสธ → เข้า `ProductDetails` ของสินค้านั้นถูกตัว → เห็นปุ่มติดต่อแอดมิน**จริงในแอป** (3) เข้า `ProductDetails` จากทางอื่น (เช่น `AllList`) → **ไม่**เห็นปุ่มติดต่อแอดมิน
+1. **regression ที่เหลือหลังสลับ auth backend (D-21)** — สมัครใหม่/OTP/role-routing/`ProfileUser` ผ่านแล้ว (V-11) เหลือ: กรอกเบอร์ว่างล้วนตอนสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` (ยังไม่เทสผ่าน UI จริง), อัปรูปโปรไฟล์เข้า `avatars` แล้วเปิด public URL จริงดูว่ารูปขึ้น
+2. **เริ่ม L4 (chat) ใน v2** — ยังไม่มีหน้าแชทเลย อ่าน `PATTERNS.md` PT-02/PT-09/PT-10 ก่อนเริ่ม โดยเฉพาะ `chat_summary.member_names`
+3. **สร้าง `MyPost`/`Inspect` ใน v2** (มีแค่ใน v1 archived) — อ่าน PT-09/PT-10/PT-12/PT-14 ก่อนเขียน Action Flow ทดสอบด้วย `mju6577778888@mju.ac.th` (admin)
 
-0.9. **✅ regression D-25 แก้แล้ว จริง** — root cause: `PendingProductsList` (`HomeAdmin`) validate ผ่านเฉพาะตอนสคริปต์ authored มันสดในพุชเดียวกัน ไม่ใช่ orphan สะสม (ดู `PATTERNS.md` **PT-19**)
-    🔴 **ภาระถาวรที่เหลือ:** ก้อน `ensureReplaced` นี้**ห้ามลบออกจากสคริปต์** — ทุก push ที่แตะ `dsl/edit.dart` ต่อจากนี้ (ไม่ใช่แค่งาน `HomeAdmin`) ต้อง verify key สดก่อนเสมอไม่งั้น validate fail — อ่าน PT-19 ก่อนแตะไฟล์นี้ทุกครั้ง
-
-0.8. **✅ D-24 reports feature — pete ยืนยันแล้วว่า notifications ทำงานถูกต้องทั้ง admin/user** (ทดสอบผ่านแอปจริง) ส่วนที่เหลือดู 1.0
-    ✅ SQL apply + verify ผ่านครบแล้ว: policy ใหม่ 4 ตัว (`notifications` admin-read, `reports` insert/reporter-read), FK `reported_product_id` เปลี่ยนเป็น `ON DELETE SET NULL`, CHECK+default บน `status`, partial unique index กันรายงานซ้ำ, view `reports_admin_view`
-    ⚠️ ยังไม่ได้เทสส่วน `ReportProductSheet`/`Reports`/`ReportDetail` ผ่านแอปจริง (1) กดปุ่มรายงานใน `ProductDetails` → sheet ปิด + snackbar ขึ้น (2) รายงานซ้ำสินค้าเดิม → เห็น error message (unique constraint) (3) reject สินค้า → sheet ปิดจริง + reports มีแถวใหม่ status='resolved' (4) กดไอคอนใน `HomeAdmin` sidebar → เข้าหน้า `Reports` → แตะแถว → เห็นรายละเอียดครบ
-    ⚠️ พบว่า `PostgresCreate`/`PostgresUpdate` ไม่มี `onFailure`/`onSuccess` ใน SDK เวอร์ชันนี้เลย (มีแค่ `ApiCall`) — ตัด scope "error Snackbar" ออก บันทึกเป็น PT-18
-
-0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ตรวจ structure/binding ผ่าน FF Desktop live session + `generated_code/` แล้ว รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
-    ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `ide.query_nodes` + `flutterflow ai inspect --outline` + อ่าน `generated_code/` ตรง ๆ): การ์ด 3 ใบ (`ผู้ใช้ทั้งหมด`/`สินค้ารอตรวจสอบ`/`ผู้ใช้ถูกระงับ`) ผูกกับ `admin_dashboard_stats` ถูกต้อง ไม่ใช่ placeholder, โครง widget tree ของ `Row_zau657ld` ถูกต้อง (3 การ์ดจริง ไม่ใช่ list ซ้ำ — เจอบั๊ก canvas render ซ้ำ 4 ชุดระหว่างทำ แก้แล้ว ดู `PATTERNS.md` **PT-16**)
-    ⚠️ **สภาพแวดล้อมนี้รัน `flutter` ไม่ได้** (`local_run.list_devices` คืนค่าว่าง, ไม่มี Flutter SDK บน PATH) และ Test Pilot ถูก auto-mode classifier บล็อกไม่ให้สร้าง test — เลยทดสอบได้แค่ระดับ proto/canvas ไม่ใช่แอปที่รันจริง **pete รับเทสเองผ่านแอปจริง** ด้วยบัญชี admin `mju6577778888@mju.ac.th` — 🔴 **บทเรียน 2026-08-15:** รหัสผ่านที่ตั้งไว้วันที่ 2026-08-14 (คุยกันในแชท ไม่ได้บันทึกไว้) หายไปพร้อม session context เดิม ทำให้ pete login ไม่ได้รอบถัดมา — **แก้แล้ว: reset รหัสผ่านให้ตรงกับอีเมลตัวเอง** (`mju6577778888@mju.ac.th` เป็นทั้ง user และ password) แบบเดียวกับบัญชีทดสอบอื่น ๆ — **ห้ามตั้งรหัสผ่านทดสอบแบบ "บอกแค่ในแชท" อีก** ให้ใช้ pattern email-เป็น-password นี้เสมอสำหรับบัญชีทดสอบ จะได้ไม่ต้องพึ่ง context ข้าม session เช็คก่อนปิดข้อนี้: (1) การ์ดขึ้นตัวเลขจริงไม่ crash ตอน auth ยังไม่ resolve เฟรมแรก (2) คิวสินค้ารอตรวจแตะแล้วไป `ProductDetails` จริง (3) การ์ดยอดขายว่างตามคาด (ยังไม่มี `products.status='sold'` เลยสักแถว — ไม่ใช่บั๊ก) — รัน `db-verifier`/`ui-checker` ประกอบก็ได้
-
-0. **🔴 regression test ที่เหลือหลังสลับ auth backend (D-21)** — **สมัครใหม่ · OTP · role-routing** (user→`Home`, admin→`HomeAdmin`) · อัปรูปใน `addproduct`
-   เหตุผล: การสลับ backend rewrite **ทุก** reference ของ user ปัจจุบันทั้งโปรเจกต์พร้อมกัน
-   ✅ **ทดสอบผ่านแล้ว (V-11):** `ProfileUser` ทั้งหน้า · login · **path storage เป็น Supabase uid ถูกต้องจริง** (ยืนยันจาก `storage.objects` 3 ไฟล์) → ประเด็น upload path ปิดแล้ว
-   ✅ คำทักทายหน้า `Home` โชว์ **อีเมล** แทนชื่อ — **pete ทดสอบแล้วรับได้ ไม่ต้องแก้** (Supabase auth ไม่มี `DISPLAY_NAME`) ถ้าวันหลังอยากได้ `full_name` ค่อยผูก page-level query แบบ PT-14
-1. สร้าง `MyPost`/`Inspect` (ยังไม่มีใน v2) — อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12**/**PT-14** ก่อนเขียน Action Flow **ทดสอบ login ด้วย `mju6577778888@mju.ac.th`** (admin)
-2. **เริ่ม L4 ใน v2** → เหมือนกัน ไม่มีหน้าแชทใน v2 เลย · อ่านคำเตือน PT-09/PT-10 ใน `layers/L4-chat.md` ก่อนเริ่ม โดยเฉพาะเรื่อง `chat_summary.member_names`
-3. **🟡 หยุดไว้ — L1 confirm-email (D-20)** ไม่ใช่คิวด่วน แต่ยังไม่ปิด — ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email" และ `DECISIONS.md` **D-20** ก่อนแตะเรื่องนี้ต่อ
-   **ค้างอยู่ก่อนปิด L1 ฝั่ง FlutterFlow ได้เต็มตัว:** (1) **แก้ปัญหา email deliverability ก่อน** — OTP ไปไม่ถึงกล่องผู้รับ `@mju.ac.th` เลย (ไม่ bounce ไม่ junk ไม่ quarantine เข้าข่าย Microsoft ZAP) ยังไม่ได้ลองปิด custom SMTP กลับไปใช้ default mailer เพื่อแยกว่าปัญหาอยู่ที่ Gmail relay หรือทั้ง tenant, (2) หลังแก้ deliverability แล้วค่อย **คลิกทดสอบจริงบนแอป** ทั้งเส้น (สมัคร → กรอก OTP → login → เข้า Home/HomeAdmin ไม่เด้งกลับ ระวัง PT-11), (3) ทดสอบเคส login ด้วยบัญชีที่ยังไม่ยืนยัน (ต้องสร้างบัญชีทดสอบใหม่ — บัญชีเดิม `mju6500000099@mju.ac.th` ถูกลบไปแล้ว 2026-08-10 พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี), (4) ล้างบัญชีทดสอบ `mju6577778888@mju.ac.th` แล้วเทสสมัคร+ยืนยัน+login ใหม่ผ่าน flow จริงทั้งเส้น
+🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email (D-20)** บล็อกอยู่ที่ email deliverability ฝั่ง tenant มหาลัย ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email"
 
 ---
 
@@ -53,106 +23,75 @@
 
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
-| 1 | Auth & User Profiles | ✅ **ปิดแล้ว** | 🟨 **Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email flow (D-20)** | `full_name`/`phone`/role-routing ยืนยันผ่านแอปจริงครบ 2026-08-09 · **`ProfileUser` เสร็จ 2026-08-14** (แสดงข้อมูล user + เปลี่ยนชื่อ/รูป + logout — ดู PT-14) เหลือ `phone`/`bio` · **auth backend = Supabase แล้ว (D-21)** ยังไม่ regression test ทั้งเส้น · OTP flow ติด email deliverability (D-20) |
-| 2 | Product Listings + Storage | 🟨 **อัปจริงผ่านแอปสำเร็จแล้ว 2026-08-10 (6 object จริงใน `storage.objects`) เหลือแค่เทส reject >5MB/ผิดชนิด** | 🟨 **`addproduct` — insert ทดสอบผ่านบนแอปจริงแล้ว 2026-08-10, เจอ+แก้บั๊กรูปพรีวิวขาวเปล่าแล้ว แต่ยังไม่ทดสอบซ้ำ** | seed `CAT` 12 หมวด · schema/RLS/view/realtime · bucket + 4 policy + CHECK 3 รูป · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10/**PT-12** ก่อนเริ่ม |
-| 3 | Browse / Search / Filter | ⬜ | 🟨 **`AllList` (Home) + `ProductDetails` ทำแล้ว 2026-08-14** | `AllList` ผูก `products_review_view` (filter `moderation_status='approved'`) แตะแล้วส่ง `productId` ไป `ProductDetails` · ยังไม่มี search/filter · รูปสินค้ายังเป็น placeholder (ต้อง index `image_urls[1]` — ติด PT-10) |
-| 4 | Chat & Messaging | 🟨 **schema เสร็จ แต่ยังไม่เคยตรวจ** | ⬜ ยังไม่เริ่มใน v2 | RLS เป็น allow-all ชั่วคราว · 🔴 อ่าน `PATTERNS.md` PT-09/PT-10 ก่อนเริ่ม · ดู 🔴 ด้านล่าง |
-| 5 | Transaction & Status | ⬜ ยังไม่มีตาราง `transactions` | ⬜ | |
-| 6 | Notifications | 🟨 **ตาราง + RLS apply แล้ว 2026-08-14** | 🟨 **`Notifications` page + bell icon บน `Home` เพิ่มแล้ว** | เขียนได้ทางเดียว: reject → insert `type='listing_rejected'` (ดู `SCHEMA.md`) · ไม่มี notification ตอน approve, ไม่มี push จริง (FCM), ไม่มี unread badge/realtime |
-| 7 | Reviews & Reports | 🟨 **`reports` RLS+constraint เสร็จแล้ว (D-24)** — insert/select policy, CHECK, unique index กันซ้ำ, view `reports_admin_view` / `reviews` ยังไม่มี | 🟨 **push สำเร็จแล้ว** (`ReportProductSheet`+ปุ่มบน `ProductDetails`, `Reports`/`ReportDetail` pages, ไอคอน sidebar บน `HomeAdmin`) | ยืนยันผ่าน `generated_code/` แล้ว — ยังไม่ทดสอบผ่านแอปจริง (pete เทสต่อ) |
-| 8 | Admin Dashboard | 🟨 **เริ่มแล้ว 2026-08-14** | 🟨 **`HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้แล้ว** | `admin_dashboard_stats` + `admin_sales_by_seller` (view ใหม่) · `reports` มี admin-read policy แล้ว · `"Profile".is_banned` นับอย่างเดียว ยังไม่ enforce · **🆕 ปุ่มอนุมัติ/ปฏิเสธคุ้มกันด้วย trigger `enforce_moderation_admin_only`** (D-23) — เหลือ: RLS admin-only เต็มรูปแบบ (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all, D-03), `"CAT"` CRUD |
+| 1 | Auth & User Profiles | ✅ ปิดแล้ว | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
+| 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
+| 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
+| 4 | Chat & Messaging | 🟨 schema เสร็จ ยังไม่เคยตรวจ | ⬜ ยังไม่เริ่มใน v2 | RLS allow-all ชั่วคราว · อ่าน PT-09/10 |
+| 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
+| 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) — ทดสอบผ่านแอปจริงแล้ว | เขียนได้ทางเดียว: reject→insert · ไม่มี unread badge/realtime/push จริง |
+| 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`Reports`/`ReportDetail` — **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | |
+| 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ | `admin_dashboard_stats`+`admin_sales_by_seller` · trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) เหลือ RLS admin-only เต็มรูปแบบ, `"CAT"` CRUD |
 
-✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม
+✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม — คอลัมน์ FlutterFlow คือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น งานฝั่ง v1 (archived) ไม่นับ (D-16)
 
-> 🔄 **2026-08-09 — รีเซ็ตโปรเจกต์ FlutterFlow (D-16):** คอลัมน์ "FlutterFlow" ของทุก layer ด้านบนคือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น — งานฝั่ง FlutterFlow ของ v1 (โปรเจกต์เก่า ตอนนี้ชื่อ "MJU-market-v1-archive") **ไม่นับรวมแล้ว** ต่อให้เคยทำไว้ก็ตาม
+> 🔴 **กฎการให้ ✅:** "ตารางว่าง 0 แถว = ยังไม่ PASS" — นับเป็น ✅ ได้ต่อเมื่อทดสอบด้วย user ธรรมดาจริงแล้วเท่านั้น
 
-> 🔴 **กฎการให้ ✅ (ใช้กับตัวเราเองด้วย): "ตารางว่าง 0 แถว = ยังไม่ PASS"**
-> เราตั้งกฎนี้ไว้ตอนตรวจ DB แล้วดันให้ ✅ ตัวเองทั้งที่เส้นทางจริงยังไม่เคยรัน — ลด L1/L4 กลับเป็น 🟨 เมื่อ 2026-08-08
+**L1** ปิดฝั่ง Supabase แล้ว (2026-08-09) · FlutterFlow ค้างที่ Confirm Email — ลิงก์ (D-19) ใช้ไม่ได้เพราะ Microsoft Safe Links ดึง token ทิ้งก่อนคนกด → เปลี่ยนเป็น OTP (D-20) แต่อีเมลไปไม่ถึงกล่อง (deliverability ฝั่ง tenant) รายละเอียด `DECISIONS.md` **D-20**
 
-**L1 — ✅ ปิดฝั่ง Supabase แล้ว 2026-08-09** — สมัครผ่าน FlutterFlow Sign Up จริง (`mju6577778888@mju.ac.th`) ได้ `full_name`/`phone`/`student_id`/`role` ครบทุกช่อง ไม่มี NULL
-**FlutterFlow ยังไม่ปิด 🟨 — หยุดไว้ที่นี่ 2026-08-10 (D-20)** — Login/SignUp/Home/HomeAdmin ทำงานถูกต้องและยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง user/admin path แล้ว **Confirm Email flow เปลี่ยนจากลิงก์ (D-19) เป็น OTP (D-20) เพราะ Microsoft Safe Links ดึงลิงก์ไปใช้ token ทิ้งก่อนคนกด** — โค้ด OTP (หน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`) สร้างเสร็จและยืนยันจาก generated code จริงแล้วว่าตรงตามที่ตั้งใจ **แต่ทดสอบจริงแล้วอีเมล OTP ไปไม่ถึงกล่องผู้รับเลย** (ไม่ bounce ไม่ junk ไม่ quarantine — เข้าข่าย Microsoft Zero-hour Auto Purge) เป็นปัญหา deliverability ฝั่ง tenant มหาลัย ไม่ใช่บั๊กโค้ด — รายละเอียดเต็มดู `DECISIONS.md` **D-20** ตัดสินใจหยุดตรงนี้ไปทำ layer อื่นก่อน
+**L2** ปิดไม่ได้เพราะยังไม่เคยเทสอัปไฟล์เกิน 5MB/ผิดชนิดผ่านแอปจริง (บังคับที่ Storage API ไม่ใช่ Postgres ทดสอบจาก DB แทนไม่ได้) — อัปสำเร็จ + path ถูกต้องยืนยันแล้ว (`VERIFICATION.md` V-08)
 
-**L4 — ทำไมยังไม่ใช่ ✅** — `chat_summary.member_names` **ยังไม่เคยตรวจว่าไม่เป็น NULL** เพราะ `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถวทั้งหมด
-view ที่ join `public_profiles` ถูกพิสูจน์แล้วแค่กับ `public_profiles` ตรง ๆ (V-04) **ยังไม่ได้พิสูจน์ผ่าน `chat_summary`** ซึ่งเป็นตัวที่บั๊ก NULL เคยเกิดจริง
-→ ปิด L4 ฝั่ง Supabase ได้ต่อเมื่อ **สร้างห้องแชท 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดา เห็น `member_names` ครบ ไม่มี NULL**
-
-**L2 — ทำไมยังไม่ใช่ ✅** — bucket + policy + CHECK ครบและทดสอบด้วย user ธรรมดาผ่านแล้ว (`VERIFICATION.md` V-08) · **2026-08-10 ยืนยันจาก DB ตรง ๆ ว่าอัปไฟล์จริงผ่านแอปสำเร็จแล้ว** — `storage.objects` มี **6 object** จริง (ไม่ใช่ 0 แถวเหมือนตอนตรวจครั้งก่อน) และแถวเดียวใน `products` (จากการทดสอบของ pete) อ้างถึง 3 ใน 6 นั้นครบผ่าน `image_urls` ตรงกับ path `<uid>/<ไฟล์>` ที่ตั้งใจไว้ (อีก 3 object เป็นไฟล์กำพร้าจากการทดสอบซ้ำ — เข้าเงื่อนไขหนี้ทางเทคนิคที่มีอยู่แล้วด้านล่าง ไม่ใช่เคสใหม่)
-`file_size_limit` (5 MB) กับ `allowed_mime_types` บังคับที่ **Storage API ไม่ใช่ที่ Postgres** — ยังไม่เคยลองอัปไฟล์เกิน 5 MB หรือไฟล์ผิดชนิดผ่านแอปจริงสักครั้ง (ทดสอบจาก DB แทนไม่ได้)
-→ ปิดได้ต่อเมื่อ **ลองอัปไฟล์เกิน 5 MB / ไฟล์ผิดชนิดผ่านแอปจริง** แล้วเห็นว่าถูกตีกลับ (ฝั่งอัปสำเร็จ + path ถูกต้องยืนยันแล้วจาก DB ตรง ๆ — เหลือแค่เปิด public URL จริงดูว่ารูปขึ้นไหม ยังไม่มีใครเปิดยืนยัน)
+**L4** ปิดไม่ได้เพราะ `chat`/`chat_user`/`chat_message` ว่าง 0 แถวทั้งหมด — `chat_summary.member_names` (จุดที่เคยพัง NULL) ยังไม่เคยพิสูจน์ผ่าน view จริง มีแค่ `public_profiles` ตรง ๆ (V-04) → ปิดได้ต่อเมื่อสร้างห้องแชท 1 ห้อง 2 สมาชิก แล้ว SELECT `chat_summary` ด้วย user ธรรมดา เห็น `member_names` ครบ
 
 ---
 
 ## ❓ คำถามที่ยังไม่ตัดสินใจ (รวมทุก layer)
 
-**Layer 1**
-- จะทำ role-based redirect ซ้ำที่หน้า Splash/Initial (กรณี auto-login) ด้วยไหม
-- `handle_new_user()` ยังไม่มี `ON CONFLICT` — ถ้าแถวใน `"Profile"` ซ้ำจะ error ทั้งรายการ ต้องกันไหม
-
 **🔴 รอ pete ตอบ**
+1. **D-20 — OTP เสร็จ ติด email deliverability** ดู `DECISIONS.md` **D-20** — ไม่ใช่คำถามค้าง เป็นบล็อกทางเทคนิค
+2. **รับข้อเสนอ P-11/P-12 ไหม** — unique index บน `lower(email)` + เก็บกวาดไฟล์กำพร้า ยังไม่ตอบรับ อยู่ใน `PROPOSED_SQL.md`
 
-1. **D-20 — OTP สร้างเสร็จแล้ว แต่ติด email deliverability ฝั่ง tenant → หยุดไว้ 2026-08-10** ดู `DECISIONS.md` **D-20** — ไม่ใช่คำถามค้าง เป็นบล็อกทางเทคนิคที่ต้องแก้ deliverability ก่อนไปต่อได้
-2. **จะรับข้อเสนอ P-11 / P-12 ไหม** — unique index บน `lower(email)` และระบบเก็บกวาดไฟล์กำพร้า ยังไม่ตอบรับ อยู่ใน `PROPOSED_SQL.md`
+**Layer 1** — role-based redirect ที่ Splash/Initial (auto-login) ด้วยไหม · `handle_new_user()` ยังไม่มี `ON CONFLICT`
 
-**Layer 2**
-- จะเปิดให้ browse ก่อนล็อกอินไหม — ถ้าเอา ต้องเพิ่ม policy ให้ `anon` ทั้ง `"CAT"` และ `products` (ตอนนี้ `anon` เห็น `"CAT"` เป็น 0 แถว)
-- จะบังคับ `category_id` ห้าม null ไหม
-- ✅ ตอบแล้ว: ใช้ in-app notification list (L6) ไม่ใช่ push จริง (D-23)
+**Layer 2** — เปิด browse ก่อนล็อกอินไหม (ต้องเพิ่ม policy ให้ `anon` ทั้ง `"CAT"`/`products`) · บังคับ `category_id` ห้าม null ไหม
 
-**Layer 3**
-- FlutterFlow built-in filter พอไหม หรือต้องสร้าง RPC `search_products` (P-05) — รอทดสอบจริง
+**Layer 3** — FlutterFlow built-in filter พอไหม หรือต้องสร้าง RPC `search_products` (P-05)
 
-**Layer 4**
-- FlutterFlow เปิด "Listen for realtime updates" บน **view** ได้จริงไหม (ต้องทดสอบ)
-- FlutterFlow query builder รองรับ operator "array contains" บน `chat_summary.user_ids` ไหม ถ้าไม่ ต้องทำ RPC `get_my_chats(uid)`
-- จะสร้าง trigger auto-update `chat.last_message` (P-04) หรือให้ Action Flow อัปเดต 2 ที่เอง
+**Layer 4** — listen realtime บน **view** ได้จริงไหม (ต้องทดสอบ) · query builder รองรับ "array contains" บน `chat_summary.user_ids` ไหม ถ้าไม่ต้องทำ RPC `get_my_chats(uid)` · trigger auto-update `chat.last_message` (P-04) หรือให้ Action Flow อัปเดต 2 ที่เอง
 
-**Layer 5**
-- ต้องการ `status` กี่แบบจริง ๆ, ต้องเก็บประวัติ transaction แยกไหม หรือใช้ `products.status` พอ
+**Layer 5** — ต้องการ `status` กี่แบบจริง ๆ, เก็บประวัติ transaction แยกไหม หรือใช้ `products.status` พอ
 
-**Layer 6**
-- ✅ ตอบแล้ว: ตาราง `notifications` จริง + in-app list (D-23) — ยังไม่ต่อ push จริง (FCM)
-- ✅ แก้แล้ว: `ref_id` uuid อ้าง `chat.id` (bigint) ไม่ได้ → แยกเป็น `ref_product_id uuid` (D-23)
-- ยังไม่ทำ: notification จาก `chat_message` insert (P-04), unread badge, realtime
+**Layer 6** — ยังไม่ทำ: notification จาก `chat_message` insert (P-04), unread badge, realtime
 
-**Layer 7**
-- รองรับรีพอร์ต "ผู้ใช้" ด้วยไหม (P-09)
-- `reviews` ใช้ RLS allow-all หรือ restrictive
+**Layer 7** — รองรับรีพอร์ต "ผู้ใช้" ด้วยไหม (P-09) · `reviews` ใช้ RLS allow-all หรือ restrictive
 
-**Layer 8**
-- 🟨 เริ่มคุยแล้ว 2026-08-14 (`HomeAdmin` stat cards + sales graph + approve/reject) — ค้างจริง:
-  - RLS admin-only แบบเต็ม (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all — D-03) ยังไม่ทำ ยกเว้น `products.moderation_status`/`rejection_reason` ซึ่งคุ้มกันด้วย trigger แล้ว (D-23)
-  - หน้า `Inspect` แยกยังไม่มีใน v2 — "คิวสินค้ารอตรวจ" ใน `HomeAdmin` มีปุ่มอนุมัติ/ปฏิเสธจริงแล้ว (D-23)
-  - `"CAT"` ยังจัดการ (CRUD) ผ่าน UI ไม่ได้ ยังต้อง seed ด้วยมือ
-  - ✅ **pete ยืนยันแล้ว 2026-08-14 (ไม่ใช่ของค้าง):** การ์ด "สินค้ารอตรวจสอบ" ใช้แทนแนวคิด "pending orders" ต่อไปได้ (ยังไม่ต้องเริ่ม L5) และ "ยอดขายตามผู้ขาย" เป็น ranked list (ไม่ใช่ chart จริง — DSL ไม่มี `Chart` widget constructor) ก็ใช้ต่อไปก่อนได้เช่นกัน — รายละเอียด `DECISIONS.md` **D-22** ท้ายข้อ
-  - กราฟยอดขาย (`admin_sales_by_seller`) อ้างอิง `products.status='sold'` เพราะยังไม่มีตาราง `transactions` (L5) — ถ้า L5 เริ่มจริงในอนาคต ต้องตัดสินใจว่าจะย้ายไปอ้างอิง `transactions` แทนไหม
+**Layer 8** — RLS admin-only เต็มรูปแบบยังไม่ทำ (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all, D-03) · หน้า `Inspect` แยกยังไม่มีใน v2 (คิวรอตรวจอยู่ใน `HomeAdmin` มีปุ่มอนุมัติ/ปฏิเสธจริงแล้ว) · `"CAT"` ยังจัดการผ่าน UI ไม่ได้ ต้อง seed ด้วยมือ · `admin_sales_by_seller` อ้าง `products.status='sold'` ชั่วคราวเพราะยังไม่มี `transactions` (L5) — ถ้า L5 เริ่มจริงต้องตัดสินใจย้ายไปอ้าง `transactions` ไหม
 
 ---
 
 ## 💣 หนี้ทางเทคนิคที่ต้องใช้คืนก่อน production
 
-- [ ] `products` / `chat` / `chat_user` / `chat_message` เป็น **allow-all RLS** — เปลี่ยนเป็น restrictive ตาม `chat_user` membership
-- [ ] `reports` เปิด RLS แต่ไม่มี policy = deny-all — ยังใช้งานไม่ได้เลย
-- [ ] หน้า `Inspect` กันด้วย UI เท่านั้น ไม่ใช่ RLS — user ยิง API ตรงยัง approve สินค้าเองได้
+- [ ] `products`/`chat`/`chat_user`/`chat_message` เป็น allow-all RLS — เปลี่ยนเป็น restrictive ตาม `chat_user` membership
+- [ ] คิวอนุมัติ/`Inspect` กันด้วย UI เท่านั้น ไม่ใช่ RLS — user ยิง API ตรงยัง approve สินค้าเองได้
 - [ ] ไม่มีระบบกันกดปุ่มลบซ้ำ/popup ค้างใน reject flow (ยอมรับเป็น MVP)
-- [ ] `"Profile".id` มี default `gen_random_uuid()` ทั้งที่เป็นคอลัมน์ FK — บั๊กแบบเดียวกับที่แก้ไปแล้วใน `reports` ควรถอด default ออก (ยังไม่ทำ)
-- [ ] `reports.status` ไม่มี CHECK — ค่าที่ใช้ได้ยังไม่ตัดสินใจ ทำพร้อม P-10
-- [ ] ข้อมูลทดสอบค้างอยู่ใน DB: user 4 คน + `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี (บุคลากร)`) — ต้องล้างก่อน production
-      (`bio`/`phone` **ไม่ได้ค้าง** — ดูหมายเหตุเรื่อง auto-rollback ใน `checks/_common.sql`)
-- [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้ ถ้า L8 ให้ admin เพิ่มหมวดหมู่เองควรใส่
-- [ ] **`"Profile".is_banned` มีคอลัมน์แล้วแต่ไม่มี enforcement เลย** (เพิ่ม 2026-08-14 พร้อม L8) — ตอนนี้เป็นแค่ตัวนับให้แอดมินดูใน `HomeAdmin` ไม่มี RLS/Action Flow ไหนเช็คค่านี้จริง (login ได้ปกติ, โพสต์/แชทได้ปกติ แม้ `is_banned = true`) — ยังไม่มี UI ให้แอดมินกดแบนด้วยซ้ำ (แก้ค่าได้แค่ผ่าน SQL ตรง ๆ ตอนนี้) ต้องตัดสินใจพร้อมกันว่าจะ enforce ตรงไหนบ้างก่อนใช้จริง (RLS ปฏิเสธ insert/update ของ user ที่ถูกแบน, กัน login, หรือแค่ซ่อนสินค้า)
-- [ ] **ไฟล์กำพร้าใน `avatars`** — เปลี่ยนรูปโปรไฟล์แล้วไฟล์เก่าไม่ถูกลบ และ `avatar_url` ชี้ URL ที่ไฟล์อาจไม่มีแล้ว (D-15) — แก้พร้อมข้อถัดไป
-- [ ] **ไฟล์กำพร้าใน `product-images`** — อัปรูปแล้วไม่กดบันทึก หรือลบประกาศทีหลัง ไฟล์ยังค้างใน bucket ยังไม่มีระบบเก็บกวาด (ควรทำตอน L5 ที่มีการลบประกาศจริง — Edge Function หรือ trigger บน `DELETE products`)
-- [ ] **รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL** — ผลจากการเลือก public bucket (หนี้ที่รับไว้ใน `DECISIONS.md` D-12) · 🔴 อย่าเอา bucket นี้ไปเก็บของอ่อนไหว เช่น บัตรนักศึกษา/สลิปโอนเงิน
-- [ ] **`Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)`** — ตอนนี้ trigger `lower()` ให้ก่อน insert จึงยังไม่มีปัญหา แต่ถ้ามีเส้นทางเขียนอื่นที่ไม่ผ่าน trigger จะสมัครซ้ำด้วยอีเมลคนละตัวพิมพ์ได้ (ตรวจด้วย `checks/L1.sql` [1.9])
-- [x] ~~ชื่อหน้า/State ฝั่ง FlutterFlow ยังไม่เคยเทียบกับโปรเจกต์จริง~~ → **ปิดแล้วสำหรับ L1** 2026-08-09 (มี CLI แล้ว, ชื่อ v2 ยืนยันจริงหมดแล้วดู `layers/L1-auth-profile.md`) — **แต่ L2 ขึ้นไปยังไม่เคยตั้งชื่อใน v2 เลย** ต้องตรวจใหม่ทุก layer ที่เริ่ม
-- [ ] **repo เป็น private แล้ว (D-13) แต่นั่นไม่ใช่การปิดช่องโหว่** — ของจริงที่ต้องปิดคือ 3 ข้อบนสุดของรายการนี้ อย่าให้ private กลายเป็นข้ออ้างเลื่อนออกไป
-- [ ] 🔴 **บัญชีทดสอบ 2 บัญชีถูกแก้ credential ตรงด้วย SQL — ไม่ใช่สภาพที่ user จริงไปถึงได้ ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว** (2026-08-09):
-      - `mju6577778888@mju.ac.th` — `email_confirmed_at` ถูก patch ด้วย SQL ตรง ๆ (`UPDATE auth.users SET email_confirmed_at = now() ...`) เพื่อปลดล็อกเทส login หลังเจอ "Email not confirmed" — บัญชีนี้**ไม่เคยผ่านขั้นตอนยืนยันอีเมลจริงของ Supabase เลย** **ยังไม่ได้ล้าง** ณ 2026-08-09 แม้ D-17 จะสร้าง flow เสร็จแล้ว — เป็นงานค้างข้อสุดท้ายก่อนปิด L1 ดู `layers/L1-auth-profile.md`
-      - `mju6512345678@mju.ac.th` — `encrypted_password` ถูกเขียนทับด้วย SQL (`crypt('TestPilot!2026', gen_salt('bf'))`) เพื่อให้มีรหัสผ่านที่รู้ค่าไว้เทส Test Pilot login — **รหัสผ่านเดิมของบัญชีนี้ (ถ้าเคยมีคนตั้งไว้) ใช้ไม่ได้แล้ว** และ `email_confirmed_at` ก็ถูกแตะด้วย (แม้จะเป็น no-op เพราะเดิมน่าจะ confirmed อยู่แล้วจากการสร้างผ่าน Dashboard)
-      ทั้งสองบัญชีปลอดภัยสำหรับ**เทส auth/role routing ต่อ**เท่านั้น — **ห้ามใช้เทส "สมัครสมาชิกแล้วต้องยืนยันอีเมล" เพราะสภาพถูกลัดผ่านไปแล้ว**
-      🔴 **บัญชีสดสำหรับเทส confirm-flow เดิม (`mju6500000099@mju.ac.th`) ถูกลบไปแล้ว 2026-08-10** พร้อมบัญชีทดสอบเก่าอีก 3 บัญชี (`mju6500000101@mju.ac.th`, `mju6606105382@mju.ac.th`, `mju6606105383@mju.ac.th`) — ลบเพื่อเคลียร์ข้อมูลค้างระหว่างเทส D-19/D-20 (รายละเอียด `DECISIONS.md` **D-20**) **ต้องสมัครบัญชีทดสอบใหม่เมื่อกลับมาแก้ confirm-email ต่อ** — ไม่มีบัญชีสดพร้อมใช้ ณ ตอนนี้
-      🆕 **`mju6500000002@mju.ac.th`** (สร้าง 2026-08-15 ด้วย SQL ตรงเข้า `auth.users` — ไม่ผ่าน signup flow จริง เข้าเงื่อนไขเดียวกับสองบัญชีบน) role `user` ธรรมดา (ไม่ใช่ admin) — สร้างไว้ให้ pete เทสฟีเจอร์ report-a-listing (L7/D-24) ที่ต้อง login ด้วย non-admin — รหัสผ่าน = อีเมลตัวเอง ตาม pattern ที่ตกลงกันไว้
-      ✅ **ล็อกอินไม่ได้ตอนสร้างครั้งแรก แก้แล้ว 2026-08-15** — insert ตรงเข้า `auth.users` ไม่พอ ขาด `auth.identities` row + คอลัมน์ `*_token` เป็น NULL แทน `''` (GoTrue scan พังแบบไม่บอกสาเหตุจริงใน REST response ต้องดู `auth_logs`) — รายละเอียดเต็ม `PATTERNS.md` **PT-20** ยืนยันแล้วด้วย curl ตรงไปที่ `/auth/v1/token?grant_type=password` ว่าล็อกอินได้จริง (คืน access token)
+- [ ] `"Profile".id` มี default `gen_random_uuid()` ทั้งที่เป็นคอลัมน์ FK — ควรถอด default ออก (ยังไม่ทำ)
+- [ ] ข้อมูลทดสอบค้างใน DB: `"Profile"` มี 7 แถว — 4 แถวมี `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี`) ต้องล้างก่อน production
+- [ ] 🆕 **พบบัญชี admin `mju6500000001@mju.ac.th` ที่ไม่มีบันทึกที่มา** (ตรวจพบ 2026-08-15 ตอน sync เอกสาร) — `created_at` = `email_confirmed_at` เป๊ะ (ไม่ผ่าน OTP flow จริง เพราะ confirm-email ยังไม่เคยทำงาน) ไม่อยู่ในตารางบัญชีทดสอบด้านล่าง — ต้องหาว่าใครสร้าง/ทำไม แล้วบันทึกหรือลบทิ้ง
+- [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้
+- [ ] `"Profile".is_banned` มีคอลัมน์แล้วแต่ไม่มี enforcement เลย — login/โพสต์/แชทได้ปกติแม้ `is_banned = true` ยังไม่มี UI ให้แอดมินกดแบน (แก้ได้แค่ผ่าน SQL ตรง ๆ)
+- [ ] ไฟล์กำพร้าใน `avatars`/`product-images` — เปลี่ยน/ลบแล้วไฟล์เก่าไม่ถูกลบ (D-15) ยังไม่มีระบบเก็บกวาด (P-12 ยังไม่เลือกแนวทาง)
+- [ ] รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL (public bucket, D-12) — ห้ามเก็บของอ่อนไหวในนี้
+- [ ] `Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)` — ยังไม่มีปัญหาจริงเพราะ trigger `lower()` ให้ก่อน insert (P-11 ยังไม่ตอบรับ)
+- [ ] repo private (D-13) ไม่ใช่การปิดช่องโหว่ — ของจริงที่ต้องปิดคือ 2 ข้อบนสุดของรายการนี้
+
+**บัญชีทดสอบที่ credential ถูกแก้ตรงด้วย SQL (ไม่ใช่สภาพ user จริง — ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว):**
+
+| อีเมล | role | แก้อะไร | ใช้เทสอะไรได้ | ห้ามเทส |
+|---|---|---|---|---|
+| `mju6577778888@mju.ac.th` | admin | `email_confirmed_at` patch ด้วย SQL | auth/role routing, ทุก layer อื่น | "สมัครแล้วต้องยืนยันอีเมล" |
+| `mju6512345678@mju.ac.th` | user | `encrypted_password` เขียนทับด้วย SQL | Test Pilot login | เหมือนกัน |
+| `mju6500000002@mju.ac.th` (สร้าง 2026-08-15) | user | insert ตรงเข้า `auth.users`+`auth.identities` (PT-20) | L7 report-a-listing ด้วย non-admin | "สมัครแล้วต้องยืนยันอีเมล" |
+
+🔴 **บัญชีทดสอบสดสำหรับ confirm-email เดิมถูกลบไปแล้ว 2026-08-10** (`mju6500000099`+อีก 3 บัญชี) — ไม่มีบัญชีสดพร้อมใช้ ต้องสมัครใหม่เมื่อกลับมาทำ D-20 ต่อ
 
 ---
 
@@ -168,7 +107,7 @@ FlutterFlow page/state ที่เกี่ยวข้อง: [ชื่อ Pa
 Error / screenshot Action Flow (ถ้ามี): [แนบ]
 ```
 
-> ถ้ามี `flutterflow ai` (MCP) ให้สั่งใช้ `inspect` / `search` / `status` ดึงชื่อจริงมาก่อน แทนพิมพ์เอง
+> ถ้ามี `flutterflow ai` (MCP) ให้สั่งใช้ `inspect`/`search`/`status` ดึงชื่อจริงมาก่อน แทนพิมพ์เอง
 
 ---
 

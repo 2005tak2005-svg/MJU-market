@@ -122,20 +122,6 @@ ALTER TABLE public.reports ADD COLUMN reported_user_id uuid REFERENCES public."P
 
 *รอตัดสินใจว่าจะรองรับรีพอร์ต "ผู้ใช้" ด้วยไหม หรือรีพอร์ตแค่สินค้าพอ*
 
-## P-10 — RLS policy ของ `reports` (L7) 🔴
-
-> ✅ **ครึ่ง SELECT apply แล้ว 2026-08-14** (ทำตอนงาน L8 `HomeAdmin` — ต้องให้แอดมินอ่านจำนวนรายงานได้จริงสำหรับ `admin_dashboard_stats`) ดู `SCHEMA.md` หัวข้อ RLS ที่ apply แล้ว · ใช้ `private.is_admin()` แทน inline `EXISTS` เพื่อให้สอดคล้องกับ policy อื่นของ `"Profile"`
-> ครึ่ง INSERT (reporter รายงานเอง) **ยังไม่ apply** — เป็นสโคปของ L7 ไม่ใช่ L8 ค้างไว้ตรงนี้
-
-ก่อนหน้านี้ `reports` เปิด RLS แต่ไม่มี policy เลย = **deny-all** — insert/select ไม่ได้เลยแม้แต่ admin
-
-```sql
-CREATE POLICY "authenticated can report" ON public.reports
-  FOR INSERT TO authenticated WITH CHECK (reporter_id = auth.uid());
-```
-
----
-
 ## P-11 — unique index บน `lower("Profile".email)` (L1)
 
 > 🚧 **ข้อเสนอของ Claude — pete ยังไม่ตอบรับ ห้ามถือว่าตกลงแล้ว**

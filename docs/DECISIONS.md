@@ -502,3 +502,19 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ภาระถาวรที่เหลือ:** `PendingProductsList`'s `ensureReplaced` **ห้ามลบออกจากสคริปต์** ต่างจาก pattern ปกติที่ลบทิ้งหลังใช้เสร็จ — ทุก push ที่แตะ `dsl/edit.dart` (ไม่ใช่แค่ push ที่แก้ `HomeAdmin`) ต้อง verify key สดก่อนเสมอ ไม่งั้น validate fail — ดู PT-19
 
 **ผล:** ปลดบล็อกแล้ว L7 ทั้งสองฝั่ง (Supabase + FlutterFlow) เสร็จจริง — user รายงานสินค้าได้ (`ReportProductSheet`), admin log ตอน reject (`RejectProductSheet` 3rd write), admin mailbox ใช้งานได้ (`Reports`/`ReportDetail` + sidebar icon)
+
+## D-26 — `addproduct` แฟลชไป Login หลังลงขายสำเร็จ (root cause + แก้) + Notifications เชื่อมไป ProductDetails + ปุ่มติดต่อแอดมิน mock (2026-08-15)
+
+**อาการที่ pete รายงาน:** กด "ลงขายสินค้า" สำเร็จ (snackbar ขึ้น, แถวเข้า `products` จริง) แต่แอปเด้งกลับไปหน้า `Login`
+
+**root cause ที่ยืนยันแล้ว:** `addproduct` ลงทะเบียนเป็น **tab ของ `NavBarPage`** (`nav.dart`: `params.isComplete ? NavBarPage(initialPage: 'addproduct') : AddproductWidget()`) ไม่ใช่ route ที่ push ปกติ — ไม่มี back-stack ของตัวเองให้ pop กลับ ปุ่มลงขายจบด้วย `NavigateBack()` (หลัง insert+snackbar+reset รูปทั้งหมดทำงานถูกต้องแล้ว) การ pop ที่ไม่มีอะไรให้ pop จริงไปโดน router's root/error builder ทั้งคู่ที่ re-evaluate `appStateNotifier.loggedIn ? NavBarPage() : LoginWidget()` (`nav.dart:87,93`) ตรงกับอาการทุกจุด
+
+**แก้แบบ surgical ไม่ reconstruct ทั้ง chain:** action chain ของปุ่มลึก 9 ชั้น (authored มาจาก session ก่อนหน้า ไม่อยู่ใน `dsl/edit.dart` ปัจจุบัน) ที่ insert/snackbar/reset ทำงานถูกต้องอยู่แล้ว — reconstruct ใหม่ทั้งหมดผ่าน `ensureActions` (replace ทั้ง chain) เสี่ยงพิมพ์ผิดแล้วพังของที่ใช้งานได้อยู่ แทนที่ด้วย `app.raw` เดินหา action สุดท้ายของ chain (รองรับ conditional branch ด้วย — เจอว่า chain มี `conditionActions` คั่นกลาง ไม่ใช่ linear ล้วน) แล้ว clear เฉพาะ `NavigateBack()` ตัวสุดท้ายออก ไม่แตะอะไรอื่นเลย — ยืนยันจาก `generated_code/lib/addproduct/addproduct_widget.dart` ว่า insert/snackbar/reset รูปทั้ง 6 บรรทัดยังอยู่ครบ เหลือแค่ `context.pop()` หายไป
+
+**เพิ่มใหม่ (ตามที่ pete ขอหลังเทส):**
+- `Notifications` (`Scaffold_u6bemkzb`) — แตะ item ตอนนี้ทำ 2 อย่างเรียงกัน: mark-as-read (เดิม) + `Navigate(ProductDetails, {productId: item['ref_product_id'], fromNotifications: true})`
+- `ProductDetails` (`Scaffold_amt0m1za`) — param ใหม่ `fromNotifications` (bool, default false) + ปุ่ม "ติดต่อแอดมิน" เต็มความกว้าง แสดงเฉพาะตอน `fromNotifications = true` — **เป็น placeholder ล้วน** (แค่ snackbar) เตรียมไว้สำหรับ L4 (แชท) ตามที่ pete ยืนยัน ยังไม่ใช่ระบบส่งข้อความจริง
+
+**กับดัก SDK ที่เจอเพิ่ม:** `page.findByKey(...)` (dynamic search) คืน "found no matches" สำหรับทุก key บน `ProductDetails` แม้ `inspect --outline` ยืนยันว่า key นั้น live อยู่จริง — หน้านี้ไม่เคยใช้ `page.findByKey` สำเร็จมาก่อน (edit เดิมทั้งหมดผ่าน `ff.Pages.productDetails.widgets.byPath/byKey` ของ typed SDK) สลับไปใช้ typed SDK selector แทนก็ผ่านทันที — ยังไม่รู้กลไกที่แท้จริง บันทึกไว้เป็นข้อสังเกต ไม่ใช่กฎทั่วไป (เพจอื่นที่ใช้ `page.findByKey` มาตลอดเช่น `HomeAdmin`/`Reports`/`Notifications` ไม่มีปัญหานี้)
+
+**ผล:** ทั้ง 3 อย่าง push สำเร็จจริง ยืนยันผ่าน `generated_code/` ครบ (commit `bxujSHgcJpXUCibPheEe`, `Paj09FrVxaQrzsx0OJeE`) — รอ pete เทสผ่านแอปจริงเป็นด่านสุดท้าย

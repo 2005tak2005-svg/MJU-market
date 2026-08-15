@@ -1,7 +1,8 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-15** — ✅ **D-25 regression แก้แล้ว + push สำเร็จจริง** (root cause: `PendingProductsList` validate ผ่านเฉพาะตอน authored สดในพุชเดียวกัน — ดู PATTERNS.md PT-19) · root cause บั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) ปิดแล้วที่ชั้น RLS (D-24) · เปิดใช้ `reports` จริงทั้ง user-report + admin-log + admin mailbox (`Reports`/`ReportDetail` + sidebar icon) — **SQL + DSL push สำเร็จหมดแล้ว (commit `iO73cDkL`, `6hlHqRlp`) รอ pete เทสผ่านแอปจริงเป็นด่านสุดท้าย**
+> อัปเดตล่าสุด: **2026-08-15** — ✅ **D-26: แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ** (root cause: เป็น `NavBarPage` tab ไม่ใช่ pushed route, `NavigateBack()` ท้าย action chain ไม่มีอะไรให้ pop แล้วไปโดน router root/error builder — ลบเฉพาะ action นั้นแบบ surgical ไม่แตะส่วนอื่น) · เพิ่ม `Notifications` → `ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" (mock, เตรียมไว้สำหรับ L4) — push สำเร็จจริง ยืนยันผ่าน `generated_code/`
+> ก่อนหน้านั้น: ✅ **D-25 regression แก้แล้ว + push สำเร็จจริง** (root cause: `PendingProductsList` validate ผ่านเฉพาะตอน authored สดในพุชเดียวกัน — ดู PATTERNS.md PT-19) · root cause บั๊ก reject-flow (sheet ไม่ปิด/ไม่มี notification) ปิดแล้วที่ชั้น RLS (D-24) · เปิดใช้ `reports` จริงทั้ง user-report + admin-log + admin mailbox (`Reports`/`ReportDetail` + sidebar icon)
 > อัปเดตก่อนหน้า 2026-08-14 — **สลับ Authentication backend เป็น Supabase** (D-21) · หน้า `ProfileUser` + `ProductDetails` + AllList ทำงานจริงผ่านแอปแล้ว · **เริ่ม L8 `HomeAdmin`** (D-22) — reuse template shell เดิม ผูกการ์ดสถิติ + คิวสินค้ารอตรวจ + กราฟยอดขายเข้าข้อมูลจริงแล้ว · **approve/reject + `notifications` table (L6) + `Notifications` page + bell icon** (D-23) — push แล้ว ยืนยันผ่าน `generated_code/` + impersonation test ยังไม่ได้ทดสอบผ่านแอปจริง (pete ทดสอบแล้วเจอบั๊กจริง → นำไปสู่ D-24)
 > **L1 confirm-email ยังหยุดไว้ที่ D-20** (OTP สร้างเสร็จ แต่ติด email deliverability ฝั่ง tenant)
 
@@ -18,17 +19,18 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-0.9. **✅ regression D-25 แก้แล้ว จริง** — root cause: `PendingProductsList` (`HomeAdmin`) validate ผ่านเฉพาะตอนสคริปต์ authored มันสดในพุชเดียวกัน ไม่ใช่ orphan สะสม (ดู `PATTERNS.md` **PT-19**) — retarget `ensureReplaced` ด้วย key จริง (verify สดผ่าน `inspect --page HomeAdmin` ไม่ใช่ `--outline`) แล้ว validate ผ่าน `[OK]` ทันที
+1.0. **🆕 D-26 push สำเร็จจริงแล้ว รอ pete เทสผ่านแอปเป็นด่านสุดท้าย**
+    ✅ แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ — ยืนยันผ่าน `generated_code/` ว่า insert/snackbar/reset รูปยังอยู่ครบ เหลือแค่ `NavigateBack()` ที่ผิดพลาดหายไป (commit `bxujSHgcJpXUCibPheEe`)
+    ✅ `Notifications` แตะ item แล้วไป `ProductDetails` ของสินค้านั้นจริง + ปุ่ม "ติดต่อแอดมิน" (mock เตรียม L4) โผล่เฉพาะตอนมาจาก notification — ยืนยันผ่าน `generated_code/` (commit `Paj09FrVxaQrzsx0OJeE`)
+    ⚠️ **ยังไม่ได้ทดสอบผ่านแอปจริง** เช็คก่อนปิด: (1) ลงขายสินค้าสำเร็จ → **ไม่**เด้งไป Login, ฟอร์มเคลียร์ตามเดิม (2) แตะ notification การถูกปฏิเสธ → เข้า `ProductDetails` ของสินค้านั้นถูกตัว → เห็นปุ่มติดต่อแอดมิน (3) เข้า `ProductDetails` จากทางอื่น (เช่น `AllList`) → **ไม่**เห็นปุ่มติดต่อแอดมิน
+
+0.9. **✅ regression D-25 แก้แล้ว จริง** — root cause: `PendingProductsList` (`HomeAdmin`) validate ผ่านเฉพาะตอนสคริปต์ authored มันสดในพุชเดียวกัน ไม่ใช่ orphan สะสม (ดู `PATTERNS.md` **PT-19**)
     🔴 **ภาระถาวรที่เหลือ:** ก้อน `ensureReplaced` นี้**ห้ามลบออกจากสคริปต์** — ทุก push ที่แตะ `dsl/edit.dart` ต่อจากนี้ (ไม่ใช่แค่งาน `HomeAdmin`) ต้อง verify key สดก่อนเสมอไม่งั้น validate fail — อ่าน PT-19 ก่อนแตะไฟล์นี้ทุกครั้ง
 
-0.8. **🆕 root cause บั๊ก reject-flow ปิดแล้ว + เปิดใช้ `reports` จริง (D-24) — push สำเร็จจริงแล้ว รอ pete เทสผ่านแอปเป็นด่านสุดท้าย**
-    ✅ SQL apply + verify ผ่านครบแล้ว: policy ใหม่ 4 ตัว (`notifications` admin-read, `reports` insert/reporter-read), FK `reported_product_id` เปลี่ยนเป็น `ON DELETE SET NULL`, CHECK+default บน `status`, partial unique index กันรายงานซ้ำ, view `reports_admin_view` — ทุกจุดทดสอบผ่าน impersonation จริงแล้ว
-    ✅ DSL push สำเร็จจริง 2 พุช (commit `iO73cDkL9bGAf4hcfKpP`, `6hlHqRlpvnKvWYM8oUo4`) ยืนยันผ่าน `generated_code/`: component `ReportProductSheet` + ปุ่ม report บน `ProductDetails`, เขียนที่ 3 (`reports`) บน `RejectProductSheet`, หน้า `Reports`/`ReportDetail` (list+detail มี query จริง), ไอคอน entry point บน `HomeAdmin` sidebar
-    ⚠️ **ยังไม่ได้ทดสอบผ่านแอปจริง** (สภาพแวดล้อมนี้รัน `flutter` ไม่ได้) เช็คก่อนปิด: (1) กดปุ่มรายงานใน `ProductDetails` → sheet ปิด + snackbar ขึ้น (2) รายงานซ้ำสินค้าเดิม → เห็น error message (unique constraint) (3) reject สินค้า → sheet ปิดจริง + seller เห็นแจ้งเตือน + reports มีแถวใหม่ status='resolved' (4) กดไอคอนใน `HomeAdmin` sidebar → เข้าหน้า `Reports` → แตะแถว → เห็นรายละเอียดครบ
+0.8. **✅ D-24 reports feature — pete ยืนยันแล้วว่า notifications ทำงานถูกต้องทั้ง admin/user** (ทดสอบผ่านแอปจริง) ส่วนที่เหลือดู 1.0
+    ✅ SQL apply + verify ผ่านครบแล้ว: policy ใหม่ 4 ตัว (`notifications` admin-read, `reports` insert/reporter-read), FK `reported_product_id` เปลี่ยนเป็น `ON DELETE SET NULL`, CHECK+default บน `status`, partial unique index กันรายงานซ้ำ, view `reports_admin_view`
+    ⚠️ ยังไม่ได้เทสส่วน `ReportProductSheet`/`Reports`/`ReportDetail` ผ่านแอปจริง (1) กดปุ่มรายงานใน `ProductDetails` → sheet ปิด + snackbar ขึ้น (2) รายงานซ้ำสินค้าเดิม → เห็น error message (unique constraint) (3) reject สินค้า → sheet ปิดจริง + reports มีแถวใหม่ status='resolved' (4) กดไอคอนใน `HomeAdmin` sidebar → เข้าหน้า `Reports` → แตะแถว → เห็นรายละเอียดครบ
     ⚠️ พบว่า `PostgresCreate`/`PostgresUpdate` ไม่มี `onFailure`/`onSuccess` ใน SDK เวอร์ชันนี้เลย (มีแค่ `ApiCall`) — ตัด scope "error Snackbar" ออก บันทึกเป็น PT-18
-
-0.7. **approve/reject + Notifications (D-23) — pete เทสจริงแล้ว เจอบั๊กจริง 3 จุด → root cause หาเจอแล้ว ดู 0.8**
-    pete รายงาน: (1) sheet ไม่ปิดอัตโนมัติหลังกดปฏิเสธ (2) seller ไม่เห็นแจ้งเตือน (3) ไม่มีอะไรถูกบันทึกลง `reports` — ทั้งหมดคือ**อาการเดียวกัน**จาก root cause เดียว (select-back หลัง insert โดน RLS SELECT policy บล็อก → exception หยุดก่อนถึง `context.pop()`) แก้แล้วที่ D-24 (ค้างแค่ push ตาม D-25)
 
 0.5. **🆕 L8 `HomeAdmin` ที่เพิ่งผูกวันนี้ — ตรวจ structure/binding ผ่าน FF Desktop live session + `generated_code/` แล้ว รอ pete เทสจริงผ่านแอปเป็นด่านสุดท้าย**
     ✅ ยืนยันแล้ว (2026-08-14, ผ่าน `ide.query_nodes` + `flutterflow ai inspect --outline` + อ่าน `generated_code/` ตรง ๆ): การ์ด 3 ใบ (`ผู้ใช้ทั้งหมด`/`สินค้ารอตรวจสอบ`/`ผู้ใช้ถูกระงับ`) ผูกกับ `admin_dashboard_stats` ถูกต้อง ไม่ใช่ placeholder, โครง widget tree ของ `Row_zau657ld` ถูกต้อง (3 การ์ดจริง ไม่ใช่ list ซ้ำ — เจอบั๊ก canvas render ซ้ำ 4 ชุดระหว่างทำ แก้แล้ว ดู `PATTERNS.md` **PT-16**)

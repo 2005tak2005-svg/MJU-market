@@ -29,16 +29,12 @@ Stack: **FlutterFlow** (UI/Action Flow) + **Supabase PostgreSQL** `MJU market` (
 
 ## 🔧 กับดัก tool ที่เจอมาแล้ว (อย่าเสียเวลาซ้ำ)
 
+> กับดักที่เกี่ยวกับ Supabase/DB โดยตรง (execute_sql หลายคำสั่ง, list_tables ไม่คืน RLS, regclass mixed-case, Realtime, Storage bucket, Auth config) ย้ายไปรวมไว้ที่ `.claude/agents/db-verifier.md` แล้ว — เปิดที่นั่นก่อนแตะ DB
+
 | กับดัก | ทางแก้ |
 |---|---|
-| `execute_sql` หลายคำสั่งในครั้งเดียว | คืนผลแค่คำสั่ง**สุดท้าย** — verification query ต้องแยกรัน |
-| `list_tables` (verbose) | ได้ระดับคอลัมน์ แต่**ไม่มี RLS policy** — ต้อง query `pg_policies` เอา `qual` + `with_check` |
-| ชื่อ mixed-case ใน regclass | ต้อง quote ข้างใน: `'public."Profile"'::regclass` |
 | FlutterFlow เทียบ string | **case-sensitive** — `"admin"` ≠ `"Admin"` |
-| Realtime บน view | ทำงานที่ table level (Postgres replication) — ยังไม่ยืนยันว่า FlutterFlow listen บน view ได้จริง |
 | plugin hook เป็น POSIX shell | Windows ต้องมี bash บน PATH (Git Bash / WSL) |
-| Supabase Storage public bucket เสิร์ฟ `.html` | บังคับ `content-type: text/plain` เสมอ (anti-XSS) ต่อให้ `metadata.mimetype` ใน `storage.objects` บอกว่า `text/html` ก็ไม่ช่วย — เจอกับ `static-pages/email-confirmed.html` (D-19) แก้ด้วยการเปลี่ยนเป็น `.txt` ล้วนแทน อย่าพยายามโฮสต์หน้าเว็บ HTML ผ่าน Storage bucket |
-| Site URL / Redirect URL / Email Templates ของ Auth | ไม่อยู่ใน Postgres เลย (`auth.config` ไม่มีจริง) เป็น platform config เข้าได้แค่ Dashboard หรือ Management API token (ไม่มีให้ผ่าน MCP) — แก้ email template ต้องเปิด custom SMTP ก่อนเสมอทุก plan (ดู D-19) |
 
 **คำสั่ง `flutterflow ai` ที่ใช้ได้จริง:** `status <id>` / `inspect <id>` / `validate <file>` / `run <file>`
 (`plan` / `trace` เป็นชื่อเก่า เลิกใช้แล้ว)

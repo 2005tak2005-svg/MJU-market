@@ -64,13 +64,13 @@ wc -l CLAUDE.md docs/*.md docs/layers/*.md docs/checks/*.sql | sort -rn
 |---|---|---|
 | `CLAUDE.md` | 130 | กับดักเฉพาะเรื่อง → `agents/db-verifier.md` หรือ `layers/Lx` |
 | `docs/STATUS.md` | 120 | เรื่องเล่า/บทเรียน → `DECISIONS.md` · ผลตรวจ → `VERIFICATION.md` |
-| `docs/SCHEMA.md` | 200 | ผลทดสอบ/advisor → `VERIFICATION.md` |
-| `docs/PATTERNS.md` | 120 | pattern ที่ใช้ layer เดียว → ย้ายกลับเข้า `layers/Lx` |
+| `docs/SCHEMA.md` | ~~200~~ **700** (ปรับ 2026-08-15) | ผลทดสอบ/advisor → `VERIFICATION.md` — เพดานเดิมตั้งไว้ตอนโปรเจกต์เล็ก ปรับขึ้นเพราะเนื้อหาส่วนใหญ่คือ schema จริงที่ re-derive ไม่ได้ ไม่ใช่ของที่ย้ายได้ (ยืนยัน 2026-08-15: 625 บรรทัด ตรงกับ DB 100% ไม่มีส่วนไหนย้ายออกได้เกิน ~20 บรรทัด) |
+| `docs/PATTERNS.md` | ~~120~~ **450** (ปรับ 2026-08-15) | pattern ที่ใช้ layer เดียว → ย้ายกลับเข้า `layers/Lx` — เพดานเดิมตั้งไว้ตอนมีแค่ ~5-8 pattern ตอนนี้มี 21 (PT-01..PT-21) ที่อ้างอิงข้าม layer จริงทั้งหมด ย้ายออกจะขัดกับจุดประสงค์ไฟล์ (จุดอ้างอิงเดียวข้าม layer) |
 | `docs/AGENTS.md` | 120 | เหตุผลเชิงตัดสินใจ → `DECISIONS.md` |
 | `docs/PROPOSED_SQL.md` | 200 | ที่ apply แล้ว → `SCHEMA.md` **แล้วลบทิ้ง** ไม่ใช่ขีดฆ่าคาไว้ |
 | `docs/INBOX.md` | 80 | ควรว่างเป็นปกติ — เกิน = ยังไม่ได้กระจาย |
 | `docs/layers/*.md` | 90 | ⚠️ ที่ซ้ำ ≥2 layer → `PATTERNS.md` |
-| `docs/checks/_common.sql` | 90 | คำอธิบาย → `agents/db-verifier.md` |
+| `docs/checks/_common.sql` | ~~90~~ **130** (ปรับ 2026-08-15) | คำอธิบาย → `agents/db-verifier.md` — ตัดส่วนที่ซ้ำกับ db-verifier.md ไปแล้ว (127→121 บรรทัด) ส่วนที่เหลือคือ query+คำอธิบายเฉพาะ query นั้นที่แยกไม่ได้โดยไม่เสียประโยชน์ใช้งาน |
 
 **ไม่มีเพดาน** (โตได้เรื่อย ๆ ตามดีไซน์ เพราะไม่อยู่ในเส้นทางอ่านประจำ):
 `docs/DECISIONS.md` · `docs/VERIFICATION.md` · `docs/checks/L1..L8.sql`

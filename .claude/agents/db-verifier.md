@@ -35,6 +35,9 @@ model: sonnet
 - **`list_tables` ไม่คืน RLS policy** → ต้อง query `pg_policies` เอา `qual` + `with_check` มาดูตรรกะจริง
 - **mixed-case ต้อง quote ใน regclass**: `'public."Profile"'::regclass`
 - ตาราง `"Profile"` และ `"CAT"` ต้อง double-quote ทุกครั้งใน SQL
+- **Realtime บน view** ทำงานที่ table level (Postgres replication) — ยังไม่ยืนยันว่า FlutterFlow listen บน view ได้จริง
+- **Supabase Storage public bucket เสิร์ฟ `.html`** ต้องบังคับ `content-type: text/plain` เสมอ (anti-XSS) ต่อให้ `metadata.mimetype` ใน `storage.objects` บอกว่า `text/html` ก็ไม่ช่วย — เจอกับ `static-pages/email-confirmed.html` (D-19) แก้ด้วยเปลี่ยนเป็น `.txt` ล้วน อย่าพยายามโฮสต์หน้าเว็บ HTML ผ่าน Storage bucket
+- **Site URL / Redirect URL / Email Templates ของ Auth ไม่อยู่ใน Postgres เลย** (`auth.config` ไม่มีจริง) เป็น platform config เข้าได้แค่ Dashboard หรือ Management API token (ไม่มีให้ผ่าน MCP) — แก้ email template ต้องเปิด custom SMTP ก่อนเสมอทุก plan (ดู D-19)
 
 ## 4 อย่างที่ต้องตรวจเสมอ ไม่ว่าถูกสั่งให้ดู layer ไหน
 

@@ -5,41 +5,10 @@
 
 ---
 
-## ⚠️ ข้อจำกัดจริงที่เจอตอนใช้งาน (2026-08-07) — อ่านก่อนวางแผนพึ่ง subagent
+## ⚠️ ข้อจำกัดจริงที่เจอตอนใช้งาน — อ่านก่อนวางแผนพึ่ง subagent
 
-### 1. subagent เรียกได้เฉพาะบน Claude Code CLI
-
-ไฟล์ใน `.claude/agents/` ติดตั้งครบแล้ว แต่**เรียกไม่ได้ทุกสภาพแวดล้อม**
-
-| สภาพแวดล้อม | เรียก `db-verifier` ได้ไหม |
-|---|---|
-| `claude` ในเทอร์มินัล | ✅ ได้ |
-| Cowork / เดสก์ท็อป | ❌ **ไม่ได้** — รายชื่อ agent ถูกล็อกไว้ตายตัว ขึ้น `Agent type 'db-verifier' not found` |
-
-**ทางแก้เมื่อเรียกไม่ได้:** implementer รันเองตาม checklist ใน `.claude/agents/db-verifier.md` เป๊ะ ๆ
-ได้ผลเท่ากัน เสียแค่ context isolation — **สิ่งที่ห้ามเสียคือความเข้มของการตรวจ ไม่ใช่ว่าใครรัน**
-
-### 2. บรรทัด `tools:` — ห้าม hardcode ชื่อ Supabase MCP
-
-โปรเจกต์นี้**ไม่มี `.mcp.json`** ชื่อ Supabase MCP จึงไม่คงที่:
-
-- ผ่าน Cowork connector = UUID ที่เปลี่ยนทุก session
-- ผ่าน CLI = แล้วแต่ `.mcp.json` ที่ยังไม่มี
-
-ชื่อ `mcp__supabase__*` ที่เขียนไว้ในไฟล์รุ่นแรกเป็นแค่ **placeholder ที่ไม่เคยมีจริง** — hardcode ไว้แล้ว agent จะเรียก tool ไม่ได้แบบเงียบ ๆ
-
-จึง**ตัดบรรทัด `tools:` ออก**จาก `db-verifier` / `doc-syncer` ให้ inherit จาก session แม่
-(`ui-checker` คงไว้ได้ เพราะใช้ `Read, Glob, Grep, Bash` เป็น built-in ล้วน)
-
-> 🔴 **ผลข้างเคียงที่ต้องรู้:** พอ inherit ทั้งหมด `db-verifier` จะได้ `Write`/`Edit` ติดมาด้วย
-> กติกา **READ-ONLY จึงบังคับด้วย prompt เท่านั้น ไม่มีรั้วระดับ tool แล้ว**
-> ถ้าอยากได้รั้วจริงคืนมา ต้องสร้าง `.mcp.json` ชื่อ `supabase` (ต้องใช้ Supabase access token ซึ่ง pete ต้องเป็นคนใส่) แล้วค่อย pin `tools:` กลับ
-
-### 3. นิยาม subagent อยู่ที่เดียว
-
-> 🔴 นิยาม subagent อยู่ที่ `.claude/agents/` **ที่เดียว**
-> ห้ามทำสำเนาไว้ใน `docs/` — Claude Code โหลดจาก `.claude/` เท่านั้น
-> สำเนาที่ไหนก็ตามจะกลายเป็นของเก่าที่ดูเหมือนของจริง
+subagent เรียกได้เฉพาะบน Claude Code CLI (Cowork/เดสก์ท็อปเรียกไม่ได้) · `tools:` ห้าม hardcode ชื่อ Supabase MCP (ไม่คงที่ข้าม session) · นิยาม subagent อยู่ที่ `.claude/agents/` ที่เดียว ห้ามทำสำเนาไว้ใน `docs/`
+รายละเอียดเต็ม + เหตุผลการตัดสินใจ → `DECISIONS.md` **D-28**
 
 ---
 

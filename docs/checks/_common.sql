@@ -17,7 +17,7 @@ WHERE n.nspname = 'public' AND c.relkind = 'r'
 ORDER BY 1;
 
 -- [C2] 🔴 ตารางที่เปิด RLS แต่ไม่มี policy = deny-all (ต้นเหตุบั๊ก NULL ทั้งชุด)
---      คาดหวังตอนนี้: มีแค่ 'reports' — ถ้าเจอตัวอื่นโผล่มา = มีคนสร้างตารางใหม่แล้วลืมทำ policy
+--      คาดหวังตอนนี้: ว่างเปล่า (ทุกตารางมี policy แล้ว รวม `reports` ตาม D-24) — ถ้าเจอแถวใด ๆ โผล่มา = มีคนสร้างตารางใหม่แล้วลืมทำ policy
 SELECT c.relname AS deny_all_table
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
@@ -63,19 +63,13 @@ JOIN pg_class c ON c.oid = t.tgrelid
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE NOT t.tgisinternal ORDER BY 1;
 
--- [C8] ⭐ ทดสอบมุมมองของ user ธรรมดา — ข้อที่พลาดบ่อยที่สุด
---
---      🔴 ก่อนรัน ต้องหา UID ของ user ที่ "ไม่ใช่ admin" และ "ไม่ใช่เจ้าของข้อมูลที่กำลังตรวจ"
---         ถ้าหาไม่ได้ ห้ามเดา UID มั่ว ๆ ให้รายงานว่าตรวจไม่ได้แล้วหยุด
---         (UID ปลอมจะได้ 0 แถวเสมอ ซึ่งหน้าตาเหมือน "ผ่าน" ทั้งที่ไม่ได้ตรวจอะไรเลย)
+-- [C8] ⭐ ทดสอบมุมมองของ user ธรรมดา — เหตุผล/เกณฑ์ตัดสินเต็ม ๆ อยู่ที่
+--      .claude/agents/db-verifier.md หัวข้อ "การทดสอบที่สำคัญที่สุด" ที่นี่มีแค่ query
 SELECT p.id, p.role
 FROM public."Profile" p
 WHERE coalesce(p.role,'') <> 'admin'
 ORDER BY p.created_at
 LIMIT 5;
-
---      ⚠️ แต่ละ SELECT = 1 บล็อก แยกรัน ห้ามยัดรวมกัน (กับดักที่ 1)
---         ไม่ต้องมี ROLLBACK — SET LOCAL หมดอายุเองเมื่อจบ transaction และทั้งหมดนี้ read-only
 
 -- [C8a] products_review_view มุมมอง user ธรรมดา — ห้ามมี NULL ใน seller_name / category_name
 BEGIN;

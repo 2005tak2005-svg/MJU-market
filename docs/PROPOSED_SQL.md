@@ -9,6 +9,9 @@
 >
 > 📌 **P-07 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `notifications` + RLS + trigger `enforce_moderation_admin_only`) อ่านที่ `SCHEMA.md` แทน
 > เลข P-07 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-23**
+>
+> 📌 **P-10 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`reports` มี 3 policy: admin-read, reporter-read-own, authenticated-insert) อ่านที่ `SCHEMA.md` แทน
+> เลข P-10 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-24**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
@@ -18,7 +21,6 @@
 | P-06 | ตาราง `transactions` | L5 | รอ confirm ค่า status |
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
-| P-10 | RLS policy ของ `reports` | L7 | 🔴 ตอนนี้ deny-all ใช้งานไม่ได้เลย |
 | P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
 | P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 

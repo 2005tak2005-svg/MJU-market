@@ -541,3 +541,23 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ผลข้างเคียง:** `db-verifier` ได้ `Write`/`Edit` ติดมาด้วยจากการ inherit ทั้งหมด — กติกา READ-ONLY จึงบังคับด้วย prompt เท่านั้น ไม่มีรั้วระดับ tool แล้ว (ถ้าอยากได้รั้วจริงคืนมา ต้องสร้าง `.mcp.json` ชื่อ `supabase` ด้วย Supabase access token ที่ pete เป็นคนใส่ แล้วค่อย pin `tools:` กลับ)
 
 **3. นิยาม subagent อยู่ที่ `.claude/agents/` ที่เดียว** — ห้ามทำสำเนาไว้ใน `docs/`, Claude Code โหลดจาก `.claude/` เท่านั้น สำเนาที่ไหนก็ตามจะกลายเป็นของเก่าที่ดูเหมือนของจริง
+
+## D-29 — L4 chat: ปิดหนี้ RLS allow-all (D-03) ก่อนเริ่มสร้างจริง + เพิ่มรองรับส่งรูป (2026-08-16)
+
+**บริบท:** เริ่ม L4 (chat) ตามคิว `STATUS.md` — ระหว่าง plan pete สั่งให้แก้ 6 จุดที่มองว่าเสี่ยงในดราฟต์แรก ก่อนลงมือจริง
+
+**1. RLS ของ `chat`/`chat_user`/`chat_message` เปลี่ยนจาก allow-all → membership-based ทันที** (ไม่รอ production ตาม D-03 เดิม) เพราะแชทเป็นข้อมูลส่วนตัวโดยตรง ต่างจาก `products` (สาธารณะอยู่แล้ว) — สร้าง helper `is_chat_member(chat_id)` (`SECURITY DEFINER`) เพื่อเลี่ยง self-referential policy บน `chat_user` (ถ้าใช้ `user_id = auth.uid()` ตรง ๆ จะทำให้ `chat_summary`'s `member_names` เห็นแค่ชื่อตัวเอง เพราะ join ไม่เห็นแถวสมาชิกคนอื่น)
+
+**2. `find_or_create_chat` เพิ่ม guard `auth.uid() = user_a`** — ดราฟต์เดิม (`PROPOSED_SQL.md` P-03) ไม่กันการปลอมตัว: `SECURITY DEFINER` + ไม่เช็คตัวตน = ใครก็เรียกได้ให้สร้างห้องแทนคนอื่นได้ ทดสอบแล้วว่า `raise exception` จริงเมื่อ `user_a` ไม่ตรงกับผู้เรียก
+
+**3. `get_my_chats()` สร้างไว้แต่ไม่ได้ใช้จริง** — เดิมตั้งใจแก้ปัญหา "query builder รองรับ array-contains บน `user_ids` ไหม" (คำถามค้างเดิมใน `STATUS.md`) แต่หลังทำข้อ 1 แล้วพบว่า query `chat_summary` แบบไม่มี filter เลยก็ปลอดภัย เพราะ RLS กรองให้อยู่แล้ว — เก็บ RPC นี้ไว้เป็น convenience API เผื่ออนาคต (เช่น Edge Function) ไม่ลบทิ้ง
+
+**4. Realtime ต้อง subscribe ที่ `chat_message` (table) ไม่ใช่ `chat_messages_view`** — ตอบได้จากหลักการ (Postgres logical replication ทำงานระดับ table เท่านั้น) ไม่ต้องเสียเวลาทดสอบ ตามที่ pete เตือน — แต่ยังไม่ได้ต่อ Realtime จริงในพุชนี้ (ดู `layers/L4-chat.md` คิวถัดไป)
+
+**5. เพิ่มรองรับส่งรูป** — `chat_message.message` เปลี่ยนเป็น nullable, เพิ่ม `image_url text` + CHECK `chat_message_has_content` (อย่างน้อย 1 ใน 2 ต้องมีค่า), เพิ่ม bucket `chat-images` (public, 5MB, path เหมือน `product-images`) — trigger `update_chat_last_message` ใช้ `COALESCE(message, '📷 รูปภาพ')` กันข้อความรูปล้วนทำให้ chat list โชว์ค่าว่าง — **ฝั่ง FlutterFlow ยังไม่มีปุ่มส่งรูปเลย** (คิวถัดไป)
+
+**6. Advisor เพิ่มเติมที่แก้พร้อมกัน (ไม่ได้ขอ แต่พบระหว่างทำ):** ทุกฟังก์ชันใหม่ pin `search_path = public` กันโจมตีแบบ search_path hijack, และ revoke EXECUTE จาก `anon` ออกจากทุกฟังก์ชัน (Supabase auto-grant `anon`/`authenticated` ตอน `CREATE FUNCTION` แยกจาก PUBLIC pseudo-role ต้อง `REVOKE ... FROM anon` ตรง ๆ ไม่ใช่แค่ `FROM PUBLIC`) — `update_chat_last_message` ไม่มี grant เลยเพราะเป็น trigger-only
+
+**ผล:** L4 Supabase ✅ ปิดสนิท (RLS/RPC/trigger ทดสอบสิทธิ์จริงผ่าน `db-verifier`) · FlutterFlow 🟨 แชทข้อความล้วนใช้งานได้จริง (chatList + chatMessages + ปุ่ม "แชทกับผู้ขาย") ยังไม่มีรูป/Realtime — รายละเอียด `layers/L4-chat.md`, กับดัก SDK ที่เจอใหม่ `PATTERNS.md` PT-22/PT-23
+
+**🔴 พบบั๊ก build-breaking ระหว่างตรวจปิด layer (ui-checker):** custom function `getOtherUsers`/`senderLabel` เข้าถึง `.length`/`[i]` บน `List<String>?` โดยไม่ guard null — ทำให้ `dart analyze` ไม่ผ่านทั้งโปรเจกต์ (validate ของ `flutterflow ai run` เป็นแค่ shape/format check ไม่ใช่ full type-check ข้ามไฟล์ จึงหลุดผ่านมาได้) แก้แล้วด้วย `?? []`, ยืนยันซ้ำด้วย `dart analyze` ตรง ๆ ผ่านสะอาด — บทเรียน: การันตี "compile ผ่าน" จริงต้องรัน `dart analyze` แยกต่างหาก ไม่ใช่เชื่อแค่ `flutterflow ai run` สำเร็จ

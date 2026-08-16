@@ -139,6 +139,8 @@ Action Flow:
 
 **ใช้แล้วที่ (L1):** `SignUpWithProfile`, `IsCurrentUserAdmin` (0 arg ทั้งคู่) — **เจอซ้ำได้ทุก layer ที่ใช้ custom action รับ argument จาก UI**
 
+🔴 **เพิ่มเติม (พบทำ L4 `findOrCreateChatWithSeller` 2026-08-16):** custom action ที่เรียก `Supabase.instance.client` ตรง ๆ ต้องใส่ `import 'package:supabase_flutter/supabase_flutter.dart';` เป็นบรรทัดแรกของ `code:` เอง — ไม่ได้อยู่ใน "Automatic FlutterFlow imports" ที่ codegen แปะให้อัตโนมัติ (ต่างจาก `/backend/supabase/supabase.dart` ที่แปะให้) ขาดแล้ว **`flutterflow ai run`/validate ไม่จับ** (ไม่ใช่ full Dart compile เหมือนเดิม) แต่ FlutterFlow Desktop/web editor's ตัว Issues panel จับได้ (pete เห็นจากในแอปเป็นคนแรก ไม่ใช่จาก CLI) ยืนยันต้นเหตุจากการเทียบกับ `IsCurrentUserAdmin` ที่มี import นี้อยู่แล้วตั้งแต่แรก แก้ผ่าน `custom_code_helpers.updateCustomAction(project, name:, code:)`
+
 ---
 
 ## PT-10 — 🔴 `PostgresQuery` output type เป็น list เสมอ แม้ `isSingleRow: true` — `FieldAccess` ดึงค่าฟิลด์เดียวไม่ได้ (พบ 2026-08-09 ทำ L1)

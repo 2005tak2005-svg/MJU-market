@@ -425,7 +425,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-9 function (`public` 5 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+10 function (`public` 6 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -584,9 +584,30 @@ CREATE TRIGGER trg_update_last_message
 CREATE OR REPLACE FUNCTION public.get_my_chats() RETURNS SETOF chat_summary
  LANGUAGE sql STABLE
 AS $function$ SELECT * FROM public.chat_summary ORDER BY created_at DESC; $function$;
+
+CREATE OR REPLACE FUNCTION public.find_or_create_chat_with_admin(user_a uuid)
+ RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+DECLARE admin_id uuid; existing_chat_id bigint; new_chat_id bigint;
+BEGIN
+  IF auth.uid() IS DISTINCT FROM user_a THEN
+    RAISE EXCEPTION 'user_a must be the authenticated caller';
+  END IF;
+  SELECT id INTO admin_id FROM "Profile" WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1;
+  IF admin_id IS NULL THEN RAISE EXCEPTION 'no admin account available'; END IF;
+  IF admin_id = user_a THEN RAISE EXCEPTION 'caller is already an admin'; END IF;
+  SELECT cu1.chat_id INTO existing_chat_id
+  FROM chat_user cu1 JOIN chat_user cu2 ON cu1.chat_id = cu2.chat_id
+  WHERE cu1.user_id = user_a AND cu2.user_id = admin_id LIMIT 1;
+  IF existing_chat_id IS NOT NULL THEN RETURN existing_chat_id; END IF;
+  INSERT INTO chat (last_message) VALUES ('เริ่มการสนทนาแล้ว') RETURNING id INTO new_chat_id;
+  INSERT INTO chat_user (chat_id, user_id) VALUES (new_chat_id, user_a), (new_chat_id, admin_id);
+  RETURN new_chat_id;
+END; $function$;
 ```
 
 - **`is_chat_member`** — SECURITY DEFINER เพื่อเลี่ยง RLS วนซ้ำตัวเองบน `chat_user` (self-referential policy) EXECUTE grant ให้เฉพาะ `authenticated` (revoke `anon` ออกแล้ว — ค่า default ของ Supabase คือ grant `anon` ให้อัตโนมัติตอน `CREATE FUNCTION` ต้อง revoke เองทีละ role ไม่ใช่แค่ `REVOKE ... FROM PUBLIC`)
+- **`find_or_create_chat_with_admin`** (เพิ่ม 2026-08-16, D-30) — เหมือน `find_or_create_chat` (guard impersonation, default `last_message`) ต่างแค่ `user_b` ไม่ได้รับจาก caller แต่หาเองจาก `"Profile" WHERE role='admin' ORDER BY created_at ASC LIMIT 1` (แอดมินคนแรกสุด แบบ deterministic) — ต้องเป็น SECURITY DEFINER เพราะ RLS ของ `"Profile"` ปกติไม่ให้ user ธรรมดาเห็นแถวของแอดมิน EXECUTE grant `authenticated` เท่านั้น ทดสอบแล้วว่า idempotent + ได้แอดมินที่คาดหวังจริง (`mju6577778888`)
 - **`find_or_create_chat`** — เดิมดราฟต์ (`PROPOSED_SQL.md` P-03) ไม่มี guard `auth.uid()` เทียบ `user_a` เพิ่มเข้าไปตอน apply จริงกันไม่ให้ user คนหนึ่งบังคับสร้างห้องแทนคนอื่น · `INSERT INTO chat (last_message)` ใช้ข้อความ default แทน `NULL` เพราะฝั่ง FlutterFlow force-unwrap ค่านี้ (`lastMessage!` ใน `chat_list_widget.dart`) EXECUTE grant `authenticated` เท่านั้น
 - **`update_chat_last_message`** — trigger-only ไม่มี EXECUTE grant ให้ role ไหนเลย (เรียกผ่าน trigger ไม่ต้องมี grant)
 - **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น

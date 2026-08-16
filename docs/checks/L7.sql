@@ -8,7 +8,7 @@ SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'p
 UNION ALL
 SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='reports';
 
--- [7.2] คอลัมน์ของ reports — มี reported_user_id หรือยัง (P-09)
+-- [7.2] คอลัมน์ของ reports — มี reported_user_id หรือยัง (P-09) และ is_read (D-31)
 SELECT column_name, data_type, is_nullable FROM information_schema.columns
 WHERE table_schema='public' AND table_name='reports' ORDER BY ordinal_position;
 

@@ -23,19 +23,28 @@ WHERE pubname='supabase_realtime' AND tablename IN ('chat','chat_message');
 SELECT viewname, definition FROM pg_views
 WHERE schemaname='public' AND viewname IN ('chat_summary','chat_messages_view');
 
--- [4.5] RPC/trigger ที่ layer นี้ใช้ (D-29) — คาดหวังครบ 4 function + 1 trigger
+-- [4.5] RPC/trigger ที่ layer นี้ใช้ (D-29/D-30/D-31) — คาดหวังครบ 6 function + 1 trigger
 SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
 WHERE n.nspname='public'
-  AND p.proname IN ('find_or_create_chat','update_chat_last_message','is_chat_member','get_my_chats');
+  AND p.proname IN ('find_or_create_chat','update_chat_last_message','is_chat_member','get_my_chats',
+                     'find_or_create_chat_with_admin','mark_chat_read','mark_report_read');
 
 SELECT tgname FROM pg_trigger WHERE tgname='trg_update_last_message';
 
--- [4.5b] grant ของฟังก์ชันด้านบน — คาดหวัง: authenticated มีทั้ง 3 (find_or_create_chat/
---        is_chat_member/get_my_chats), anon ไม่มีเลยสักตัว, update_chat_last_message ไม่มีทั้งคู่
+-- [4.5b] grant ของฟังก์ชันด้านบน — คาดหวัง: authenticated มีทุกตัวยกเว้น update_chat_last_message
+--        (trigger function ไม่ต้องมี direct grant), anon ไม่มีเลยสักตัว
 SELECT p.proname, p.proacl
 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
 WHERE n.nspname='public'
-  AND p.proname IN ('find_or_create_chat','update_chat_last_message','is_chat_member','get_my_chats');
+  AND p.proname IN ('find_or_create_chat','update_chat_last_message','is_chat_member','get_my_chats',
+                     'find_or_create_chat_with_admin','mark_chat_read','mark_report_read');
+
+-- [4.5c] จุดแดง unread (D-31) — chat_user.last_read_at ต้องมี, chat_summary.is_unread ต้องอยู่ใน view
+SELECT column_name, data_type, is_nullable FROM information_schema.columns
+WHERE table_schema='public' AND table_name='chat_user' AND column_name='last_read_at';
+
+SELECT viewname FROM pg_views
+WHERE schemaname='public' AND viewname='chat_summary' AND definition ILIKE '%is_unread%';
 
 -- [4.6] ⭐ NULL check + privacy check ในฐานะ user ธรรมดา — รันทีละบล็อกตาม _common.sql กับดัก 1
 --       (member_names/sender_name ต้องไม่เป็น NULL, และ non-member ต้องเห็น 0 แถว)

@@ -13,7 +13,9 @@ SELECT tablename FROM pg_publication_tables
 WHERE pubname='supabase_realtime' AND tablename='notifications';
 
 -- [6.4] trigger ที่สร้าง notification อัตโนมัติ
---       คาดหวัง: บน chat_message (INSERT), products (UPDATE moderation_status)
+--       🔴 D-32 (2026-08-17): ยืนยันแล้วว่า "ไม่มี" — การสร้าง notification ตอนนี้เป็น
+--       app-code ทางเดียว (RejectProductSheet → insert type='listing_rejected') ไม่ใช่ DB trigger
+--       query นี้คาดหวังผลว่างเปล่า ไม่ใช่บั๊กถ้าว่าง — เก็บไว้เผื่อวันที่เปลี่ยนมาใช้ trigger จริง
 SELECT t.tgname, c.relname AS on_table, p.proname
 FROM pg_trigger t
 JOIN pg_class c ON c.oid=t.tgrelid
@@ -33,18 +35,20 @@ SELECT type, count(*) FROM public.notifications GROUP BY 1;
 --   SELECT count(*) FROM notifications WHERE user_id <> '<UID_A>';  -- ต้องได้ 0
 -- ROLLBACK;
 
--- [6.7] 🔴 ตรวจชนิดของ ref_id ก่อนอย่างอื่น
---       P-07 ร่างไว้เป็น uuid แต่ chat.id เป็น bigint → อ้าง chat_id ไม่ได้
---       ต้องแก้ design ก่อน apply (ดูหมายเหตุใน PROPOSED_SQL.md P-07)
+-- [6.7] ชื่อคอลัมน์อ้างอิงจริงคือ ref_product_id (D-23) ไม่ใช่ ref_id ที่ P-07 ร่างไว้ตอนแรก
+--       คาดหวัง 1 แถว, data_type = bigint (อ้าง products.id)
 SELECT column_name, data_type FROM information_schema.columns
-WHERE table_schema='public' AND table_name='notifications' AND column_name='ref_id';
+WHERE table_schema='public' AND table_name='notifications' AND column_name='ref_product_id';
 
--- [6.8] ตรวจว่าเหตุการณ์จริงสร้าง notification ครบ
---       ⚠️ ปรับ join ให้ตรงกับ design ของ ref_id ที่เลือกใช้จริงก่อนรัน
--- SELECT cm.id AS message_without_notification
--- FROM public.chat_message cm
--- WHERE NOT EXISTS (
---   SELECT 1 FROM public.notifications n
---   WHERE n.type='new_message' AND n.ref_id = <อ้างอิงตาม design ที่เลือก>
---     AND n.created_at >= cm.created_at
--- ) LIMIT 20;
+-- [6.7b] จุดแดง unread (D-31) — is_read ต้องมี, NOT NULL, default false
+SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns
+WHERE table_schema='public' AND table_name='notifications' AND column_name='is_read';
+
+-- [6.8] ตรวจว่า reject-flow จริงสร้าง notification ครบ (ทางเดียวที่มีตอนนี้ — reject→insert)
+SELECT p.id AS rejected_product_without_notification
+FROM public.products p
+WHERE p.moderation_status = 'rejected'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.notifications n
+    WHERE n.type = 'listing_rejected' AND n.ref_product_id = p.id
+  );

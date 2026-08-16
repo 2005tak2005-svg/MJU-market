@@ -2,7 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-16**
-> ✅ **D-29: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริง** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` — ทดสอบสิทธิ์จริงผ่าน `db-verifier` (non-member เห็น 0 แถวจริง) แล้ว **แต่ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** (รอ pete) — เจอ+แก้บั๊ก build-breaking (`getOtherUsers`/`senderLabel` null-unsafe) ระหว่างตรวจปิด layer รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-22/PT-23
+> ✅ **D-29/D-30: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริงครบ 3 ทางเข้า** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`find_or_create_chat_with_admin`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` + ปุ่ม "ติดต่อแอดมิน" ต่อจริงแล้ว (D-30) + ทางเข้า `chatList` ใน `HomeAdmin` drawer (D-30) — ทดสอบสิทธิ์จริงผ่าน `db-verifier` (non-member เห็น 0 แถวจริง) แล้ว **แต่ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** (รอ pete) — เจอ+แก้บั๊ก build-breaking (`getOtherUsers`/`senderLabel` null-unsafe) + กับดัก import `supabase_flutter` ที่ custom action ต้องใส่เอง ระหว่างตรวจปิด layer รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-09/PT-22/PT-23
 > ก่อนหน้า 2026-08-15: D-24–D-27 (reject-flow, reports, addproduct flash bug, ContactAdminButton) ทดสอบผ่านแอปจริงโดย pete แล้ว
 > ก่อนหน้า 2026-08-14: auth backend = Supabase (D-21) · L8 `HomeAdmin` approve/reject + `notifications` table + `Notifications` page + bell icon (D-22/D-23)
 > **L1 confirm-email ยังหยุดที่ D-20** (OTP สร้างเสร็จ ติด email deliverability ฝั่ง tenant — ไม่ใช่คิวด่วน)
@@ -11,7 +11,7 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **ทดสอบ L4 (chat) ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`, เปิดจากปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` (รู้อยู่แล้วว่าหัวข้อ/ชื่อผู้ส่งจะว่างตอนเปิดทางนี้ — ดู `layers/L4-chat.md`)
+1. **ทดสอบ L4 (chat) ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`, เปิดจากปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` (รู้อยู่แล้วว่าหัวข้อ/ชื่อผู้ส่งจะว่างตอนเปิดทางนี้ — ดู `layers/L4-chat.md`), เปิดจากปุ่ม "ติดต่อแอดมิน" (D-30, ต้องเปิดผ่าน notification ก่อนถึงจะเห็นปุ่มนี้), เปิด `chatList` จากปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin` ด้วยบัญชีแอดมิน (D-30)
 2. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
 3. **สร้าง `MyPost`/`Inspect` ใน v2** (มีแค่ใน v1 archived) — อ่าน PT-09/PT-10/PT-12/PT-14 ก่อนเขียน Action Flow ทดสอบด้วย `mju6577778888@mju.ac.th` (admin)
 
@@ -26,7 +26,7 @@
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
 | 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
-| 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29) | 🟨 `chatList`+`chatMessages`+ปุ่ม "แชทกับผู้ขาย" ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป/Realtime · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
+| 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป/Realtime · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) — ทดสอบผ่านแอปจริงแล้ว | เขียนได้ทางเดียว: reject→insert · ไม่มี unread badge/realtime/push จริง |
 | 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`Reports`/`ReportDetail` — **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | |

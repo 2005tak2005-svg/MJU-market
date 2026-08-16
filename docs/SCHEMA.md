@@ -148,7 +148,7 @@ FOREIGN KEY (chat_id) REFERENCES chat(id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 ```
 
-### `public.chat_message`
+### `public.chat_message` (แก้ 2026-08-16, D-29 — เพิ่มรองรับรูปภาพ)
 
 | # | คอลัมน์ | ชนิด | null? | default |
 |---|---|---|---|---|
@@ -156,13 +156,17 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 | 2 | `created_at` | timestamptz | NOT NULL | `now()` |
 | 3 | `chat_id` | bigint | nullable | – |
 | 4 | `user_id` | uuid | **NOT NULL** | – (ผู้ส่ง) |
-| 5 | `message` | text | **NOT NULL** | – |
+| 5 | `message` | text | nullable (เปลี่ยนจาก NOT NULL, D-29) | – |
+| 6 | `image_url` | text | nullable | – |
 
 ```sql
 PRIMARY KEY (id)
 FOREIGN KEY (chat_id) REFERENCES chat(id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id)
+CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_content, D-29
 ```
+
+ฝั่ง FlutterFlow ยังไม่ผูก `image_url` เลย (ส่งได้แค่ข้อความตอนนี้) — ดู `layers/L4-chat.md`
 
 ### `public.reports` (แก้ 2026-08-15, D-24)
 
@@ -255,7 +259,8 @@ CREATE VIEW public.chat_messages_view WITH (security_invoker = true) AS
     cm.user_id,
     p.full_name AS sender_name,
     cm.message,
-    cm.created_at
+    cm.created_at,
+    cm.image_url
    FROM chat_message cm
      JOIN public_profiles p ON p.id = cm.user_id;
 
@@ -354,9 +359,9 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 |---|---|---|
 | `"Profile"` | 4 | ดูตารางค่าจริงด้านล่าง |
 | `products` | 1 | allow-all (+ trigger กัน moderation_status/rejection_reason — ดู Function/Trigger) |
-| `chat` | 1 | allow-all |
-| `chat_user` | 1 | allow-all |
-| `chat_message` | 1 | allow-all |
+| `chat` | 1 | membership-based ผ่าน `is_chat_member()` (D-29, 2026-08-16 — เดิม allow-all) |
+| `chat_user` | 1 | membership-based ผ่าน `is_chat_member()` (D-29) |
+| `chat_message` | 2 | membership-based select + insert เฉพาะของตัวเอง (D-29) |
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
 | `reports` | **3** | admin อ่านทั้งหมด, reporter อ่าน/insert ของตัวเอง (D-24, 2026-08-15) |
 | `notifications` | **4** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert **และอ่านทั้งหมด** (D-24 เพิ่ม admin-read แก้ root cause select-back RLS) |
@@ -367,9 +372,10 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 |---|---|---|---|---|---|
 | `"CAT"` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
 | `products` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
-| `chat` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
-| `chat_user` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
-| `chat_message` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
+| `chat` | chat_select_if_member | SELECT | `{authenticated}` | `is_chat_member(id)` | – |
+| `chat_user` | chat_user_select_if_member | SELECT | `{authenticated}` | `is_chat_member(chat_id)` | – |
+| `chat_message` | chat_message_select_if_member | SELECT | `{authenticated}` | `is_chat_member(chat_id)` | – |
+| `chat_message` | chat_message_insert_own | INSERT | `{authenticated}` | – | `user_id = auth.uid() AND is_chat_member(chat_id)` |
 | `"Profile"` | Users can view own profile | SELECT | `{public}` | `(auth.uid() = id)` | – |
 | `"Profile"` | Admins can view all profiles | SELECT | `{public}` | `private.is_admin()` | – |
 | `"Profile"` | Admins can update all profiles | UPDATE | `{public}` | `private.is_admin()` | – |
@@ -392,7 +398,7 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 
 > ⚠️ 3 policy ที่ `roles = {public}` (ไม่ใช่ `authenticated`) ครอบคลุม `anon` ด้วย — ปลอดภัยอยู่เพราะ `auth.uid()` / `is_admin()` เป็น NULL/false สำหรับ anon แต่ควรเปลี่ยนเป็น `authenticated` ให้ชัดเจน
 
-> ⚠️ **TODO ก่อน production:** `products` / `chat` / `chat_user` / `chat_message` เป็น allow-all — authenticated user ทุกคนอ่าน/เขียนได้หมดทุกห้อง ต้องเปลี่ยนเป็น restrictive ตาม `chat_user` membership ก่อนเปิดใช้จริง (ดู `DECISIONS.md` D-03)
+> ⚠️ **TODO ก่อน production:** `products` ยัง allow-all (ดู `DECISIONS.md` D-03) — `chat`/`chat_user`/`chat_message` ปิดหนี้นี้แล้ว เปลี่ยนเป็น membership-based ตาม `is_chat_member()` (D-29, 2026-08-16) ทดสอบแล้วว่า non-member เห็น 0 แถวจริง
 
 **วิธีดู RLS จริง** — `list_tables` ไม่คืน policy ต้องรัน:
 
@@ -419,7 +425,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-5 function (`public` 1 + `private` 4) · 2 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+9 function (`public` 5 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -537,6 +543,55 @@ CREATE TRIGGER enforce_moderation_admin_only
 - ใช้ trigger ไม่ใช่ policy เพราะ permissive policy OR กับ allow-all เดิมของ `products` เสมอ (ไม่มีผล) และ `WITH CHECK` เทียบ OLD/NEW ไม่ได้ — ยืนยันด้วย impersonation test จริง (ดู D-23)
 - คุ้มกันแค่ 2 คอลัมน์นี้ — คอลัมน์อื่นยังอยู่ใต้ allow-all เดิม (D-03)
 
+### L4 chat — `is_chat_member` / `find_or_create_chat` / `update_chat_last_message` / `get_my_chats` (เพิ่ม 2026-08-16, D-29)
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_chat_member(target_chat_id bigint)
+ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (SELECT 1 FROM chat_user WHERE chat_id = target_chat_id AND user_id = auth.uid());
+$function$;
+
+CREATE OR REPLACE FUNCTION public.find_or_create_chat(user_a uuid, user_b uuid)
+ RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+DECLARE existing_chat_id bigint; new_chat_id bigint;
+BEGIN
+  IF auth.uid() IS DISTINCT FROM user_a THEN
+    RAISE EXCEPTION 'user_a must be the authenticated caller';
+  END IF;
+  SELECT cu1.chat_id INTO existing_chat_id
+  FROM chat_user cu1 JOIN chat_user cu2 ON cu1.chat_id = cu2.chat_id
+  WHERE cu1.user_id = user_a AND cu2.user_id = user_b LIMIT 1;
+  IF existing_chat_id IS NOT NULL THEN RETURN existing_chat_id; END IF;
+  INSERT INTO chat (last_message) VALUES ('เริ่มการสนทนาแล้ว') RETURNING id INTO new_chat_id;
+  INSERT INTO chat_user (chat_id, user_id) VALUES (new_chat_id, user_a), (new_chat_id, user_b);
+  RETURN new_chat_id;
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.update_chat_last_message() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+BEGIN
+  UPDATE public.chat SET last_message = COALESCE(NEW.message, '📷 รูปภาพ') WHERE id = NEW.chat_id;
+  RETURN NEW;
+END; $function$;
+
+CREATE TRIGGER trg_update_last_message
+  AFTER INSERT ON public.chat_message
+  FOR EACH ROW EXECUTE FUNCTION update_chat_last_message();   -- tgenabled = 'O'
+
+CREATE OR REPLACE FUNCTION public.get_my_chats() RETURNS SETOF chat_summary
+ LANGUAGE sql STABLE
+AS $function$ SELECT * FROM public.chat_summary ORDER BY created_at DESC; $function$;
+```
+
+- **`is_chat_member`** — SECURITY DEFINER เพื่อเลี่ยง RLS วนซ้ำตัวเองบน `chat_user` (self-referential policy) EXECUTE grant ให้เฉพาะ `authenticated` (revoke `anon` ออกแล้ว — ค่า default ของ Supabase คือ grant `anon` ให้อัตโนมัติตอน `CREATE FUNCTION` ต้อง revoke เองทีละ role ไม่ใช่แค่ `REVOKE ... FROM PUBLIC`)
+- **`find_or_create_chat`** — เดิมดราฟต์ (`PROPOSED_SQL.md` P-03) ไม่มี guard `auth.uid()` เทียบ `user_a` เพิ่มเข้าไปตอน apply จริงกันไม่ให้ user คนหนึ่งบังคับสร้างห้องแทนคนอื่น · `INSERT INTO chat (last_message)` ใช้ข้อความ default แทน `NULL` เพราะฝั่ง FlutterFlow force-unwrap ค่านี้ (`lastMessage!` ใน `chat_list_widget.dart`) EXECUTE grant `authenticated` เท่านั้น
+- **`update_chat_last_message`** — trigger-only ไม่มี EXECUTE grant ให้ role ไหนเลย (เรียกผ่าน trigger ไม่ต้องมี grant)
+- **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น
+- ทั้ง 3 ฟังก์ชันที่เป็น `SECURITY DEFINER`/มี query ภายใน (`is_chat_member`, `find_or_create_chat`, `update_chat_last_message`) pin `search_path = public` กันโจมตีแบบ search_path hijack
+
 ---
 
 ## Storage
@@ -592,6 +647,31 @@ CREATE TRIGGER enforce_moderation_admin_only
 ```
 
 > 📌 **`"Profile".avatar_url` เป็นแค่ text ไม่มีอะไรผูกกับไฟล์จริงใน bucket** — ลบไฟล์แล้วคอลัมน์ยังชี้ URL เดิม และเปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ (ไฟล์กำพร้าแบบเดียวกับ D-12)
+
+### bucket `chat-images` (L4, เพิ่ม 2026-08-16, D-29)
+
+| ค่า | |
+|---|---|
+| `public` | **true** — เหตุผลเดียวกับ `product-images`/`avatars` (D-12): path เดาไม่ได้ก็ยอมรับความเสี่ยงได้ ยังไม่มี signed-URL infra |
+| `file_size_limit` | `5242880` (5 MB ต่อไฟล์ — เท่า `product-images`) |
+| `allowed_mime_types` | `{image/jpeg, image/png, image/webp}` |
+
+🔴 **path บังคับ `<auth.uid()>/<ชื่อไฟล์>`** เหมือนกัน
+
+| policyname | cmd | roles | qual / with_check |
+|---|---|---|---|
+| `chat-images: public read` | SELECT | `{public}` | qual: `(bucket_id = 'chat-images'::text)` |
+| `chat-images: owner upload` | INSERT | `{authenticated}` | with_check: ↓ |
+| `chat-images: owner update` | UPDATE | `{authenticated}` | qual **และ** with_check: ↓ |
+| `chat-images: owner delete` | DELETE | `{authenticated}` | qual: ↓ |
+
+```sql
+-- นิพจน์ ↓ เหมือน product-images/avatars ทุกตัวอักษร
+((bucket_id = 'chat-images'::text)
+ AND ((storage.foldername(name))[1] = (( SELECT auth.uid() AS uid))::text))
+```
+
+> ⚠️ **ยังไม่มีฝั่ง FlutterFlow อัปโหลดเข้า bucket นี้เลย** — schema/policy พร้อมแล้ว รอ Action Flow ส่งรูป (ดู `layers/L4-chat.md`)
 
 ### bucket `static-pages`
 

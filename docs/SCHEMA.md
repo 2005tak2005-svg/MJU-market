@@ -140,6 +140,7 @@ CHECK (((image_urls IS NULL) OR (array_length(image_urls, 1) <= 3)))   -- produc
 | 2 | `created_at` | timestamptz | NOT NULL | `now()` |
 | 3 | `chat_id` | bigint | nullable | – |
 | 4 | `user_id` | uuid | nullable | – |
+| 5 | `last_read_at` | timestamptz | nullable | – (เพิ่ม 2026-08-17, D-31 — คนละแถวต่อสมาชิก 1 คน ไม่ใช่ boolean เดียวเหมือน `notifications.is_read` เพราะห้องแชทมีสมาชิกได้หลายคน แต่ละคนอ่านล่าสุดคนละเวลา) |
 
 ```sql
 PRIMARY KEY (id)
@@ -178,6 +179,7 @@ CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_conten
 | 4 | `reason` | text | nullable | – |
 | 5 | `status` | varchar | nullable | `'pending'` |
 | 6 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+| 7 | `is_read` | boolean | **NOT NULL** | `false` (เพิ่ม 2026-08-17, D-31) |
 
 ```sql
 PRIMARY KEY (id)
@@ -246,7 +248,16 @@ CREATE VIEW public.chat_summary WITH (security_invoker = true) AS
     c.last_message,
     c.created_at,
     array_agg(p.full_name ORDER BY p.full_name) AS member_names,
-    array_agg(cu.user_id) AS user_ids
+    array_agg(cu.user_id) AS user_ids,
+    EXISTS (
+      SELECT 1 FROM chat_message cm
+      WHERE cm.chat_id = c.id
+        AND cm.user_id IS DISTINCT FROM auth.uid()
+        AND cm.created_at > COALESCE(
+          (SELECT cu2.last_read_at FROM chat_user cu2
+             WHERE cu2.chat_id = c.id AND cu2.user_id = auth.uid()),
+          '-infinity'::timestamptz)
+    ) AS is_unread                                     -- เพิ่ม 2026-08-17, D-31 — คำนวณต่อ auth.uid() ของผู้เรียกเอง
    FROM chat c
      JOIN chat_user cu ON cu.chat_id = c.id
      JOIN public_profiles p ON p.id = cu.user_id
@@ -333,7 +344,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
     r.reported_product_id,
     p.title AS product_title,
     p.seller_id,
-    seller.full_name AS seller_name
+    seller.full_name AS seller_name,
+    r.is_read                                          -- เพิ่ม 2026-08-17, D-31
    FROM reports r
      LEFT JOIN products p ON p.id = r.reported_product_id
      LEFT JOIN public_profiles reporter ON reporter.id = r.reporter_id
@@ -425,7 +437,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-10 function (`public` 6 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+12 function (`public` 8 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -608,6 +620,29 @@ END; $function$;
 
 - **`is_chat_member`** — SECURITY DEFINER เพื่อเลี่ยง RLS วนซ้ำตัวเองบน `chat_user` (self-referential policy) EXECUTE grant ให้เฉพาะ `authenticated` (revoke `anon` ออกแล้ว — ค่า default ของ Supabase คือ grant `anon` ให้อัตโนมัติตอน `CREATE FUNCTION` ต้อง revoke เองทีละ role ไม่ใช่แค่ `REVOKE ... FROM PUBLIC`)
 - **`find_or_create_chat_with_admin`** (เพิ่ม 2026-08-16, D-30) — เหมือน `find_or_create_chat` (guard impersonation, default `last_message`) ต่างแค่ `user_b` ไม่ได้รับจาก caller แต่หาเองจาก `"Profile" WHERE role='admin' ORDER BY created_at ASC LIMIT 1` (แอดมินคนแรกสุด แบบ deterministic) — ต้องเป็น SECURITY DEFINER เพราะ RLS ของ `"Profile"` ปกติไม่ให้ user ธรรมดาเห็นแถวของแอดมิน EXECUTE grant `authenticated` เท่านั้น ทดสอบแล้วว่า idempotent + ได้แอดมินที่คาดหวังจริง (`mju6577778888`)
+
+```sql
+CREATE OR REPLACE FUNCTION public.mark_chat_read(target_chat_id bigint)
+ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+BEGIN
+  UPDATE public.chat_user SET last_read_at = now()
+  WHERE chat_id = target_chat_id AND user_id = auth.uid();
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.mark_report_read(target_report_id uuid)
+ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NOT private.is_admin() THEN
+    RAISE EXCEPTION 'only admins can mark reports read';
+  END IF;
+  UPDATE public.reports SET is_read = true WHERE id = target_report_id;
+END; $function$;
+```
+
+- **`mark_chat_read`** (เพิ่ม 2026-08-17, D-31) — `UPDATE` แค่แถว `chat_user` ของ**ตัวเองเท่านั้น** (`user_id = auth.uid()`) จงใจ**ไม่**ให้ authenticated แก้ `chat_user` ตรง ๆ ผ่าน table grant (จะเปิดช่องให้ user ปลอมตัวเป็นสมาชิกห้องไหนก็ได้ด้วยการ INSERT/UPDATE `chat_user` เอง — เท่ากับ bypass `is_chat_member()` ทั้งระบบ) EXECUTE grant `authenticated` เท่านั้น
+- **`mark_report_read`** (เพิ่ม 2026-08-17, D-31) — เฉพาะ admin เท่านั้น (`private.is_admin()` guard, ทดสอบแล้วว่า non-admin โดนปฏิเสธจริง) EXECUTE grant `authenticated` เท่านั้น
 - **`find_or_create_chat`** — เดิมดราฟต์ (`PROPOSED_SQL.md` P-03) ไม่มี guard `auth.uid()` เทียบ `user_a` เพิ่มเข้าไปตอน apply จริงกันไม่ให้ user คนหนึ่งบังคับสร้างห้องแทนคนอื่น · `INSERT INTO chat (last_message)` ใช้ข้อความ default แทน `NULL` เพราะฝั่ง FlutterFlow force-unwrap ค่านี้ (`lastMessage!` ใน `chat_list_widget.dart`) EXECUTE grant `authenticated` เท่านั้น
 - **`update_chat_last_message`** — trigger-only ไม่มี EXECUTE grant ให้ role ไหนเลย (เรียกผ่าน trigger ไม่ต้องมี grant)
 - **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น

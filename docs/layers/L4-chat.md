@@ -1,60 +1,50 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase 🟨 schema เสร็จ แต่ยังไม่เคยตรวจ | FlutterFlow ⬜ ยังไม่เริ่ม**
-> `chat` / `chat_user` / `chat_message` ยังว่าง 0 แถว → `chat_summary.member_names` ยังไม่เคยยืนยันว่าไม่เป็น NULL
-> ปิดได้เมื่อสร้างห้อง 1 ห้อง สมาชิก 2 คน แล้ว SELECT `chat_summary` ในฐานะ user ธรรมดาแล้วเห็นชื่อครบ
+> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 แชทข้อความล้วนใช้งานได้จริง ยังไม่มีรูป/Realtime**
+> ปิดได้เมื่อ: (1) ส่งรูปได้จริงผ่านแอป (2) Realtime ทำงาน (3) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
 
 ## 🎯 เป้าหมาย
 
 ผู้ซื้อ–ผู้ขายแชทกันแบบเรียลไทม์ รองรับ group chat (หลายคนในห้อง) แสดงชื่อห้องจากสมาชิกอัตโนมัติ
 
-> 🔴 **ก่อนเริ่มฝั่ง FlutterFlow อ่านนี่ก่อน:** `chat_summary.member_names`/`user_ids` เป็น array column — คำถามค้างข้างล่าง ("array contains currentUserId" รองรับไหม) มีโอกาสสูงที่จะชนบั๊ก SDK ตัวเดียวกับที่เจอตอน L1 อ่าน `../PATTERNS.md` **PT-09** (custom action argument เสีย) และ **PT-10** (`PostgresQuery`/`FieldAccess` ดึงฟิลด์เดียวจากแถวไม่ได้ — อาจเป็นคำตอบว่าทำไมต้องทำ RPC `get_my_chats(uid)` แทน query builder ธรรมดา) ก่อนเขียน Action Flow
+## 🧩 Supabase — เสร็จแล้ว (D-29)
 
-## 🧩 ขั้นตอน Supabase ที่เหลือ
+`chat`/`chat_user`/`chat_message` (+ `chat_message.image_url`, CHECK `chat_message_has_content`) · RLS membership-based ผ่าน `is_chat_member()` (ทดสอบแล้วว่า non-member เห็น 0 แถวจริง) · `find_or_create_chat()` (กัน impersonation) · trigger `trg_update_last_message` (รองรับข้อความรูปล้วน → `'📷 รูปภาพ'`) · `get_my_chats()` (ยังไม่มีใครเรียกใช้) · bucket `chat-images` (public, 5MB, path `<uid>/<file>` เหมือน `product-images`) — รายละเอียดเต็ม `../SCHEMA.md`, เหตุผลออกแบบ `../DECISIONS.md` D-29
 
-- [ ] (ก่อน production) เปลี่ยน RLS allow-all → restrictive ตาม `chat_user` membership — `DECISIONS.md` D-03
-- [ ] ตัดสินใจ: trigger auto-update `chat.last_message` (P-04) หรือให้ Action Flow อัปเดต 2 ที่เอง
-- [ ] apply `find_or_create_chat` (P-03) — เป็นทางเข้าห้องแชทของทั้งระบบ
+**ยังเหลือ:** ไม่มี — หนี้ allow-all เดิม (D-03) ปิดแล้วสำหรับ 3 ตารางนี้
 
-**ทำแล้ว:** ตาราง `chat`/`chat_user`/`chat_message` + UNIQUE(chat_id,user_id) · `chat_summary` + `chat_messages_view` (join `public_profiles` แล้ว) · RLS allow-all · Realtime บน `chat` + `chat_message`
+## 🎨 FlutterFlow — ทำแล้ว (2026-08-16)
 
----
+- **`chatList`** (หน้าที่ pete สร้าง mock ไว้ก่อน) ผูก `chat_summary` แบบไม่มี filter (RLS กรองให้แล้ว ไม่ต้อง array-contains) → `getOtherUsers` (PT-06) ตัดชื่อตัวเองออกจากหัวข้อแถว → แตะแถว Navigate ไป `chatMessages` พร้อม `chatId`/`memberNames`/`userIds`
+- **`chatMessages`** (หน้าใหม่) — โหลด/ส่งข้อความข้อความล้วนได้จริง ผูก `chat_messages_view` (ไม่ใช่ table ตรง ๆ) เรียง `created_at` ascending ส่งข้อความผ่าน `PostgresCreate` + refetch มือ (ไม่มี Realtime)
+- **ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`** — custom action `findOrCreateChatWithSeller` หา `seller_id` จาก `productId` เอง (ไม่ใช้ query builder) แล้วเรียก RPC — ปุ่มแสดงเสมอ (ซ่อนไม่ได้ตอนดูประกาศตัวเอง เพราะเข้าถึง `seller_id` แบบ item-scoped จากนอก itemBuilder ไม่ได้ — ดู PT-24) การกดใน้อ่านเงียบถ้าเป็นเจ้าของประกาศเอง (RPC คืน 0)
 
-## 🎨 A. หน้า `chats` (Chat List)
+**กับดัก SDK ที่เจอใหม่ทั้งหมด:** `../PATTERNS.md` **PT-22** (state/onLoad ใน `ensurePage` เดียวกันอ้างกันเองไม่ได้ ต้องแยกพุช) และ **PT-23** (ItemRef นอก itemBuilder สด, ไม่มี RPC action, ไม่มี list literal, `SetState` vs `UpdateAppState.set`, custom function list arg nullable เสมอ, page param `.withDefault` ไม่ถึง constructor)
 
-- Backend Query ผูก view `chat_summary` แสดงเป็น List View
-- **⚠️ ต้อง verify:** filter เฉพาะห้องที่ current user อยู่ (`user_ids` array contains `currentUserId`) — เช็คว่า FlutterFlow query builder รองรับ operator "array contains" บน view ไหม **ถ้าไม่รองรับ ต้องสร้าง RPC `get_my_chats(uid)` แยก**
-- แต่ละแถว: ใช้ Custom Function `getOtherUsers` (**PT-06**) ผูก Combine Text → ได้ชื่อห้องแบบ `"chat with Rob awesome, TomTom"`
-- **กดเลือกห้อง** → Navigate To `chat messages` แนบ Row ทั้งแถวจาก `chat_summary` เป็น Page Parameter (**PT-03**)
+**🔴 เจอบั๊ก build-breaking ระหว่างตรวจปิด layer:** `getOtherUsers`/`senderLabel` เข้าถึง `.length`/`[i]` บน `List<String>?` โดยไม่ guard null — `dart analyze` ไม่ผ่านทั้งโปรเจกต์ (custom function ทุกตัวอยู่ไฟล์เดียวกัน) แก้แล้วด้วย `?? []` (commit `jpfa1sqLhlVEuJ0SccWn`) ยืนยันด้วย `dart analyze` จริงซ้ำหลังแก้ — **ผ่านแล้ว**
 
-## 🎨 B. หน้า `chat messages`
+## ❓ ที่เคยค้าง — ตอนนี้ตอบแล้ว
 
-- รับ Page Parameter → ดึง `chat_id`
-- Backend Query ผูก `chat_messages_view` filter `chat_id = [parameter]`, sort by `created_at`
-- **⚠️ ต้อง verify:** FlutterFlow เปิด "Realtime listen" บน **view** ได้จริงไหม
-  Realtime ทำงานที่ table level (Postgres replication) — ถ้าไม่รองรับ ทางเลือกคือ subscribe ตาราง `chat_message` ตรง ๆ แล้ว join ชื่อ sender ฝั่ง client เอง หรือ refresh query เป็นระยะ
-- **ส่งข้อความ** → Insert row เข้า `chat_message` (`chat_id`, `user_id = currentUserId`, `message`)
-  ถ้ายังไม่ทำ trigger P-04 → ต้องมี action ที่ 2 อัปเดต `chat.last_message` ด้วยมือ
+- **"array contains บน `chat_summary.user_ids` รองรับไหม"** — ไม่ต้องตอบ เพราะไม่ต้องใช้เลย: RLS ที่ `chat`/`chat_user` กรองให้เหลือแค่ห้องของ user คนนั้นอยู่แล้ว query `chat_summary` แบบไม่มี filter เลยก็ปลอดภัย
+- **"Realtime ฟังบน view ได้จริงไหม"** — ไม่ได้ เพราะ Realtime (Postgres logical replication) ทำงานระดับ table เท่านั้น ไม่มีอะไรให้ subscribe บน view — ตอบได้โดยไม่ต้องทดสอบ ต้อง subscribe ตรงที่ `chat_message` (table) แล้ว resolve sender name ฝั่ง client จาก `memberNames`/`userIds` param แทน `chat_messages_view`'s join
 
-## 🎨 C. ทางเข้าห้องแชท
+## 🚧 ยังไม่ทำ (คิวถัดไป)
 
-ไม่มีปุ่ม "สร้างห้องใหม่" ตรง ๆ — ทุกห้องเกิดจาก **PT-02** (find-or-create) ที่ถูกเรียกจาก `MaterialCard` (L2) และ `ProductDetail` (L3)
-
----
+1. **ส่งรูปภาพ** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูป/`UploadData` เข้า bucket นี้เลย ต้องทำตาม PT-08 pattern (bucket/path เหมือน `product-images`) — เมื่อทำแล้ว **ต้องแก้ `messageItem.message!`** (force-unwrap ตรง ๆ ตอนนี้) ให้เป็น conditional แสดงรูปแทนข้อความเมื่อ `message` เป็น null ไม่งั้นข้อความรูปล้วนแรกที่มีจะ crash หน้าห้องแชททันที
+2. **Realtime บน `chat_message`** — ยังไม่ได้เปิด "Listen for realtime updates" เลย (Supabase publication เปิดไว้แล้ว ฝั่ง FF DSL ยังไม่ได้ตั้ง `isStreamingSupabaseQuery: true` จริง) ตอนนี้ใช้ manual refetch หลังส่งข้อความแทน
+3. **ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`** — ทางเข้าห้องแชทจาก `ProductDetails` ตอนนี้หัวข้อ/ชื่อผู้ส่งจะว่างเปล่าจนกว่าจะเปิดห้องเดิมซ้ำผ่าน `chatList` (ที่มี array จริงจาก `chat_summary`) — สาเหตุคือ PT-24 (ItemRef นอก scope) รวมกับไม่มี list literal (PT-23 ข้อ 7) ทางแก้ที่เป็นไปได้: ให้ `chatMessages` โหลด `chat_summary` เพิ่มเองตอน onLoad ด้วย `chatId` แทนพึ่ง param (ยังไม่ได้ลองเพราะ PT-10 เคยเจอปัญหา index list-state นอก ListView)
+4. **ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง** — เหตุผลเดียวกับข้อ 3 (ไม่มี `seller_id` แบบ item-scoped นอก itemBuilder) กดได้แต่ RPC คืน 0 เงียบ ๆ ไม่มี feedback ใด ๆ
+5. **การส่งข้อความยังไม่มี error feedback จริง** — ใช้ `PostgresCreate` ตรง ๆ (ไม่มี `onSuccess`/`onFailure`, PT-18) ส่งไม่สำเร็จ (เช่น เน็ตหลุด) จะเงียบ ไม่มี snackbar เตือน
 
 ## 🧪 Definition of Done
 
-- [ ] แชทระหว่าง 2+ บัญชีจริงแบบเรียลไทม์ ข้อความขึ้นโดยไม่ต้อง refresh
-- [ ] Chat List แสดงเฉพาะห้องที่ตัวเองอยู่ (ไม่ใช่ทุกห้องในระบบ)
-- [ ] ชื่อห้องถูกต้องผ่าน `getOtherUsers` — **ชื่อคู่สนทนาต้องไม่เป็น NULL ตอนใช้บัญชี user ธรรมดา** (PT-01)
-- [ ] ห้องแชท: ข้อความ + `sender_name` ถูกต้อง เรียงเวลาถูก
-- [ ] เพิ่มสมาชิกซ้ำในห้องเดิมไม่ได้ (unique constraint)
-- [ ] `chat.last_message` ตรงกับข้อความล่าสุดจริงเสมอ
-- [ ] + DoD ร่วมใน `CLAUDE.md`
-
-## ❓ ค้างอยู่
-
-- Realtime บน view ใช้ได้จริงไหมใน FlutterFlow (ต้องทดสอบ)
-- "array contains" บน `chat_summary.user_ids` รองรับไหม
-- trigger auto-update `last_message` — จะสร้างไหม
+- [x] แชทระหว่าง 2+ บัญชีจริงแบบ**ข้อความล้วน** — ทดสอบระดับ DB แล้ว (RLS/RPC/trigger, `db-verifier` PASS) **ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** — รอ pete
+- [ ] ข้อความขึ้นโดยไม่ต้อง refresh (Realtime) — ยังไม่ทำ (ข้อ 2 ด้านบน)
+- [x] Chat List แสดงเฉพาะห้องที่ตัวเองอยู่ — ยืนยันด้วย non-member account เห็น 0 แถวจริง
+- [x] ชื่อห้องถูกต้องผ่าน `getOtherUsers` — ไม่เป็น NULL ด้วยบัญชี user ธรรมดา (ยืนยันจาก `chat_summary` query จริง)
+- [x] ห้องแชท: ข้อความ + `sender_name`/`senderLabel` ถูกต้อง เรียงเวลาถูก (ascending, ยืนยันจาก generated code)
+- [x] เพิ่มสมาชิกซ้ำในห้องเดิมไม่ได้ — `find_or_create_chat` idempotent ยืนยันแล้ว
+- [x] `chat.last_message` ตรงกับข้อความล่าสุดจริงเสมอ — trigger ยืนยันแล้ว
+- [ ] ส่งรูปได้ — ยังไม่ทำ (ข้อ 1)
+- [ ] + DoD ร่วมใน `CLAUDE.md` (ทดสอบผ่านแอปจริงด้วยบัญชี user ธรรมดา — ยังไม่ทำ)

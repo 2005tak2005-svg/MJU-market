@@ -12,11 +12,12 @@
 >
 > 📌 **P-10 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`reports` มี 3 policy: admin-read, reporter-read-own, authenticated-insert) อ่านที่ `SCHEMA.md` แทน
 > เลข P-10 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-24**
+>
+> 📌 **P-03 / P-04 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`find_or_create_chat`/`update_chat_last_message`/`is_chat_member`/`get_my_chats` + trigger + RLS membership-based) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (เพิ่ม impersonation guard, `is_chat_member` helper, ค่า default `last_message`, COALESCE รูปภาพ)
+> เลข P-03/P-04 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-29**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
-| P-03 | `find_or_create_chat(user_a, user_b)` | L2/L3/L4 | รอ confirm แนวทาง |
-| P-04 | `update_chat_last_message()` + trigger | L4 | รอ confirm |
 | P-05 | `search_products(...)` | L3 | รอทดสอบว่า FF filter พอไหม |
 | P-06 | ตาราง `transactions` | L5 | รอ confirm ค่า status |
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
@@ -25,47 +26,6 @@
 | P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 
 ---
-
-## P-03 — find-or-create ห้องแชท (L2 / L3 / L4)
-
-```sql
-CREATE OR REPLACE FUNCTION find_or_create_chat(user_a uuid, user_b uuid)
-RETURNS bigint AS $$
-DECLARE existing_chat_id bigint; new_chat_id bigint;
-BEGIN
-  SELECT cu1.chat_id INTO existing_chat_id
-  FROM chat_user cu1 JOIN chat_user cu2 ON cu1.chat_id = cu2.chat_id
-  WHERE cu1.user_id = user_a AND cu2.user_id = user_b
-  LIMIT 1;
-
-  IF existing_chat_id IS NOT NULL THEN
-    RETURN existing_chat_id;
-  END IF;
-
-  INSERT INTO chat (last_message) VALUES (NULL) RETURNING id INTO new_chat_id;
-  INSERT INTO chat_user (chat_id, user_id) VALUES (new_chat_id, user_a), (new_chat_id, user_b);
-  RETURN new_chat_id;
-END; $$ LANGUAGE plpgsql SECURITY DEFINER;
-```
-
-> ทำไมต้องใช้ RPC: การหาห้องที่ทั้งคู่เป็นสมาชิกคือ self-join ข้าม 2 แถวใน `chat_user` ซึ่ง FlutterFlow query builder ทำเองไม่ได้
-> ใช้ที่เดียวกัน 3 จุด: ปุ่ม "แชทกับผู้ขาย" ใน `MaterialCard` (L2), ใน `ProductDetail` (L3), และเป็นทางเข้าห้องแชทของ L4 — ดู `PATTERNS.md` PT-02
-
-## P-04 — auto-update `chat.last_message` (L4)
-
-```sql
-CREATE OR REPLACE FUNCTION update_chat_last_message() RETURNS trigger AS $$
-BEGIN
-  UPDATE public.chat SET last_message = NEW.message WHERE id = NEW.chat_id;
-  RETURN NEW;
-END; $$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER trg_update_last_message
-  AFTER INSERT ON public.chat_message
-  FOR EACH ROW EXECUTE FUNCTION update_chat_last_message();
-```
-
-> ทางเลือก: ให้ FlutterFlow Action Flow อัปเดต 2 ที่เอง (insert message + update chat) — เสี่ยงลืม ทำให้ chat list แสดงข้อความเก่า
 
 ## P-05 — full-text search (L3)
 

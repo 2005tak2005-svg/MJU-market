@@ -561,3 +561,17 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ผล:** L4 Supabase ✅ ปิดสนิท (RLS/RPC/trigger ทดสอบสิทธิ์จริงผ่าน `db-verifier`) · FlutterFlow 🟨 แชทข้อความล้วนใช้งานได้จริง (chatList + chatMessages + ปุ่ม "แชทกับผู้ขาย") ยังไม่มีรูป/Realtime — รายละเอียด `layers/L4-chat.md`, กับดัก SDK ที่เจอใหม่ `PATTERNS.md` PT-22/PT-23
 
 **🔴 พบบั๊ก build-breaking ระหว่างตรวจปิด layer (ui-checker):** custom function `getOtherUsers`/`senderLabel` เข้าถึง `.length`/`[i]` บน `List<String>?` โดยไม่ guard null — ทำให้ `dart analyze` ไม่ผ่านทั้งโปรเจกต์ (validate ของ `flutterflow ai run` เป็นแค่ shape/format check ไม่ใช่ full type-check ข้ามไฟล์ จึงหลุดผ่านมาได้) แก้แล้วด้วย `?? []`, ยืนยันซ้ำด้วย `dart analyze` ตรง ๆ ผ่านสะอาด — บทเรียน: การันตี "compile ผ่าน" จริงต้องรัน `dart analyze` แยกต่างหาก ไม่ใช่เชื่อแค่ `flutterflow ai run` สำเร็จ
+
+## D-30 — ปุ่ม "ติดต่อแอดมิน" ต่อเข้าระบบแชทจริง + เพิ่มทางเข้า `chatList` ใน `HomeAdmin` (2026-08-16)
+
+**บริบท:** pete ทดสอบ D-29 แล้วสังเกตว่าปุ่ม "ติดต่อแอดมิน" บน `ProductDetails` (mock เดิมจาก D-26) ยังไม่ต่อกับระบบแชทจริง ทั้งที่หลักการเดียวกับปุ่ม "แชทกับผู้ขาย" — และ `HomeAdmin` (ที่ pete เพิ่ม Drawer เองแล้ว) ยังไม่มีทางเข้าไปดู `chatList` เลย
+
+**1. "ติดต่อแอดมิน" ส่งไปหาแอดมิน**คนเดียว**ไม่ใช่กระจายทุกคน** — เลือกแอดมินแบบ deterministic (`created_at` เก่าสุด) ผ่าน RPC ใหม่ `find_or_create_chat_with_admin(user_a)` แทนที่จะให้ client query `"Profile" WHERE role='admin'` เอง เพราะ RLS ของ `"Profile"` (ดู `SCHEMA.md`) ให้ user ธรรมดาเห็นแค่แถวตัวเอง — query ตรงจาก client จะได้ 0 แถวเสมอ ต้องเป็น `SECURITY DEFINER` ฝั่ง DB เท่านั้นที่มองเห็นแอดมินได้ แนวทางกลุ่มแชท (ทุกแอดมินอยู่ห้องเดียวกัน) ก็ทำได้ (schema รองรับ many-to-many อยู่แล้ว) แต่ยังไม่ทำ — ยังไม่มีคนขอ เพิ่มทีหลังได้โดยไม่กระทบของเดิม
+
+**2. `ContactAdminButton` ต่อผ่าน `page.ensureActions`** (เหมือน `SendMessageButton` ใน D-29) ไม่ใช่เขียนทับปุ่มใหม่ทั้งก้อน — ปุ่มมีอยู่แล้วจริงจาก D-26/D-27 แค่เปลี่ยน onTap จาก snackbar mock เป็น custom action `findOrCreateChatWithAdmin` (0-arg, PT-09) + Navigate แบบมี guard (`chatId != 0`)
+
+**3. เพิ่มปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin`** ที่ pete สร้างเอง (`Drawer_sdz1yfyn` > `Column_4pg1tqma`) ต่อจากปุ่ม "รายการรีพอร์ต" เดิม — ให้แอดมินเข้า `chatList` เพื่ออ่าน/ตอบข้อความที่ user ส่งมาได้
+
+**🆕 กับดัก SDK ที่เจอเพิ่ม (แยกจาก PT-22/23):** custom action ที่เรียก `Supabase.instance.client` ต้อง `import 'package:supabase_flutter/supabase_flutter.dart';` เองเป็นบรรทัดแรกของ `code:` — ไม่อยู่ใน automatic imports `flutterflow ai run`/validate ไม่จับ (pete เจอเองจาก Issues panel ใน FlutterFlow editor ตอนทำ `findOrCreateChatWithSeller` ก่อนหน้านี้) บันทึกไว้ที่ `PATTERNS.md` PT-09 แล้ว ใส่ import ถูกต้องตั้งแต่แรกในรอบนี้ (`findOrCreateChatWithAdmin`) ไม่เจอซ้ำ
+
+**ผล:** ทั้ง 2 จุด push สำเร็จ ยืนยันจาก `generated_code/` ครบ (commit `oYWn1zSpYRSrspqSNPaX`) — ยังไม่เคยทดสอบผ่านแอปจริง รอ pete

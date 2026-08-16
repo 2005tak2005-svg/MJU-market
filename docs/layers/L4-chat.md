@@ -21,6 +21,7 @@
 - **ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`** — custom action `findOrCreateChatWithSeller` หา `seller_id` จาก `productId` เอง (ไม่ใช้ query builder) แล้วเรียก RPC — ปุ่มแสดงเสมอ (ซ่อนไม่ได้ตอนดูประกาศตัวเอง เพราะเข้าถึง `seller_id` แบบ item-scoped จากนอก itemBuilder ไม่ได้ — ดู PT-23) การกดใน้อ่านเงียบถ้าเป็นเจ้าของประกาศเอง (RPC คืน 0)
 - **ปุ่ม "ติดต่อแอดมิน" บน `ProductDetails`** (D-30, 2026-08-16) — เดิม mock (D-26) ต่อเข้าระบบแชทจริงแล้ว ผ่าน RPC ใหม่ `find_or_create_chat_with_admin` (หาแอดมินคนแรกสุดตาม `created_at` เอง เพราะ RLS ของ `"Profile"` ไม่ให้ user ธรรมดาเห็นแถวแอดมิน) — ส่งไปหาแอดมิน**คนเดียว** ไม่ใช่กลุ่ม
 - **ปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin`** (D-30) — Navigate ไป `chatList` ให้แอดมินเข้าไปอ่าน/ตอบได้
+- **จุดแดง glow บอกยังไม่อ่านใน `chatList`** (D-31, 2026-08-17) — `chat_summary.is_unread` (คำนวณต่อ `auth.uid()`) หายไปหลังแตะ (`mark_chat_read` RPC อัปเดต `chat_user.last_read_at` ของตัวเอง)
 
 **กับดัก SDK ที่เจอใหม่ทั้งหมด:** `../PATTERNS.md` **PT-22** (state/onLoad ใน `ensurePage` เดียวกันอ้างกันเองไม่ได้ ต้องแยกพุช) และ **PT-23** (ItemRef นอก itemBuilder สด, ไม่มี RPC action, ไม่มี list literal, `SetState` vs `UpdateAppState.set`, custom function list arg nullable เสมอ, page param `.withDefault` ไม่ถึง constructor)
 
@@ -49,4 +50,5 @@
 - [x] เพิ่มสมาชิกซ้ำในห้องเดิมไม่ได้ — `find_or_create_chat` idempotent ยืนยันแล้ว
 - [x] `chat.last_message` ตรงกับข้อความล่าสุดจริงเสมอ — trigger ยืนยันแล้ว
 - [ ] ส่งรูปได้ — ยังไม่ทำ (ข้อ 1)
+- [x] จุดแดงบอกยังไม่อ่าน + หายไปหลังแตะ — ยืนยันจาก `generated_code/` (D-31) **ยังไม่เคยทดสอบผ่านแอปจริง**
 - [ ] + DoD ร่วมใน `CLAUDE.md` (ทดสอบผ่านแอปจริงด้วยบัญชี user ธรรมดา — ยังไม่ทำ)

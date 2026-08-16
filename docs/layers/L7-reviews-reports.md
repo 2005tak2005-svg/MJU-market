@@ -1,35 +1,34 @@
 # Layer 7 — Reviews & Reports
 
 > schema → `../SCHEMA.md` · ตรวจ → `../checks/L7.sql`
-> **สถานะ: 🟨 `reports` มีตารางแล้ว (แต่ RLS deny-all) | `reviews` ยังไม่มี**
+> **สถานะ: 🟨 `reports` RLS+constraint+UI ใช้งานจริงแล้ว (D-24) + `is_read` (D-31) — เนื้อหาหลักทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15) จุดแดงยังไม่เทส (D-32) | `reviews` ยังไม่เริ่ม**
 
 ## 🎯 เป้าหมาย
 
 ผู้ใช้รีพอร์ตสินค้า(/ผู้ใช้)ที่ไม่เหมาะสมได้ และให้คะแนนผู้ขายหลังธุรกรรมเสร็จได้
 
-## 🧩 ขั้นตอน Supabase
+## 🧩 Supabase — `reports` ทำแล้ว (D-24), `reviews` ยังไม่เริ่ม
 
-1. **🔴 ด่วน:** `reports` เปิด RLS แต่**ไม่มี policy เลย = deny-all** ตอนนี้ insert/select ไม่ได้เลยแม้แต่ admin
-   → ต้องเพิ่ม policy: insert ได้ทุก authenticated, select ได้เฉพาะ admin — DDL ที่ `PROPOSED_SQL.md` **P-10**
-2. **ตัดสินใจ:** รองรับรีพอร์ต "ผู้ใช้" ด้วยไหม → ถ้าใช่ ใช้ `PROPOSED_SQL.md` P-09
-3. สร้างตาราง `reviews` — DDL ที่ P-08 (มี `UNIQUE (reviewer_id, product_id)` กันรีวิวซ้ำ)
-4. RLS ของ `reviews`: ตัดสินใจว่า allow-all หรือ restrictive (แนะนำ: SELECT เปิด, INSERT ต้อง `reviewer_id = auth.uid()`)
+`reports` (`reporter_id`/`reported_product_id`/`reason`/`status`/`is_read`) + RLS จริง (insert ทุก authenticated, select เจ้าของ+admin) + CHECK `status` + unique partial index กันรายงานซ้ำตอนยัง pending + FK `reported_product_id` เป็น `ON DELETE SET NULL` — รายละเอียดคอลัมน์เต็ม `../SCHEMA.md`
 
-## 🎨 ขั้นตอน FlutterFlow
+**ยังไม่ทำ:** `reviews` table ทั้งตาราง (ยังไม่เริ่มคุย DDL) · รองรับรีพอร์ต "ผู้ใช้" (`reported_user_id`, P-09 ยังไม่ตอบรับ)
 
-- ปุ่ม Report บน `ProductDetail` → form เหตุผล → Insert `reports` (`reporter_id = currentUserId`)
-- หน้า Rate Seller หลังธุรกรรมเสร็จ (ต่อกับ Layer 5) → rating 1-5 + comment
-- แสดงคะแนนเฉลี่ยผู้ขายบน `ProductDetail` (ต้องทำ view สรุป — ใช้ **PT-01** ถ้าต้องดึงชื่อผู้รีวิว)
+## 🎨 FlutterFlow — ทำแล้ว
+
+`ReportProductSheet` (ปุ่ม Report บน `ProductDetails` → insert `reports`) · `ReportsFeedback` (list สำหรับแอดมิน, เดิมชื่อ "Reports" — pete rename ตรงใน editor 2026-08-17, ตรวจแล้วไม่มีจุดอ้างชื่อเก่าหลงเหลือ) · `ReportDetail` · จุดแดง unread ผูก `is_read` (D-31) — **มีบั๊กเดียวกับ L4/L6: ไม่หายทันทีตอนกลับมาหน้าเดิม (D-32)**
+
+**ยังไม่ทำ:** หน้า Rate Seller / review UI ทั้งหมด (รอ `reviews` table + Layer 5)
 
 ## 🧪 Definition of Done
 
-- [ ] รีพอร์ตบันทึกจริง และ **user ทั่วไปอ่านรีพอร์ตของคนอื่นไม่ได้**
-- [ ] admin เห็นรีพอร์ตทั้งหมด
-- [ ] รีวิวซ้ำสินค้าเดิมไม่ได้ (unique constraint ทำงานจริง ไม่ใช่แค่กันที่ UI)
-- [ ] rating นอกช่วง 1-5 ถูกปฏิเสธที่ระดับ DB
+- [x] รีพอร์ตบันทึกจริง และ user ทั่วไปอ่านรีพอร์ตของคนอื่นไม่ได้ — ทดสอบ non-admin จริงแล้ว
+- [x] admin เห็นรีพอร์ตทั้งหมด — ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)
+- [ ] รีวิวซ้ำสินค้าเดิมไม่ได้ — `reviews` ยังไม่มีตาราง
+- [ ] rating นอกช่วง 1-5 ถูกปฏิเสธที่ระดับ DB — `reviews` ยังไม่มีตาราง
+- [ ] จุดแดง unread หายทันทีตอนแตะ — มีบั๊ก stale-state (D-32) ยังไม่แก้
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 
 ## ❓ ค้างอยู่
 
 - รองรับรีพอร์ตผู้ใช้ไหม (P-09)
-- `reviews` ใช้ RLS allow-all หรือ restrictive
+- `reviews` ใช้ RLS allow-all หรือ restrictive — ยังไม่เริ่มคุย

@@ -1,38 +1,35 @@
 # Layer 6 — Notifications
 
 > schema → `../SCHEMA.md` · ตรวจ → `../checks/L6.sql`
-> **สถานะ: ⬜ ยังไม่เริ่ม — ยังไม่มีตาราง `notifications`**
+> **สถานะ: 🟨 ตาราง+RLS+UI ใช้งานจริงแล้ว (D-22/D-23/D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เขียนได้ทางเดียว (reject→insert), ไม่มี trigger อัตโนมัติ/realtime/push จริง**
 
 ## 🎯 เป้าหมาย
 
 แจ้งเตือนเมื่อมีเหตุการณ์สำคัญ: ข้อความใหม่ (L4) · สินค้าถูกอนุมัติ/ปฏิเสธ (L2) · มีคนสนใจ/จองสินค้า (L5)
 
-> 💡 layer นี้คือคำตอบของข้อจำกัด **PT-04** — realtime popup เห็นได้เฉพาะตอนเปิดหน้าค้างอยู่ layer นี้ทำให้แจ้งเตือนไม่หายแม้ปิดแอป
+> 💡 layer นี้คือคำตอบของข้อจำกัด **PT-04** — realtime popup เห็นได้เฉพาะตอนเปิดหน้าค้างอยู่ layer นี้ทำให้แจ้งเตือนไม่หายแม้ปิดแอป (ยังไม่ครบ — ดูด้านล่าง)
 
-## 🧩 ขั้นตอน Supabase
+## 🧩 Supabase — ทำแล้ว
 
-1. สร้างตาราง `notifications` — DDL ที่ `PROPOSED_SQL.md` P-07
-2. เปิด Realtime บนตารางนี้ (เพื่อให้ badge อัปเดต live)
-3. สร้าง notification อัตโนมัติด้วย trigger หรือ Edge Function:
-   - trigger บน `chat_message` INSERT → แจ้งสมาชิกห้องคนอื่น (join `chat_user`)
-   - trigger บน `products` UPDATE เมื่อ `moderation_status` เปลี่ยน → แจ้ง `seller_id`
-   - trigger บน `transactions` (ถ้ามี L5) → แจ้ง buyer/seller
-4. RLS: อ่านได้เฉพาะ `user_id = auth.uid()` — **ตารางนี้ควรเป็น restrictive ตั้งแต่แรก** ไม่ต้องตามรอย allow-all ของตารางเก่า
+`notifications` (`user_id`/`type`/`title`/`body`/`ref_product_id`/`is_read`) + RLS restrictive ตั้งแต่แรก (อ่าน/แก้ได้เฉพาะของตัวเอง, ไม่มี DELETE policy) — รายละเอียดคอลัมน์เต็ม `../SCHEMA.md`
 
-## 🎨 ขั้นตอน FlutterFlow
+**ยังไม่ทำ:** ไม่มี trigger/Edge Function สร้าง notification อัตโนมัติเลย — การสร้างตอนนี้เป็น**app-code ทางเดียว**: `RejectProductSheet` (D-23) insert `type='listing_rejected'` เท่านั้น ไม่มีเส้นทาง `listing_approved`/ข้อความใหม่จาก L4/ธุรกรรมจาก L5 · ไม่ได้เปิด Realtime บนตารางนี้
 
-- หน้า Notification Center — List View ผูก `notifications` filter `user_id = currentUserId` sort `created_at desc`
-- Badge widget ผูกกับ count ของ `is_read = false` → App State `unreadCount`
-- กดรายการ → mark `is_read = true` + navigate ตาม `type`/`ref_id`
+## 🎨 FlutterFlow — ทำแล้ว
+
+`Notifications` page ผูก `notifications` filter `user_id = currentUserUid` · bell icon บน `Home` → `Notifications` · แตะรายการ → mark `is_read=true` (table update ตรง ปลอดภัยเพราะมี RLS self-only อยู่แล้ว) + Navigate `ProductDetails` ด้วย `ref_product_id` (D-26) · จุดแดง unread ผูก `is_read` (D-31) — **มีบั๊ก: ไม่หายทันทีตอนกลับมาหน้าเดิม ต้องออกจากหน้าจริงก่อน (D-32, รายละเอียด `L4-chat.md` ข้อ 3)**
+
+**ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon · Realtime · push notification จริง (FCM/OneSignal)
 
 ## 🧪 Definition of Done
 
-- [ ] เหตุการณ์จริงในระบบสร้าง notification ให้**ถูกคน**
-- [ ] ผู้ใช้อ่าน notification ของคนอื่นไม่ได้ (ทดสอบด้วย 2 บัญชี)
-- [ ] badge นับ unread ถูกต้องและอัปเดต live
-- [ ] ปิดแอปแล้วเปิดใหม่ ยังเห็นแจ้งเตือนที่พลาดไป (แก้ข้อจำกัด PT-04 ได้จริง)
-- [ ] + DoD ร่วมใน `CLAUDE.md`
+- [x] เหตุการณ์จริง (reject) สร้าง notification ให้ถูกคน — ยืนยันจาก DB (`db-verifier`)
+- [x] ผู้ใช้อ่าน notification ของคนอื่นไม่ได้ — ทดสอบ non-admin จริงแล้ว (0 แถวข้ามคน)
+- [ ] badge นับ unread ถูกต้องและอัปเดต live — ยังไม่ทำ
+- [ ] ปิดแอปแล้วเปิดใหม่ ยังเห็นแจ้งเตือนที่พลาดไป (Realtime) — ยังไม่ทำ
+- [ ] จุดแดง unread หายทันทีตอนแตะ — มีบั๊ก stale-state (D-32) ยังไม่แก้
+- [ ] + DoD ร่วมใน `CLAUDE.md` — ยังไม่เคยทดสอบจุดแดงผ่านแอปจริง
 
 ## ❓ ค้างอยู่
 
-Supabase table + Realtime พอไหม หรือต้องต่อ push notification จริง (FCM) ด้วย
+Supabase table + Realtime พอไหม หรือต้องต่อ push notification จริง (FCM) ด้วย · จะเพิ่ม trigger อัตโนมัติ (chat_message insert / products approved) แทน app-code ทางเดียวไหม

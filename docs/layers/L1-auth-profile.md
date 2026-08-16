@@ -56,6 +56,10 @@
 
 5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
 
+## 🔴 พบใหม่ — 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` (D-32, 2026-08-17)
+
+`handle_new_user()` ไม่ทำงาน/fail เงียบสำหรับ `mju6606105382@mju.ac.th` (ยืนยันอีเมลแล้ว 2026-08-13 — ดูเหมือนสมัครจริง บัญชีนี้ใช้แอปไม่ได้ตอนนี้) และ `mju6606105386@mju.ac.th` ("pete", ยังไม่ยืนยันอีเมล) ไม่พบ UNIQUE ชนกันที่ `email`/`student_id` — สาเหตุจาก DB อย่างเดียวหาไม่เจอ ยังไม่ได้ backfill/แก้ รายละเอียด `../DECISIONS.md` **D-32**
+
 ## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราวตั้งแต่ 2026-08-10
 
 **สถานะ:** ไม่ใช่คิวด่วน (ย้ายไปทำ L2/L4/L6/L7 ก่อน) แต่ยังไม่ปิด — บล็อกอยู่ที่ email deliverability ฝั่ง tenant ไม่ใช่โค้ด อ่าน `../DECISIONS.md` **D-19**/**D-20** ก่อนแตะต่อ

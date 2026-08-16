@@ -1,8 +1,9 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-16**
-> ✅ **D-29/D-30: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริงครบ 3 ทางเข้า** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`find_or_create_chat_with_admin`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` + ปุ่ม "ติดต่อแอดมิน" ต่อจริงแล้ว (D-30) + ทางเข้า `chatList` ใน `HomeAdmin` drawer (D-30) — ทดสอบสิทธิ์จริงผ่าน `db-verifier` (non-member เห็น 0 แถวจริง) แล้ว **แต่ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** (รอ pete) — เจอ+แก้บั๊ก build-breaking (`getOtherUsers`/`senderLabel` null-unsafe) + กับดัก import `supabase_flutter` ที่ custom action ต้องใส่เอง ระหว่างตรวจปิด layer รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-09/PT-22/PT-23
+> อัปเดตล่าสุด: **2026-08-17**
+> ✅ **D-31: จุดแดง glow บอกยังไม่อ่าน (หายเมื่อแตะ) บน `chatList`/`Notifications`/`ReportsFeedback`** — `chat_user.last_read_at` (ต่อสมาชิก) + `chat_summary.is_unread`, `reports.is_read` + RPC `mark_chat_read`/`mark_report_read` (บล็อก non-admin จริง) ยังไม่เคยทดสอบผ่านแอปจริง 🔴 **พบว่า pete rename หน้า "Reports" เป็น "ReportsFeedback" ตรงใน FlutterFlow editor** — ทำให้ `ensurePage('Reports', ...)` เดิมในสคริปต์เกือบสร้างหน้าซ้อนโดยไม่ตั้งใจ (จับได้ตอน push fail แก้แล้ว) รายละเอียด `DECISIONS.md` D-31
+> ก่อนหน้า 2026-08-16: **D-29/D-30: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริงครบ 3 ทางเข้า** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`find_or_create_chat_with_admin`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` + ปุ่ม "ติดต่อแอดมิน" ต่อจริงแล้ว (D-30) + ทางเข้า `chatList` ใน `HomeAdmin` drawer (D-30) — ทดสอบสิทธิ์จริงผ่าน `db-verifier` (non-member เห็น 0 แถวจริง) แล้ว **แต่ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** (รอ pete) — เจอ+แก้บั๊ก build-breaking (`getOtherUsers`/`senderLabel` null-unsafe) + กับดัก import `supabase_flutter` ที่ custom action ต้องใส่เอง ระหว่างตรวจปิด layer รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-09/PT-22/PT-23
 > ก่อนหน้า 2026-08-15: D-24–D-27 (reject-flow, reports, addproduct flash bug, ContactAdminButton) ทดสอบผ่านแอปจริงโดย pete แล้ว
 > ก่อนหน้า 2026-08-14: auth backend = Supabase (D-21) · L8 `HomeAdmin` approve/reject + `notifications` table + `Notifications` page + bell icon (D-22/D-23)
 > **L1 confirm-email ยังหยุดที่ D-20** (OTP สร้างเสร็จ ติด email deliverability ฝั่ง tenant — ไม่ใช่คิวด่วน)
@@ -11,7 +12,7 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **ทดสอบ L4 (chat) ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`, เปิดจากปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` (รู้อยู่แล้วว่าหัวข้อ/ชื่อผู้ส่งจะว่างตอนเปิดทางนี้ — ดู `layers/L4-chat.md`), เปิดจากปุ่ม "ติดต่อแอดมิน" (D-30, ต้องเปิดผ่าน notification ก่อนถึงจะเห็นปุ่มนี้), เปิด `chatList` จากปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin` ด้วยบัญชีแอดมิน (D-30)
+1. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`, เปิดจากปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` (รู้อยู่แล้วว่าหัวข้อ/ชื่อผู้ส่งจะว่างตอนเปิดทางนี้ — ดู `layers/L4-chat.md`), เปิดจากปุ่ม "ติดต่อแอดมิน" (D-30, ต้องเปิดผ่าน notification ก่อนถึงจะเห็นปุ่มนี้), เปิด `chatList` จากปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin` ด้วยบัญชีแอดมิน (D-30), เช็คจุดแดง glow ขึ้น/หายถูกต้องบนทั้ง 3 หน้า (D-31)
 2. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
 3. **สร้าง `MyPost`/`Inspect` ใน v2** (มีแค่ใน v1 archived) — อ่าน PT-09/PT-10/PT-12/PT-14 ก่อนเขียน Action Flow ทดสอบด้วย `mju6577778888@mju.ac.th` (admin)
 
@@ -28,8 +29,8 @@
 | 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
 | 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป/Realtime · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
-| 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) — ทดสอบผ่านแอปจริงแล้ว | เขียนได้ทางเดียว: reject→insert · ไม่มี unread badge/realtime/push จริง |
-| 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`Reports`/`ReportDetail` — **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | |
+| 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31, ยังไม่เทสแอปจริง) | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |
+| 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) + `is_read` (D-31) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`ReportsFeedback`/`ReportDetail` + จุดแดง unread (D-31) — เนื้อหาหลัก**ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** จุดแดงยังไม่เทส | หน้า "Reports" ถูก pete rename เป็น "ReportsFeedback" ตรงใน editor (2026-08-17) |
 | 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ | `admin_dashboard_stats`+`admin_sales_by_seller` · trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) เหลือ RLS admin-only เต็มรูปแบบ, `"CAT"` CRUD |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม — คอลัมน์ FlutterFlow คือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น งานฝั่ง v1 (archived) ไม่นับ (D-16)

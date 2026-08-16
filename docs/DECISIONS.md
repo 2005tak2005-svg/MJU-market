@@ -588,3 +588,29 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **บทเรียน:** การ rename entity ใน FlutterFlow editor โดยตรง (ไม่ผ่าน DSL) ปลอดภัยต่อ Action/Navigate ที่มีอยู่แล้ว (FF ผูกด้วย node id ไม่ใช่ชื่อ) แต่ทำให้ **DSL script เก่าที่อ้างชื่อเดิมเสี่ยงพังเงียบ** โดยเฉพาะ `ensurePage`/`ensureComponent` ที่ no-op ตามชื่อ — ควรเช็ค `flutterflow ai resources <id>` เทียบชื่อหน้าจริงก่อนแตะไฟล์ที่มี `ensurePage` เก่าเสมอถ้าสงสัยว่ามีใคร rename อะไรไปนอกเซสชัน
 
 **ผล:** ทั้ง 3 หน้ามีจุดแดง glow (`Colors.error` + `Shadow(blur:6, spread:2)`) ที่ item ที่ยังไม่อ่าน หายไปหลังแตะ ยืนยันจาก `generated_code/` ครบทั้ง visibility condition และ mark-read wiring (commit `7h4OfmbkB8U6XViI1jiF`) — ยังไม่เคยทดสอบผ่านแอปจริง รอ pete
+
+## D-32 — DoD audit ทั้งโปรเจกต์ (db-verifier + ui-checker คู่ขนาน) พบบั๊กจริง 4 จุด (2026-08-17)
+
+**บริบท:** pete ขอตรวจ Definition of Done ของทุก layer ที่มีงานจริงแล้ว (L1/L2/L3/L4/L6/L7/L8, ข้าม L5 เพราะยังไม่เริ่ม) ก่อนแตะเอกสารต่อ — เรียก `db-verifier` (ตรวจ DB/RLS ตรง) และ `ui-checker` (ตรวจ `generated_code/` ตรง ไม่ใช่แค่ inspect) คู่ขนาน ผลตรงกัน: L2/L3/L4(core)/L6/L7 PASS, L1/L8 พบบั๊กจริง + 2 จุดที่ audit ฝั่ง FlutterFlow เจอเพิ่มนอกสโคป
+
+**1. 🔴 L1 — 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` เลย** (`handle_new_user()` ไม่ทำงาน/fail เงียบ):
+   - `mju6606105382@mju.ac.th` ("ปิติเทพ โบวิเชียร") — สร้าง 2026-08-09, **ยืนยันอีเมลแล้ว 2026-08-13** → ดูเหมือนสมัครจริง บัญชีนี้ใช้แอปไม่ได้เลยตอนนี้ (ทุกจุดที่ join `"Profile"` จะว่าง)
+   - `mju6606105386@mju.ac.th` ("pete") — สร้าง 2026-08-13, ยังไม่ยืนยันอีเมล
+   ตรวจแล้วไม่มี UNIQUE constraint ชนกันที่ `email`/`student_id` ทั้งคู่ — หาสาเหตุจาก DB อย่างเดียวไม่เจอ (อาจเป็น trigger error ที่ auth log ไม่ได้เก็บ หรือ race condition) **ยังไม่ได้แก้/backfill** เพราะต้องรู้สาเหตุก่อนว่าจะเกิดซ้ำไหม ก่อน L1 ปิดสนิทได้จริง
+
+**2. 🔴 L8 — `admin_sales_by_seller` ไม่มี admin gate เลย** — view นี้ `security_invoker=true` พึ่ง RLS ของ `products` เพียงอย่างเดียว และ `products` ยัง allow-all สำหรับ authenticated (หนี้ D-03 ที่ยังไม่ปิด) ผลคือ **authenticated ธรรมดาอ่านยอดขายรวมข้าม seller อื่นได้ทันที** (`seller_name`/`items_sold`/`total_sales`) ตอนนี้ยังไม่เห็นผลจริงเพราะยังไม่มีแถว `products.status='sold'` สักแถว — เป็นระเบิดเวลา ไม่ใช่ปัญหาที่ "ยังไม่เกิด" **ต้องแก้ก่อนมีการขายจริงครั้งแรก** ทางแก้ที่เป็นไปได้: เพิ่ม `WHERE` เช็ค `private.is_admin()` ในตัว view เอง (อย่าพึ่ง RLS ของ `products` ต่อ เพราะ `products` เองก็เป็นหนี้ D-03 ที่ยังไม่ปิด)
+
+**3. L4 — ยืนยันแล้วว่า Realtime "ไม่มีเลย" ไม่ใช่แค่ "ยังไม่ยืนยัน"** — `ui-checker` grep ทั้ง `generated_code/lib/` หา `.stream(`/`StreamBuilder`/`SupabaseStreamBuilder` เจอ 0 จุดใช้งานจริงนอก unused base-class ใน `table.dart` ปิดคำถามเดิมใน STATUS.md ที่เขียนว่า "ยังไม่ยืนยัน" — ตอนนี้ยืนยันชัดว่าไม่มีการ subscribe เลย ต้องรีเฟรชมือหลังส่งข้อความ/มีข้อความใหม่เสมอ
+
+**4. 🔴 L4/L6/L7 — จุดแดง unread (D-31) มี stale-state bug จริง ยืนยันจากโค้ด ไม่ต้องรอทดสอบสด:** `chatList`/`Notifications`/`ReportsFeedback` ทั้ง 3 หน้าโหลด list ครั้งเดียวใน `initState` ปุ่มกดของแต่ละหน้าเรียก mark-read RPC ถูกต้อง แต่ **ไม่ refetch list หรือแก้ค่า item ในโลคอลก่อน navigate ออก** — Flutter ไม่รัน `initState` ซ้ำตอน pop กลับมา จุดแดงเลยยังค้างแสดงผลเดิมจนกว่าหน้าจะถูกทำลาย/สร้างใหม่จริง (เช่นสลับ bottom-nav tab) เทียบกับปุ่ม approve/reject ของ `HomeAdmin` ที่ refetch ถูกต้องหลัง mutate (`home_admin_widget.dart:2321-2333`) — เป็น pattern อ้างอิงว่าต้องแก้ยังไง **ยังไม่ได้แก้ในรอบนี้** (audit-only round)
+
+**นอกสโคปที่เจอเพิ่มระหว่างตรวจ L2 (คุ้มบันทึกเพราะกระทบ DoD):**
+**5. `Mypost` มีอยู่แล้วจริงในโปรเจกต์ (ไม่ใช่ "ยังไม่สร้าง" ตามที่ STATUS.md คิวเดิมเขียนไว้)** — 1824 บรรทัด ขึ้นเป็นแท็บ bottom-nav จริง (`main.dart:148`) แต่ query เดียวของหน้านี้ (`ProductsReviewViewTable().queryRows`) **ไม่มี filter เลย** — grep ทั้งไฟล์หา `seller_id`/`currentUserUid` ไม่เจอ ผลคือหน้านี้โชว์สินค้าของ**ทุกคน**ทุกสถานะ ไม่ใช่ "ของฉัน" ตามชื่อหน้า — แก้คิว STATUS.md จาก "สร้าง Mypost/Inspect" เป็น "แก้ filter ของ Mypost ที่มีอยู่แล้ว"
+
+**เอกสารที่ล้าสมัยที่พบและแก้พร้อมกันรอบนี้:**
+- `checks/L4.sql` ไม่มีเช็ค RPC/คอลัมน์ที่เพิ่มจาก D-30/D-31 เลย — เพิ่ม [4.5]/[4.5b]/[4.5c] แล้ว
+- `checks/L6.sql` [6.7] เช็คชื่อคอลัมน์ `ref_id` ที่ไม่เคย apply จริง (ของจริงคือ `ref_product_id` ตาม D-23) — query เดิมว่างเปล่าตลอด อ่านผิดเป็น "คอลัมน์หาย" ได้ — แก้ชื่อคอลัมน์ถูกแล้ว + เพิ่มเช็ค `is_read` (D-31)
+- `checks/L8.sql` [8.2] แพทเทิร์นจับ policy แบบ admin-only พลาดเคสที่เรียกผ่านฟังก์ชัน (`private.is_admin()`) — ขยายแพทเทิร์นแล้ว + เพิ่ม [8.2b] เช็ค `admin_sales_by_seller` grants ตรงจากบั๊กข้อ 2
+- `layers/L6-notifications.md`/`L7-reviews-reports.md`/`L8-admin.md` — header สถานะเขียนไว้ว่า "ยังไม่เริ่ม"/"⬜" ทั้งที่มีตาราง/RLS/UI ใช้งานจริงแล้วหลายเดือน (ไม่ตรงกับ `STATUS.md` มานานแล้ว) — อัปเดตให้ตรงสถานะจริงในรอบนี้
+
+**ผล:** ไม่มีการแก้โค้ด/ไม่มีการ apply SQL ในรอบนี้ (audit + doc-sync only) — ปัญหาข้อ 1/2/4/5 ยังเปิดอยู่ รอ pete ตัดสินใจลำดับความสำคัญ ก่อนแตะแก้จริง

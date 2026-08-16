@@ -1,9 +1,9 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-15**
-> ✅ **D-24–D-27 เสร็จและทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด** (ไม่ใช่แค่ยืนยันจาก `generated_code/` อีกต่อไป):
-> reject-flow root cause (RLS select-back) แก้แล้ว + `reports` ใช้งานจริงทั้ง user-report/admin-log/admin mailbox (D-24) · แก้บั๊ก `addproduct` แฟลชไป Login หลังลงขายสำเร็จ + `Notifications`→`ProductDetails` link + ปุ่ม "ติดต่อแอดมิน" mock (D-26) · แก้ `ensureReplaced` เก่าทับปุ่มติดต่อแอดมินเงียบ ๆ (D-27, กฎใหม่ดู `PATTERNS.md` **PT-21**)
+> อัปเดตล่าสุด: **2026-08-16**
+> ✅ **D-29: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริง** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` — ทดสอบสิทธิ์จริงผ่าน `db-verifier` (non-member เห็น 0 แถวจริง) แล้ว **แต่ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** (รอ pete) — เจอ+แก้บั๊ก build-breaking (`getOtherUsers`/`senderLabel` null-unsafe) ระหว่างตรวจปิด layer รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-22/PT-23
+> ก่อนหน้า 2026-08-15: D-24–D-27 (reject-flow, reports, addproduct flash bug, ContactAdminButton) ทดสอบผ่านแอปจริงโดย pete แล้ว
 > ก่อนหน้า 2026-08-14: auth backend = Supabase (D-21) · L8 `HomeAdmin` approve/reject + `notifications` table + `Notifications` page + bell icon (D-22/D-23)
 > **L1 confirm-email ยังหยุดที่ D-20** (OTP สร้างเสร็จ ติด email deliverability ฝั่ง tenant — ไม่ใช่คิวด่วน)
 
@@ -11,8 +11,8 @@
 
 ## 🔥 คิวถัดไป (3 อันดับ)
 
-1. **regression ที่เหลือหลังสลับ auth backend (D-21)** — สมัครใหม่/OTP/role-routing/`ProfileUser` ผ่านแล้ว (V-11) เหลือ: กรอกเบอร์ว่างล้วนตอนสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` (ยังไม่เทสผ่าน UI จริง), อัปรูปโปรไฟล์เข้า `avatars` แล้วเปิด public URL จริงดูว่ารูปขึ้น
-2. **เริ่ม L4 (chat) ใน v2** — ยังไม่มีหน้าแชทเลย อ่าน `PATTERNS.md` PT-02/PT-09/PT-10 ก่อนเริ่ม โดยเฉพาะ `chat_summary.member_names`
+1. **ทดสอบ L4 (chat) ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`, เปิดจากปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` (รู้อยู่แล้วว่าหัวข้อ/ชื่อผู้ส่งจะว่างตอนเปิดทางนี้ — ดู `layers/L4-chat.md`)
+2. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
 3. **สร้าง `MyPost`/`Inspect` ใน v2** (มีแค่ใน v1 archived) — อ่าน PT-09/PT-10/PT-12/PT-14 ก่อนเขียน Action Flow ทดสอบด้วย `mju6577778888@mju.ac.th` (admin)
 
 🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email (D-20)** บล็อกอยู่ที่ email deliverability ฝั่ง tenant มหาลัย ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email"
@@ -26,7 +26,7 @@
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
 | 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
-| 4 | Chat & Messaging | 🟨 schema เสร็จ ยังไม่เคยตรวจ | ⬜ ยังไม่เริ่มใน v2 | RLS allow-all ชั่วคราว · อ่าน PT-09/10 |
+| 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29) | 🟨 `chatList`+`chatMessages`+ปุ่ม "แชทกับผู้ขาย" ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป/Realtime · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) — ทดสอบผ่านแอปจริงแล้ว | เขียนได้ทางเดียว: reject→insert · ไม่มี unread badge/realtime/push จริง |
 | 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`Reports`/`ReportDetail` — **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | |
@@ -40,7 +40,7 @@
 
 **L2** ปิดไม่ได้เพราะยังไม่เคยเทสอัปไฟล์เกิน 5MB/ผิดชนิดผ่านแอปจริง (บังคับที่ Storage API ไม่ใช่ Postgres ทดสอบจาก DB แทนไม่ได้) — อัปสำเร็จ + path ถูกต้องยืนยันแล้ว (`VERIFICATION.md` V-08)
 
-**L4** ปิดไม่ได้เพราะ `chat`/`chat_user`/`chat_message` ว่าง 0 แถวทั้งหมด — `chat_summary.member_names` (จุดที่เคยพัง NULL) ยังไม่เคยพิสูจน์ผ่าน view จริง มีแค่ `public_profiles` ตรง ๆ (V-04) → ปิดได้ต่อเมื่อสร้างห้องแชท 1 ห้อง 2 สมาชิก แล้ว SELECT `chat_summary` ด้วย user ธรรมดา เห็น `member_names` ครบ
+**L4** Supabase ปิดแล้ว (D-29, 2026-08-16) — `chat_summary.member_names` พิสูจน์แล้วว่าไม่เป็น NULL ด้วย user ธรรมดาจริง (มีห้องแชท 1 ห้อง 2 สมาชิกจากการทดสอบ) FlutterFlow ปิดไม่ได้เพราะยังไม่มีส่งรูป/Realtime และยังไม่เคยเทสผ่านแอปจริงเลย (แค่ตรวจ `generated_code/`) รายละเอียด `layers/L4-chat.md`
 
 ---
 
@@ -56,7 +56,7 @@
 
 **Layer 3** — FlutterFlow built-in filter พอไหม หรือต้องสร้าง RPC `search_products` (P-05)
 
-**Layer 4** — listen realtime บน **view** ได้จริงไหม (ต้องทดสอบ) · query builder รองรับ "array contains" บน `chat_summary.user_ids` ไหม ถ้าไม่ต้องทำ RPC `get_my_chats(uid)` · trigger auto-update `chat.last_message` (P-04) หรือให้ Action Flow อัปเดต 2 ที่เอง
+**Layer 4** — ตอบแล้วทั้งหมด (D-29): realtime ต้องฟังที่ table `chat_message` ไม่ใช่ view (ยังไม่ได้ต่อจริง), ไม่ต้อง array-contains เพราะ RLS กรองให้แล้ว, trigger auto-update `last_message` apply แล้ว — คำถามใหม่ที่เหลือ: จะแก้ปุ่ม "แชทกับผู้ขาย" ให้ส่ง `memberNames`/`userIds` ได้ไหม (ดู `layers/L4-chat.md` ข้อ 3-4)
 
 **Layer 5** — ต้องการ `status` กี่แบบจริง ๆ, เก็บประวัติ transaction แยกไหม หรือใช้ `products.status` พอ
 
@@ -64,13 +64,13 @@
 
 **Layer 7** — รองรับรีพอร์ต "ผู้ใช้" ด้วยไหม (P-09) · `reviews` ใช้ RLS allow-all หรือ restrictive
 
-**Layer 8** — RLS admin-only เต็มรูปแบบยังไม่ทำ (`products`/`chat`/`chat_user`/`chat_message` ยัง allow-all, D-03) · หน้า `Inspect` แยกยังไม่มีใน v2 (คิวรอตรวจอยู่ใน `HomeAdmin` มีปุ่มอนุมัติ/ปฏิเสธจริงแล้ว) · `"CAT"` ยังจัดการผ่าน UI ไม่ได้ ต้อง seed ด้วยมือ · `admin_sales_by_seller` อ้าง `products.status='sold'` ชั่วคราวเพราะยังไม่มี `transactions` (L5) — ถ้า L5 เริ่มจริงต้องตัดสินใจย้ายไปอ้าง `transactions` ไหม
+**Layer 8** — RLS admin-only เต็มรูปแบบยังไม่ทำ (`products` ยัง allow-all, D-03 — `chat`/`chat_user`/`chat_message` ปิดหนี้นี้แล้ว D-29) · หน้า `Inspect` แยกยังไม่มีใน v2 (คิวรอตรวจอยู่ใน `HomeAdmin` มีปุ่มอนุมัติ/ปฏิเสธจริงแล้ว) · `"CAT"` ยังจัดการผ่าน UI ไม่ได้ ต้อง seed ด้วยมือ · `admin_sales_by_seller` อ้าง `products.status='sold'` ชั่วคราวเพราะยังไม่มี `transactions` (L5) — ถ้า L5 เริ่มจริงต้องตัดสินใจย้ายไปอ้าง `transactions` ไหม
 
 ---
 
 ## 💣 หนี้ทางเทคนิคที่ต้องใช้คืนก่อน production
 
-- [ ] `products`/`chat`/`chat_user`/`chat_message` เป็น allow-all RLS — เปลี่ยนเป็น restrictive ตาม `chat_user` membership
+- [ ] `products` เป็น allow-all RLS — ยังไม่เปลี่ยนเป็น restrictive (`chat`/`chat_user`/`chat_message` ปิดหนี้นี้แล้ว D-29, 2026-08-16)
 - [ ] คิวอนุมัติ/`Inspect` กันด้วย UI เท่านั้น ไม่ใช่ RLS — user ยิง API ตรงยัง approve สินค้าเองได้
 - [ ] ไม่มีระบบกันกดปุ่มลบซ้ำ/popup ค้างใน reject flow (ยอมรับเป็น MVP)
 - [ ] `"Profile".id` มี default `gen_random_uuid()` ทั้งที่เป็นคอลัมน์ FK — ควรถอด default ออก (ยังไม่ทำ)
@@ -82,6 +82,7 @@
 - [ ] รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL (public bucket, D-12) — ห้ามเก็บของอ่อนไหวในนี้
 - [ ] `Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)` — ยังไม่มีปัญหาจริงเพราะ trigger `lower()` ให้ก่อน insert (P-11 ยังไม่ตอบรับ)
 - [ ] repo private (D-13) ไม่ใช่การปิดช่องโหว่ — ของจริงที่ต้องปิดคือ 2 ข้อบนสุดของรายการนี้
+- [ ] 🆕 **L4 `chatMessages`: `messageItem.message!` force-unwrap** — ตอนนี้ปลอดภัยเพราะทุกข้อความเป็นข้อความล้วน แต่ถ้าเพิ่มปุ่มส่งรูป (ทำให้ `message` เป็น NULL ได้จริง) โดยไม่แก้บรรทัดนี้ก่อน จะ crash หน้าห้องแชททันทีที่มีข้อความรูปล้วนแรก
 
 **บัญชีทดสอบที่ credential ถูกแก้ตรงด้วย SQL (ไม่ใช่สภาพ user จริง — ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว):**
 

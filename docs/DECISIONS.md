@@ -631,20 +631,20 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 **บริบท:** D-20 ค้างเพราะ custom SMTP (Gmail ส่วนตัว) ส่ง OTP ไปไม่ถึงกล่อง `@mju.ac.th` เลย (เข้าข่าย Microsoft Zero-hour Auto Purge — ไม่มี sending reputation กับ tenant)
 
-**ตัดสินใจ:** เลิกพึ่ง Supabase custom SMTP ส่งตรงถึง student ทั้งหมด เปลี่ยนไปใช้ Supabase Auth **Send Email Hook** (HTTPS) เรียก Edge Function `send-otp-email` แทน mailer เริ่มต้น ฟังก์ชันส่ง OTP ผ่าน **Resend API** ไปที่ **inbox แอดมินเดียว** (`ADMIN_INBOX_EMAIL`) พร้อมอีเมลของ student ที่ขอ แล้วให้แอดมิน relay รหัสออกนอกระบบเอง — ข้ามปัญหา deliverability ของ tenant แทนที่จะพยายามแก้มัน
+**ตัดสินใจ:** เลิกส่ง OTP ตรงถึง student ใช้ Supabase Auth **Send Email Hook** (HTTPS) เรียก Edge Function `send-otp-email` แทน mailer เริ่มต้น ฟังก์ชันส่ง OTP ผ่าน **Resend API** ไปที่ **inbox แอดมินเดียว** (`ADMIN_INBOX_EMAIL`) พร้อมอีเมลของ student แล้วให้แอดมิน relay รหัสออกนอกระบบเอง — ข้ามปัญหา deliverability แทนที่จะพยายามแก้มัน
 
 **ของที่มีอยู่จริงตอนนี้:**
-- Auth Hook "Send Email" (HTTPS, `ENABLED`) ผูกกับ `https://rooydbxgcsybyanwsewv.supabase.co/functions/v1/send-otp-email`
+- Auth Hook "Send Email" (HTTPS, `ENABLED`) → `https://rooydbxgcsybyanwsewv.supabase.co/functions/v1/send-otp-email`
 - Edge Function `send-otp-email` — verify payload ด้วย `standardwebhooks`, ส่งอีเมลผ่าน `resend` npm package
-- 3 secrets ระดับโปรเจกต์ (Edge Functions → Secrets, ใช้ร่วมกันทุกฟังก์ชัน ไม่ใช่ต่อฟังก์ชัน): `RESEND_API_KEY`, `SEND_EMAIL_HOOK_SECRET` (รูปแบบ `v1,whsec_<base64>` คัดลอกจากหน้า Auth Hooks), `ADMIN_INBOX_EMAIL`
+- 3 secrets ระดับโปรเจกต์ (Edge Functions → Secrets, ใช้ร่วมทุกฟังก์ชัน): `RESEND_API_KEY`, `SEND_EMAIL_HOOK_SECRET` (รูปแบบ `v1,whsec_<base64>` จากหน้า Auth Hooks), `ADMIN_INBOX_EMAIL`
 
-**กับดักที่เจอระหว่างเซ็ต (เผื่อเจอซ้ำ — เรียงตามลำดับที่ต้องเช็ค):**
-1. secret ขาด/พิมพ์ชื่อผิด → throw ตอน module load (cold boot) ก่อนถึง request handler เลย — `Missing API key` (จาก `RESEND_API_KEY`) หรือ `Cannot read properties of undefined (reading 'replace')` (จาก `SEND_EMAIL_HOOK_SECRET`) — GoTrue เห็นเป็น 500 ล้วน ๆ ไม่มีรายละเอียด
-2. **Resend sandbox sender (`onboarding@resend.dev`) ส่งได้แค่หา "อีเมลเจ้าของบัญชี Resend" เท่านั้น** จนกว่าจะ verify domain จริงที่ resend.com/domains — `ADMIN_INBOX_EMAIL` ต้องตรงกับอีเมลที่สมัคร Resend เป๊ะ ไม่ใช่ "อีเมลจริงอะไรก็ได้ที่เช็คได้" ผิดแล้วได้ `422 validation_error` (ผิด format/โดเมนหลอก) หรือ `403` (ไม่ใช่อีเมลเจ้าของบัญชี) ตรงจาก Resend ใน `function_logs`
-3. **`over_email_send_rate_limit` (429) เป็นคนละชั้นกับ Resend/hook ทั้งคู่** — เป็น GoTrue project-wide rate limit (`GOTRUE_RATE_LIMIT_EMAIL_SENT`) นับรวมทุก signup/resend ไม่ว่าจะสำเร็จหรือ hook fail ทีหลัง default ต่ำมาก (2/ชม.) ไม่พอสำหรับรอบดีบัก — ปรับขึ้นเป็น **30/ชม.** ที่ **Authentication → Rate Limits** ระหว่างเซสชันนี้ (2026-08-17) 🔴 **ต้องหรี่ลงก่อนขึ้น production**
-4. `"Hook requires authorization token"` ที่ GoTrue โชว์ = แปลจาก **HTTP 401 จริงที่ฟังก์ชันส่งกลับเอง** (`catch` ของฟังก์ชันคืน 401 ทุก error โดยไม่แยกสาเหตุ) **ไม่ใช่ field ที่ขาดในหน้า config ของ Auth Hooks** (หน้านั้นมีแค่ Endpoint/Secret เท่านั้น ไม่มีช่อง Authorization แยก) — ต้องอ่าน error จริงจาก `function_logs`/`function_edge_logs` เสมอ อย่าเดาจากข้อความสรุปของ GoTrue
+**กับดักที่เจอระหว่างเซ็ต (เผื่อเจอซ้ำ):**
+1. secret ขาด/พิมพ์ผิดชื่อ → throw ตอน cold boot ก่อนถึง request handler — `Missing API key` (`RESEND_API_KEY`) หรือ `Cannot read properties of undefined (reading 'replace')` (`SEND_EMAIL_HOOK_SECRET`) — GoTrue เห็นเป็น 500 เฉย ๆ
+2. **Resend sandbox sender (`onboarding@resend.dev`) ส่งได้แค่อีเมลเจ้าของบัญชี Resend เท่านั้น** จนกว่าจะ verify domain จริง — `ADMIN_INBOX_EMAIL` ต้องตรงเป๊ะ ไม่ใช่อีเมลจริงอะไรก็ได้ ผิดแล้วได้ `422`/`403` จาก Resend ตรงใน `function_logs`
+3. **`over_email_send_rate_limit` (429) คนละชั้นกับ Resend/hook** — เป็น GoTrue project-wide rate limit (`GOTRUE_RATE_LIMIT_EMAIL_SENT`) นับทุก signup/resend แม้ hook จะ fail ทีหลัง default ต่ำมาก (2/ชม.) ปรับขึ้นเป็น **30/ชม.** ที่ Authentication → Rate Limits ระหว่างเซสชันนี้ 🔴 **ต้องหรี่ก่อนขึ้น production**
+4. `"Hook requires authorization token"` ที่ GoTrue โชว์ = แปลจาก **HTTP 401 ที่ฟังก์ชันส่งกลับเอง** (`catch` คืน 401 ทุก error) **ไม่ใช่ field ที่ขาดในหน้า config ของ Auth Hooks** (มีแค่ Endpoint/Secret) — อ่าน error จริงจาก `function_logs`/`function_edge_logs` เสมอ
 
-**ยืนยันสำเร็จ end-to-end 2026-08-17:** สมัครด้วย `mju6606105382@mju.ac.th` ผ่านแอปจริง → OTP ไปถึง `ADMIN_INBOX_EMAIL` จริง → กรอกรหัสยืนยันสำเร็จ → `"Profile"` ถูกสร้างอัตโนมัติถูกต้องครบ (`full_name`/`student_id` derive ถูก) — `handle_new_user()` ทำงานปกติในรอบนี้ (บั๊ก D-32 ที่บัญชีนี้เคยไม่มี Profile ไม่เกิดซ้ำ — บัญชี auth.users เก่าที่เจอบั๊กถูกลบทิ้งแล้วสมัครใหม่สะอาดระหว่างดีบักรอบนี้)
+**ยืนยันสำเร็จ end-to-end 2026-08-17:** สมัคร `mju6606105382@mju.ac.th` ผ่านแอปจริง → OTP ถึง `ADMIN_INBOX_EMAIL` → ยืนยันสำเร็จ → `"Profile"` ถูกสร้างถูกต้องครบ (`handle_new_user()` ทำงานปกติ — บั๊ก D-32 ของบัญชีนี้ไม่เกิดซ้ำ หลังลบบัญชีเก่าแล้วสมัครใหม่)
 
 **หนี้ที่ยังไม่ปิด:**
 - **Manual relay ไม่ scale** — ทุก OTP ต้องมีแอดมินคอยเปิดกล่องแล้ว relay ให้ student เอง เป็นทางออกช่วง prototype เท่านั้น ก่อน production ต้อง verify domain จริงที่ Resend แล้วเปลี่ยนให้ส่งตรงถึง student

@@ -2,7 +2,8 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-17**
-> 🔴 **D-32: DoD audit ทั้งโปรเจกต์ (db-verifier + ui-checker คู่ขนาน) พบบั๊กจริง 4 จุด** — (1) L1: 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` เลย (`mju6606105382`/`mju6606105386`, สาเหตุยังไม่ทราบ) (2) L8: `admin_sales_by_seller` ไม่มี admin gate เลย — authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ทันทีที่มีของขายจริงชิ้นแรก (3) L4: ยืนยันแล้วว่า Realtime ไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (4) จุดแดง unread (D-31) มีบั๊ก stale-state บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายจนกว่าจะออกจากหน้าจริง นอกจากนี้ `MyPost` มีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง") แต่ query ไม่ filter `seller_id` เลย โชว์ของทุกคน — audit-only round ยังไม่ได้แก้โค้ด รายละเอียด `DECISIONS.md` D-32
+> ✅ **D-33: ปิดช่องโหว่ `admin_sales_by_seller`** — เพิ่ม `AND private.is_admin()` ในตัว view เอง ไม่พึ่ง RLS ของ `products` (allow-all, D-03) อีกต่อไป ยืนยันด้วย impersonation test จริง (user ธรรมดา 0 แถว, admin เห็นถูกต้อง) รายละเอียด `DECISIONS.md` D-33 — ปิดข้อ 2 ของคิว D-32 แล้ว เหลือ 4 ข้อ
+> 🔴 **D-32: DoD audit ทั้งโปรเจกต์ (db-verifier + ui-checker คู่ขนาน) พบบั๊กจริง 4 จุด** — (1) L1: 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` เลย (`mju6606105382`/`mju6606105386`, สาเหตุยังไม่ทราบ) (2) ~~L8: `admin_sales_by_seller` ไม่มี admin gate~~ **ปิดแล้ว (D-33)** (3) L4: ยืนยันแล้วว่า Realtime ไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (4) จุดแดง unread (D-31) มีบั๊ก stale-state บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายจนกว่าจะออกจากหน้าจริง นอกจากนี้ `MyPost` มีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง") แต่ query ไม่ filter `seller_id` เลย โชว์ของทุกคน รายละเอียด `DECISIONS.md` D-32
 > ก่อนหน้า 2026-08-17: **D-31: จุดแดง glow บอกยังไม่อ่าน (หายเมื่อแตะ) บน `chatList`/`Notifications`/`ReportsFeedback`** — `chat_user.last_read_at` (ต่อสมาชิก) + `chat_summary.is_unread`, `reports.is_read` + RPC `mark_chat_read`/`mark_report_read` (บล็อก non-admin จริง) 🔴 พบว่า pete rename หน้า "Reports" เป็น "ReportsFeedback" ตรงใน FlutterFlow editor ทำให้ `ensurePage('Reports', ...)` เดิมเกือบสร้างหน้าซ้อน (จับได้ตอน push fail แก้แล้ว) รายละเอียด `DECISIONS.md` D-31
 > ก่อนหน้า 2026-08-16: **D-29/D-30: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริงครบ 3 ทางเข้า** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`find_or_create_chat_with_admin`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` + ปุ่ม "ติดต่อแอดมิน" ต่อจริงแล้ว (D-30) + ทางเข้า `chatList` ใน `HomeAdmin` drawer (D-30) รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-09/PT-22/PT-23
 > ก่อนหน้า 2026-08-15: D-24–D-27 (reject-flow, reports, addproduct flash bug, ContactAdminButton) ทดสอบผ่านแอปจริงโดย pete แล้ว
@@ -14,10 +15,9 @@
 ## 🔥 คิวถัดไป
 
 1. **🔴 [D-32] แก้ L1: 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"`** — `mju6606105382@mju.ac.th` (ยืนยันอีเมลแล้ว, ใช้แอปไม่ได้ตอนนี้) + `mju6606105386@mju.ac.th`. ต้องหาสาเหตุก่อน (ไม่มี UNIQUE ชนกัน ยังไม่รู้ว่าทำไม `handle_new_user()` ไม่ทำงาน) แล้วค่อย backfill/แก้
-2. **🔴 [D-32] ปิดช่องโหว่ `admin_sales_by_seller`** — ไม่มี admin gate เลย พึ่ง `products` RLS (allow-all) เพียงอย่างเดียว ต้องแก้ก่อนมีของขายจริงชิ้นแรก (ตอนนี้ยังไม่เห็นผลเพราะยังไม่มีแถว `status='sold'`) ดู `layers/L8-admin.md`
-3. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`/"แชทกับผู้ขาย"/"ติดต่อแอดมิน"/Drawer ของ `HomeAdmin` — **รู้อยู่แล้วว่าจุดแดงจะไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32)** ไม่ต้องรายงานซ้ำถ้าเจอ
-4. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
-5. **[D-32] แก้ filter ของ `MyPost`** — หน้ามีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง" ตามที่เคยเข้าใจ) แต่ query ไม่ filter `seller_id`/`currentUserUid` เลย ตอนนี้โชว์สินค้าทุกคนทุกสถานะ ต้องเพิ่ม filter ให้ตรงชื่อหน้า
+2. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`/"แชทกับผู้ขาย"/"ติดต่อแอดมิน"/Drawer ของ `HomeAdmin` — **รู้อยู่แล้วว่าจุดแดงจะไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32)** ไม่ต้องรายงานซ้ำถ้าเจอ
+3. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
+4. **[D-32] แก้ filter ของ `MyPost`** — หน้ามีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง" ตามที่เคยเข้าใจ) แต่ query ไม่ filter `seller_id`/`currentUserUid` เลย ตอนนี้โชว์สินค้าทุกคนทุกสถานะ ต้องเพิ่ม filter ให้ตรงชื่อหน้า
 
 🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email (D-20)** บล็อกอยู่ที่ email deliverability ฝั่ง tenant มหาลัย ดู `layers/L1-auth-profile.md` หัวข้อ "งานค้าง — Confirm Email"
 
@@ -34,7 +34,7 @@
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |
 | 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) + `is_read` (D-31) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`ReportsFeedback`/`ReportDetail` + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เนื้อหาหลัก**ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | หน้า "Reports" ถูก pete rename เป็น "ReportsFeedback" ตรงใน editor (2026-08-17) — ตรวจแล้วไม่มีจุดอ้างชื่อเก่าค้าง |
-| 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 🔴 `admin_sales_by_seller` ไม่มี admin gate (D-32) | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ | trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) เหลือ RLS admin-only เต็มรูปแบบ (`products` คอลัมน์อื่น + sales view), `"CAT"` CRUD |
+| 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 · `admin_sales_by_seller` gate ปิดแล้ว (D-33) | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ | trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) เหลือ RLS admin-only เต็มรูปแบบ (`products` คอลัมน์อื่น), `"CAT"` CRUD |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม — คอลัมน์ FlutterFlow คือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น งานฝั่ง v1 (archived) ไม่นับ (D-16)
 
@@ -74,7 +74,6 @@
 
 ## 💣 หนี้ทางเทคนิคที่ต้องใช้คืนก่อน production
 
-- [ ] 🆕 **[D-32, 2026-08-17] `admin_sales_by_seller` ไม่มี admin gate เลย** — พึ่ง `products` RLS (allow-all) เพียงอย่างเดียว authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ทันทีที่มีของขายจริงชิ้นแรก (ตอนนี้ยังไม่เห็นผลเพราะยังไม่มีแถว `status='sold'`) — ดู `layers/L8-admin.md`
 - [ ] 🆕 **[D-32] 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"`** (`mju6606105382@mju.ac.th` ยืนยันอีเมลแล้ว ใช้แอปไม่ได้ตอนนี้ + `mju6606105386@mju.ac.th`) — สาเหตุยังไม่ทราบ ไม่มี UNIQUE ชนกัน ดู `layers/L1-auth-profile.md`
 - [ ] 🆕 **[D-32] จุดแดง unread (D-31) มีบั๊ก stale-state** บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายทันทีตอนกลับมาหน้าเดิม (list ไม่ refetch ก่อน navigate ออก) ต้องออกจากหน้าจริงก่อนถึงจะหาย — ดู `layers/L4-chat.md` ข้อ 3
 - [ ] 🆕 **[D-32] `MyPost` มีอยู่แล้วจริง แต่ query ไม่ filter `seller_id` เลย** — โชว์สินค้าทุกคนทุกสถานะ ไม่ใช่แค่ของตัวเอง

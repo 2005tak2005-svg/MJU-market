@@ -614,3 +614,13 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - `layers/L6-notifications.md`/`L7-reviews-reports.md`/`L8-admin.md` — header สถานะเขียนไว้ว่า "ยังไม่เริ่ม"/"⬜" ทั้งที่มีตาราง/RLS/UI ใช้งานจริงแล้วหลายเดือน (ไม่ตรงกับ `STATUS.md` มานานแล้ว) — อัปเดตให้ตรงสถานะจริงในรอบนี้
 
 **ผล:** ไม่มีการแก้โค้ด/ไม่มีการ apply SQL ในรอบนี้ (audit + doc-sync only) — ปัญหาข้อ 1/2/4/5 ยังเปิดอยู่ รอ pete ตัดสินใจลำดับความสำคัญ ก่อนแตะแก้จริง
+
+## D-33 — ปิดช่องโหว่ `admin_sales_by_seller` ด้วย gate ที่ตัว view เอง (2026-08-17)
+
+**เลือก:** เพิ่ม `AND private.is_admin()` เข้า `WHERE` ของ view โดยตรง ไม่รอปิดหนี้ D-03 ของ `products` (RLS allow-all) ก่อน — ตามที่ D-32 เสนอไว้เป็นทางเลือกแรก
+
+**เหตุผล:** D-03 กระทบ `products` ทั้งตาราง เป็นงานใหญ่กว่ามาก (Action Flow หลายจุดใน L2/L3/L8) ส่วนช่องโหว่นี้เป็นระเบิดเวลาเฉพาะ view เดียว แก้แยกได้ทันทีโดยไม่ต้องรอ · `private.is_admin()` เป็น helper ที่ใช้ซ้ำอยู่แล้วใน policy ของ `Profile`/`reports`/`notifications` พิสูจน์แล้วว่าทำงานถูกต้องกับ user ธรรมดา
+
+**ทดสอบ:** impersonation test จริงผ่าน transaction (`UPDATE products SET status='sold'` ชั่วคราว แล้ว `ROLLBACK`) — user ธรรมดา (`mju6512345678`) ได้ 0 แถว, admin (`mju6577778888`) เห็นแถวถูกต้อง แม้มีแถว `sold` อยู่จริงระหว่างทดสอบ (ไม่ใช่แค่บล็อกเพราะตารางว่าง) · `get_advisors` ไม่ขึ้น advisory ใหม่จากการแก้นี้
+
+**เอกสารที่แก้พร้อมกัน:** `SCHEMA.md` (นิยาม view), `STATUS.md` (ตัดคิว + หนี้), `layers/L8-admin.md` (ตัดหัวข้อ 🔴 ด่วน), `checks/L8.sql` [8.2b] (comment)

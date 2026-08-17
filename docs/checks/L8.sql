@@ -1,6 +1,6 @@
 -- L8 — Admin Dashboard
 -- หนี้ D-03 (กัน admin ด้วย RLS จริง ไม่ใช่แค่ซ่อน UI) ปิดแล้วสำหรับ chat/chat_user/chat_message (D-29)
--- เหลือ products (ยัง allow-all) + admin_sales_by_seller (ไม่มี gate เลย, D-32) — ดู [8.2b]
+-- และ admin_sales_by_seller (gate ที่ตัว view เอง, D-33) — เหลือแค่ products (ยัง allow-all) — ดู [8.2b]
 
 -- [8.1] view/RPC สรุปสำหรับ dashboard
 SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -13,10 +13,10 @@ WHERE n.nspname='public' AND c.relkind='v'
 SELECT tablename, policyname, cmd, qual FROM pg_policies
 WHERE qual ILIKE '%role%admin%' OR qual ILIKE '%is_admin%' ORDER BY tablename;
 
--- [8.2b] 🔴 D-32 (2026-08-17): admin_sales_by_seller ไม่มี admin gate เลย — พึ่ง products RLS
---       เท่านั้น (allow-all, D-03) ผลคือ authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ทันทีที่มี
---       products.status='sold' แถวแรก (ตอนนี้ยังไม่มีแถว sold เลยจึงยังไม่เห็นผลจริง)
---       คาดหวังผลลัพธ์ที่ "ควรจะเป็น": SELECT ถูกจำกัดด้วย role หรือ view เช็ค auth.uid() เอง — ปัจจุบันไม่มี
+-- [8.2b] D-33 (2026-08-17): admin_sales_by_seller ปิดช่องโหว่แล้ว — เพิ่ม AND private.is_admin()
+--       ในตัว view เอง ไม่พึ่ง products RLS อีกต่อไป (ยืนยันด้วย impersonation test จริง)
+--       grant ระดับตารางด้านล่างยังกว้างตามปกติ (authenticated/anon) เพราะ gate มาจาก row filter
+--       ไม่ใช่การ revoke table grant — ตรวจแค่เพื่อยืนยันว่า grant ไม่เปลี่ยนไปจากเดิม
 SELECT grantee, privilege_type FROM information_schema.role_table_grants
 WHERE table_name='admin_sales_by_seller' ORDER BY grantee;
 

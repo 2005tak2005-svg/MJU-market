@@ -326,11 +326,14 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
    FROM products p
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
   WHERE p.status::text = 'sold'::text
+    AND private.is_admin()
   GROUP BY p.seller_id, pr.full_name
   ORDER BY (sum(p.price)) DESC;
 ```
 
 > 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" จาก `products.status = 'sold'` — **ไม่มีตาราง `transactions`/`orders` จริง** (L5 ยังไม่เริ่ม) นี่คือ view ชั่วคราวที่ใช้คอลัมน์ที่มีอยู่แล้ว (`products.status`/`price`/`seller_id`) แทน · `status` **ไม่มี CHECK** (ดูหัวข้อ `products` ด้านบน) ตอนนี้ทุกแถวเป็น `NULL` จริง (ยังไม่มีใครขายของสำเร็จ) → view นี้คืน **0 แถว** ในสภาพปัจจุบัน ซึ่งเป็นค่าจริงของระบบ ไม่ใช่บั๊ก ถ้า L5 เปลี่ยนไปใช้ตาราง `transactions` แยกในอนาคต ต้องพิจารณาว่า view นี้ยังจำเป็นไหมหรือย้ายไปอ้างอิง `transactions` แทน
+>
+> 🔴 **`AND private.is_admin()` (เพิ่ม 2026-08-17, D-33)** — view นี้เคยพึ่ง RLS ของ `products` เพียงอย่างเดียว (allow-all, D-03 ยังไม่ปิด) ทำให้ authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ (D-32) ตอนนี้ gate ที่ตัว view เองแล้ว ไม่พึ่ง `products` RLS อีกต่อไป ยืนยันด้วย impersonation test จริง (user ธรรมดา → 0 แถว, admin → เห็นแถวถูกต้อง แม้มีแถว `sold` อยู่จริง)
 
 ```sql
 -- reloptions: security_invoker=true

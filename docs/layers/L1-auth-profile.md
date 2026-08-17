@@ -58,19 +58,21 @@
 
 ## 🔴 พบใหม่ — 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` (D-32, 2026-08-17)
 
-`handle_new_user()` ไม่ทำงาน/fail เงียบสำหรับ `mju6606105382@mju.ac.th` (ยืนยันอีเมลแล้ว 2026-08-13 — ดูเหมือนสมัครจริง บัญชีนี้ใช้แอปไม่ได้ตอนนี้) และ `mju6606105386@mju.ac.th` ("pete", ยังไม่ยืนยันอีเมล) ไม่พบ UNIQUE ชนกันที่ `email`/`student_id` — สาเหตุจาก DB อย่างเดียวหาไม่เจอ ยังไม่ได้ backfill/แก้ รายละเอียด `../DECISIONS.md` **D-32**
+`handle_new_user()` ไม่ทำงาน/fail เงียบสำหรับ `mju6606105382@mju.ac.th` และ `mju6606105386@mju.ac.th` — ไม่พบ UNIQUE ชนกันที่ `email`/`student_id` สาเหตุจาก DB อย่างเดียวหาไม่เจอ
+✅ **`mju6606105382` แก้แล้ว 2026-08-17** — ลบบัญชีเก่าทิ้ง สมัครใหม่สะอาดผ่าน flow ปกติ (D-34) ได้ `"Profile"` ครบถูกต้อง ไม่เจอบั๊กซ้ำ
+🟡 **`mju6606105386@mju.ac.th` ยังค้าง** — สมัครไม่สำเร็จ (ไม่เคยยืนยันอีเมล) ไม่มี `"Profile"` ยังไม่ได้ลบ ไม่ใช่คิวด่วน (ทางแก้เดียวกับด้านบนน่าจะใช้ได้)
 
-## 🔴 งานค้าง — Confirm Email (D-20) หยุดไว้ชั่วคราวตั้งแต่ 2026-08-10
+## ✅ Confirm Email (D-20 → D-34) ปลดล็อกแล้ว 2026-08-17
 
-**สถานะ:** ไม่ใช่คิวด่วน (ย้ายไปทำ L2/L4/L6/L7 ก่อน) แต่ยังไม่ปิด — บล็อกอยู่ที่ email deliverability ฝั่ง tenant ไม่ใช่โค้ด อ่าน `../DECISIONS.md` **D-19**/**D-20** ก่อนแตะต่อ
+**เดิม (D-19/D-20):** ลิงก์ยืนยัน → ใช้ไม่ได้เพราะ Microsoft Safe Links ดึง token ทิ้งก่อน → เปลี่ยนเป็น OTP → OTP ผ่าน custom SMTP (Gmail ส่วนตัว) ก็ไปไม่ถึงกล่อง `@mju.ac.th` เลย (Microsoft Zero-hour Auto Purge, ไม่มี sending reputation กับ tenant) — ค้างตรงนี้ตั้งแต่ 2026-08-10
 
-**สร้างเสร็จแล้วทั้งหมด** (ลิงก์ยืนยัน → ใช้ไม่ได้เพราะ Microsoft Safe Links ดึง token ทิ้งก่อน (D-19) → เปลี่ยนเป็น OTP แทน (D-20)): หน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`, `LoginWithEmailPassword` ดักเคส "email not confirmed", email template ส่ง `{{ .Token }}` เป็นตัวเลข — ยืนยันจาก `generated_code/` ครบ, Supabase ส่งอีเมลออกจริง (`POST /signup` 200, เห็นเมลจริงใน Gmail Sent พร้อม OTP)
+**ตอนนี้ (D-34):** เลิกส่งตรงถึง student ทั้งหมด เปลี่ยนเป็น Supabase Auth Send Email Hook → Edge Function `send-otp-email` → Resend API → ส่งเข้า **admin inbox เดียว** ให้แอดมิน relay รหัสออกนอกระบบเอง — **ยืนยัน end-to-end สำเร็จผ่านแอปจริงแล้ว** (`mju6606105382@mju.ac.th`, 2026-08-17) `"Profile"` ถูกสร้างถูกต้องครบ รายละเอียด+กับดักตอนเซ็ต (secrets/Resend sandbox/rate limit) → `../DECISIONS.md` **D-34**
 
-**🔴 บล็อกอยู่ตรงนี้:** OTP ไปไม่ถึงกล่อง `@mju.ac.th` เลย (ไม่ Inbox/Junk/bounce/quarantine) — เข้าข่าย Microsoft Zero-hour Auto Purge เพราะ custom SMTP ไม่มี sending reputation กับ tenant นี้ รายละเอียดเต็ม `../DECISIONS.md` **D-20**
+**หนี้ที่เหลือก่อน production:** manual relay ไม่ scale (ต้อง verify domain จริงที่ Resend แล้วเปลี่ยนให้ส่งตรงถึง student) · rate limit email ปรับเป็น 30/ชม. ชั่วคราวตอนดีบัก ต้องหรี่ก่อนขึ้นจริง
 
-**ค้างก่อนปิด L1 เต็มตัว:** (1) ยังไม่ได้ลองปิด custom SMTP กลับไปใช้ default mailer เพื่อแยกปัญหา (2) ยังไม่เคยเทส end-to-end ผ่านแอปจริงเลย (3) ไม่มีบัญชีทดสอบสดพร้อมใช้แล้ว — บัญชีเดิม 4 บัญชี (`mju6500000099`/`101`, `mju6606105382`/`83`) ถูกลบไปแล้ว 2026-08-10 ต้องสมัครใหม่ (4) `mju6577778888@mju.ac.th` ยังไม่ถูกล้าง (D-17)
+**หน้า/action ที่สร้างไว้ตั้งแต่ D-20 ใช้งานได้จริงแล้ว:** หน้า `ConfirmEmail` + custom action `VerifyOtp`/`ResendSignupOtp`, `LoginWithEmailPassword` ดักเคส "email not confirmed", email content ส่ง `{{ .Token }}` เป็นตัวเลข — ไม่ต้องแก้อะไรฝั่ง FlutterFlow ปัญหาทั้งหมดอยู่ฝั่ง Supabase Auth config
 
-**ระหว่างพัก:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL, login ได้จริง) ทดสอบ layer อื่นได้ — **ห้ามใช้เทส confirm-email เอง** สภาพถูกลัดผ่านไปแล้ว
+**ระหว่างที่ยังไม่ verify domain Resend:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL, login ได้จริง) ทดสอบ layer อื่นที่ไม่เกี่ยว confirm-email ได้ตามเดิม
 
 ## 🧪 Definition of Done
 
@@ -85,14 +87,14 @@
 - [x] แก้โปรไฟล์คนอื่นไม่ได้ / เปลี่ยน `role` ตัวเองไม่ได้ / เปลี่ยน `student_id` ตัวเองไม่ได้ — ทดสอบด้วย user ธรรมดาจริง
 - [x] `checks/L1.sql` ผ่านครบทุกข้อ
 
-**ฝั่ง FlutterFlow — 🟨 ผ่านบางส่วน ยังปิด L1 ไม่ได้**
+**ฝั่ง FlutterFlow — 🟨 ผ่านบางส่วน ยังปิด L1 ไม่ได้** (confirm-email ปลดล็อกแล้ว D-34 — ที่เหลือคือ `phone`/avatar 2 ข้อล่าง ไม่เกี่ยวกับ email)
 
 - [x] `full_name` **และ `phone`** ไม่เป็น NULL หลังสมัคร**บัญชีใหม่**ผ่านแอปจริง — ยืนยันแล้ว 2026-08-09 (`mju6577778888@mju.ac.th`)
 - [x] validate โดเมนฝั่ง client แล้วขึ้นข้อความที่ผู้ใช้เข้าใจ — ทำใน `SignUpWithProfile` แล้ว
 - [x] `role = admin` → ไป `HomeAdmin`, `role = user` → ไป `Home` ถูกทุกครั้ง — ยืนยันด้วย `auth.users.last_sign_in_at` จริงทั้ง 2 เส้นทาง 2026-08-09
 - [ ] กรอกช่องเบอร์เป็นช่องว่างล้วนแล้วสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` — ยังไม่ได้เทสเคสนี้ผ่านแอปจริง (trigger รองรับแล้วตาม D-14 แต่ path ผ่าน UI ยังไม่เทส)
 - [ ] อัปรูปโปรไฟล์เข้า `avatars` แล้วรูปโผล่จริงจาก public URL — Edit Profile ยังไม่ได้สร้าง
-- [x] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — โค้ดสร้างเสร็จแล้ว (ดูหัวข้อ "งานค้าง — Confirm Email" ด้านบน) แต่ยังไม่ผ่านการทดสอบ end-to-end จริงสักครั้งเพราะติด email deliverability (D-20) — **บล็อกการปิด L1 อยู่ ถูกพักไว้ 2026-08-10 ไปทำ layer อื่นก่อน**
+- [x] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — ✅ **ทดสอบ end-to-end ผ่านแอปจริงสำเร็จแล้ว 2026-08-17** (`mju6606105382@mju.ac.th`, ผ่าน admin-relay ตาม D-34) — ดูหัวข้อ "Confirm Email (D-20 → D-34) ปลดล็อกแล้ว" ด้านบน
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 
 ## 🧪 บัญชีทดสอบที่มีอยู่ (อัปเดต 2026-08-09)
@@ -107,7 +109,7 @@
 
 `full_name` ของ 4 บัญชีแรกยังเป็นชื่อปลอมที่เติมด้วยมือ (มาจากรอบทดสอบผ่าน Dashboard เมื่อ 2026-08-07) — คนละเรื่องกับ `mju6577778888` ที่ชื่อมาจาก meta data จริง
 
-🔴 **บัญชีทดสอบสด 4 บัญชีที่ใช้เทส D-19/D-20 (`mju6500000099`, `mju6500000101`, `mju6606105382`, `mju6606105383` — ทุกตัว `@mju.ac.th`) ถูกลบทิ้งแล้ว 2026-08-10** เพื่อเคลียร์ข้อมูลค้าง (ลบ `"Profile"` ก่อนแล้วค่อยลบ `auth.users` เพราะ `Profile_id_fkey` ไม่มี `ON DELETE CASCADE`) — **ไม่มีบัญชีสดพร้อมใช้เทส confirm-email แล้ว ต้องสมัครใหม่เมื่อกลับมาทำ D-20 ต่อ** ดู `../DECISIONS.md` **D-20**
+บัญชีทดสอบสดชุดแรกที่ใช้เทส D-19/D-20 (`mju6500000099`, `mju6500000101`, `mju6606105382` เดิม, `mju6606105383`) ถูกลบทิ้งไปเมื่อ 2026-08-10 — **`mju6606105382@mju.ac.th` ถูกสมัครใหม่และใช้เทส confirm-email สำเร็จอีกครั้งแล้วเมื่อ 2026-08-17** (D-34) ปัจจุบันเป็นบัญชี user ปกติที่ยืนยันอีเมลแล้ว ใช้แอปได้จริง
 
 ## ❓ ค้างอยู่
 

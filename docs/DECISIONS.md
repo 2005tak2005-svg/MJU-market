@@ -740,3 +740,20 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/chat_list/chat_list_widget.dart`:** `shrinkWrap: true` ปรากฏจริงบน `ListView.builder` แล้ว **ยังไม่ได้ให้ pete ทดสอบซ้ำผ่านแอปจริงว่าห้องแชทขึ้นแล้ว**
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+## D-41 — `chatMessages`: bubble UI สองฝั่ง + ส่งรูปได้จริง (2026-08-18)
+
+**ทำ:** เปลี่ยน `ChatMessageItems` จาก list คอลัมน์เดียว (sender label/ข้อความ/divider) เป็น bubble สองฝั่ง (ของตัวเอง = ขวา สีธีม primary, ของคนอื่น = ซ้าย สีเทา + ชื่อผู้ส่ง) และเพิ่มปุ่มแนบรูป (`AttachImageButton`) อัปโหลดเข้า bucket `chat-images` ที่มีอยู่แล้ว (D-29) แล้ว insert `chat_message.image_url`
+
+**บั๊กที่เจอระหว่างทำ + วิธีแก้ (4 รอบ ทดสอบผ่านแอปจริงโดย pete ทุกรอบ):**
+
+1. **`Equals(item['field'], '')` เทียบ null ผิด — ทำให้ `messageItem.message!` crash จริง ("Unexpected null value")** — เข้าใจผิดว่า PT-12 §11 ("nullable Postgres text column map เป็น `String` ไม่ใช่ `String?` ใช้ `''` แทน null") ใช้ได้กับทุกที่ ที่จริงใช้ได้แค่กับ binding path บางแบบ **ไม่ใช่กับ Supabase table/view row model** (`ChatMessagesViewRow.message` เป็น genuine `String?` จาก `getField<String>('message')` จริง ยืนยันจากไฟล์ table model) เทียบ `null == ''` ได้ `false` การ์ดเลยเปิดผ่านทั้งที่ยังเป็น null จริง **แก้ที่ SQL แทนที่จะเดา Dart nullability**: เพิ่ม `has_message`/`has_image` (boolean, `IS NOT NULL`) เข้า `chat_messages_view` ใช้เป็น `visible:` ตรง ๆ — ดู `SCHEMA.md`
+2. **field ที่เพิ่งลง `postgres_helpers.addTableField` ใช้ใน `item['field']` ของพุชเดียวกันไม่ได้** (`Bad state: Field "chat_messages_view.has_message" was not compiled.`) — ซ้ำกับกับดักเดียวกันที่ D-38 เจอกับ `first_image_url` ยืนยันว่าเป็นกฎทั่วไป ไม่ใช่กรณีเฉพาะ `products_review_view` ต้องแยกพุชเสมอ
+3. **`ListView` ไม่มี `Expanded` ห่อ ทำให้ ComposeBar ลอยกลางจอแทนที่จะติดขอบล่าง** — คนละเคสกับ D-40 (`chatList` ไม่มี `Expanded` โดยตั้งใจ ต้องใช้ `shrinkWrap: true`) แต่ `chatMessages` **ต้องการ** ให้ list ขยายเต็มพื้นที่ระหว่าง AppBar กับ ComposeBar จึงต้องห่อ `Expanded` แทน ไม่ใช่ `shrinkWrap` — สองกลไกแก้คนละปัญหา อย่าใช้ตัวเดียวกับทุกที่
+4. **`PostgresCreate` สอง widget บนหน้าเดียวกัน (ปุ่มส่งข้อความ vs ปุ่มส่งรูป) ชนกันที่ `outputAs` default (`'rows'`)** — ขยายกฎเดิมจาก D-37 (`outputAs` ต้อง unique ต่อจุดเรียก): ไม่ใช่แค่ chip/loop ซ้ำกัน แต่ **widget คนละตัวบนหน้าเดียวกัน** ก็ชนกันได้ถ้าไม่ตั้ง `outputAs` เอง
+
+**ปุ่มดูรูปเต็ม:** ใช้ **แตะ** ไม่ใช่กดค้าง — DSL ไม่มี `onLongPress` เป็น widget property เลยสักตัว (มีแค่ `onTap`) เปิด dialog ผ่าน component ใหม่ `FullImageViewer` (`ShowDialog.component`, ส่ง `imageUrl` จาก `item['image_url']` ในสโคป itemBuilder เดิม ไม่ผ่าน `ensureActions` ภายหลังเพราะ item-scope ใช้นอก itemBuilder สดไม่ได้ ดู PT-23 §1)
+
+**ยืนยันจาก `generated_code/`:** bubble ซ้าย/ขวาถูกฝั่ง, `if (messageItem.hasMessage ?? true)`/`hasImage` แทน `== ''`, `Expanded(flex: 1, child: ...ListView...)`, `uploadSupabaseStorageFiles(bucketName: 'chat-images', ...)`, `FullImageViewerWidget(imageUrl: messageItem.imageUrl)` — **ทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด (bubble/ส่งรูป/ComposeBar ติดขอบล่าง/ดูรูปเต็ม)**
+
+รายละเอียด pattern ใหม่ → `PATTERNS.md` **PT-24**

@@ -167,7 +167,7 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_content, D-29
 ```
 
-ฝั่ง FlutterFlow ยังไม่ผูก `image_url` เลย (ส่งได้แค่ข้อความตอนนี้) — ดู `layers/L4-chat.md`
+ฝั่ง FlutterFlow ผูก `image_url` แล้ว (ส่งรูปได้จริง, D-41) — ดู `layers/L4-chat.md`
 
 ### `public.reports` (แก้ 2026-08-15, D-24)
 
@@ -271,7 +271,9 @@ CREATE VIEW public.chat_messages_view WITH (security_invoker = true) AS
     p.full_name AS sender_name,
     cm.message,
     cm.created_at,
-    cm.image_url
+    cm.image_url,
+    (cm.message IS NOT NULL) AS has_message,
+    (cm.image_url IS NOT NULL) AS has_image
    FROM chat_message cm
      JOIN public_profiles p ON p.id = cm.user_id;
 
@@ -361,6 +363,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
 >
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย (ยังไม่มี placeholder fallback)
+>
+> 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**
 > เหตุผลเต็มอยู่ `DECISIONS.md` D-01 — ละเมิดแล้วชื่อจะเป็น NULL เฉพาะตอน user ธรรมดาเปิดดู (admin เห็นปกติ จึงตรวจไม่เจอถ้าเทสด้วย admin อย่างเดียว)

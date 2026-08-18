@@ -660,3 +660,20 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ผลตรวจ `generated_code/lib/mypost/mypost_widget.dart` หลัง push:** `queryFn: (q) => q.eqOrNull('seller_id', currentUserUid)` — ตรงกับ pattern เดียวกับที่ `ProfileUser` ใช้กับ `id`
 
 **ยังไม่ได้ทดสอบผ่านแอปจริง** (user ธรรมดา ต้องเห็นเฉพาะของตัวเอง) — รอคิวถัดไป
+
+## D-36 — Category/Status filter chips: `Home` สำเร็จ, `Mypost` ติด platform limitation (2026-08-18)
+
+**สิ่งที่ทำ:** เปลี่ยน ChoiceChips ทิ้งของ template เดิม (`ChoiceChips_9ld3fgia` บน `Home` มี option "For You"/"Sci-Fi"/ฯลฯ, `ChoiceChips_cgc572w2` บน `Mypost` มี "All"/"Owners"/"Editors"/"Viewers" — ไม่มี trigger action เลยทั้งคู่) เป็น `Row` ของ typed `Chip` widget (แต่ละอันคือ `FFChoiceChips` node ตัวเลือกเดียว ผูก `ON_TAP` จริง — ไม่มี typed DSL สำหรับแก้ multi-option ChoiceChips node ตัวเดิม จึงเปลี่ยนสถาปัตยกรรมเป็นหลายๆ chip แทน)
+
+**`Home` (หมวดหมู่) — สำเร็จ:** 13 chip (ทั้งหมด + 12 หมวดจาก `"CAT"`) แต่ละอัน onTap = `SetState(selectedCategoryId)` + `PostgresQuery` (filter `moderation_status='approved'` + `category_id=N` ถ้าไม่ใช่ "ทั้งหมด") + `SetState(productsList, ActionOutput(...))` — เหมือน pattern onLoad เดิมทุกอย่าง ต่างแค่ trigger เป็น onTap แทน onLoad กับดักที่เจอ: ทุก chip ใช้ `outputAs: 'loadedProducts'` ชื่อเดียวกันหมด (รวมถึงชนกับของเดิมใน onLoad) → compileDslApp ฟ้อง "Action ... has an output variable with the same name as that of another widget" แก้โดยตั้ง `outputAs` ไม่ซ้ำต่อ chip (`loadedProductsCat<id>`) ยืนยันจาก `generated_code/lib/home/home_widget.dart` แล้วว่า query/SetState ผูกถูกต้องครบ 13 chip
+
+**`Mypost` (สถานะ) — ติด platform limitation จริง ไม่ใช่เขียนโค้ดผิด:** ต้องการ filter `moderation_status` แบบ dynamic บน widget-level query ตัวเดิม (D-35) เหมือน `seller_id` แต่ผูกกับ state `selectedStatus` แทน AUTH_USER — **ลองแล้ว 5 รอบ ทุกรอบ push จริงผ่าน MCP `run` (ไม่ใช่แค่ validate):**
+1. relation `LIKE` + ตัวแปร `LOCAL_STATE`/`WIDGET_CLASS_STATE` (ไม่มี `defaultValue`) → fail: `On ListView: One or more filters is invalid`
+2. relation `LIKE` + ตัวแปรเดิม + เติม `defaultValue` ให้ตรงกับ default ของ state field → fail เหมือนเดิม
+3. เปลี่ยน relation เป็น `CONTAINS` (ตัวเปรียบเทียบ substring ของ FlutterFlow เอง ไม่ใช่ SQL LIKE ตรงๆ) → fail เหมือนเดิม
+4. สงสัยว่า key ของ state field ยังไม่นิ่งเพราะ `editPageState`+`app.raw` รันในสคริปต์เดียวกัน → push แยกให้ field มี key จริงจาก server ก่อน (`g9d3k5cm`) แล้วอ้างอิง key ที่นิ่งแล้วในสคริปต์ถัดไป → fail เหมือนเดิมทุกตัวอักษร — **ตัด "key ไม่นิ่ง" ออกจากสาเหตุที่เป็นไปได้**
+5. **diagnostic:** เปลี่ยนเป็นค่า literal ล้วนๆ (`moderation_status = 'approved'`, ไม่มีตัวแปรเลย) → **push ผ่าน** ยืนยันว่าปัญหาไม่ใช่ "filter ตัวที่ 2 บน node นี้พังเสมอ" แต่เจาะจงที่ "filter ผูกกับตัวแปร (`FFVariableSource.LOCAL_STATE`) บน widget-level query" — filter diagnostic นี้ทำให้ `Mypost` โชว์เฉพาะ `approved` ชั่วคราวจริงบนโปรเดักชัน (ผิดเป้าหมายของ D-35) **ลบออกทันทีในก้อนถัดไป** (`removeWhere` unconditional) ยืนยันจาก `generated_code/` แล้วว่ากลับไปเหลือแค่ `seller_id` filter ตามเดิม
+
+**สรุปสาเหตุที่น่าจะเป็น:** widget-level `databaseRequest.postgres.filters` (บน node ธรรมดา ไม่ใช่ page Scaffold) รองรับแค่ค่า literal หรือตัวแปรระบบบางชนิด (เช่น `SUPABASE_AUTH_USER` ที่ `seller_id` ใช้อยู่) — ไม่รองรับตัวแปร `LOCAL_STATE`/page state ทั่วไป ยังไม่ได้ลองว่า page-level `databaseRequest` (บน Scaffold โดยตรง แบบ `ProfileUser`/`HomeAdmin`) รองรับ `LOCAL_STATE` หรือไม่ — อาจเป็นข้อจำกัดเฉพาะ widget-level เท่านั้น
+
+**สถานะตอนนี้:** chip สถานะทั้ง 4 อัน (`StatusChipAll`/`StatusChippending`/`StatusChipapproved`/`StatusChiprejected`) กด SetState `selectedStatus` ได้จริง (เห็นผลใน `generated_code/`) แต่**ยังไม่กรอง list จริง** — ต้องแก้ต่อด้วยแนวทางอื่น (ตัวเลือก: (a) ทำ conditional visibility ต่อแถวโดยอ่านค่าแถวผ่าน `generator variable` เทียบกับ `selectedStatus` แทนการกรองที่ query — ยังไม่ได้ลอง ต้องพิสูจน์ shape ของ `FFFunctionCall` แบบ 2-operand equality ก่อน (b) ย้ายสถาปัตยกรรม `Mypost` ทั้งหน้าไปใช้ pattern onLoad+state แบบ `Home` — งานใหญ่กว่าเพราะต้องสร้าง itemBuilder ใหม่ทั้งหมด)

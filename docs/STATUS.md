@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-18**
+> 🟡 **D-36: Category/Status filter chips — `Home` สำเร็จ, `Mypost` ติด platform limitation** — เปลี่ยน ChoiceChips ทิ้งของ template เดิมเป็น `Chip` widget ที่ผูก action จริงทั้งคู่ `Home` (13 chip หมวดหมู่ กด แล้ว requery `AllList` จริง) ทำงานสมบูรณ์ `Mypost` (4 chip สถานะ) กด SetState ได้แต่ **list ยังไม่ถูกกรอง** — ลองผูก filter แบบ dynamic เข้า widget-level query 5 รอบ (LIKE/CONTAINS × stale-key/stable-key + diagnostic ด้วย literal) พบว่า widget-level `databaseRequest.postgres.filters` ไม่รองรับตัวแปร `LOCAL_STATE` เลย (รองรับแค่ literal หรือตัวแปรระบบอย่าง `SUPABASE_AUTH_USER`) รายละเอียด+ทางแก้ที่เหลือ `DECISIONS.md` D-36
 > ✅ **D-35: แก้ filter `seller_id` ของ `Mypost`** — เดิม widget-level query ไม่มี filter เลย (D-32 ข้อ 5) เพิ่ม `seller_id = currentUserUid` ผ่าน `page.mutateNode` บน `ListView_7h86cihf` ยืนยันจาก `generated_code/` แล้วว่า query เปลี่ยนจริง รายละเอียด `DECISIONS.md` D-35 — **ยังไม่ทดสอบผ่านแอปจริง**
 > ✅ **D-34: L1 confirm-email (D-20) ปลดล็อกจริง** — เลิกส่ง OTP ตรงถึง student เปลี่ยนเป็น Send Email Hook → Edge Function `send-otp-email` → Resend → relay เข้า admin inbox เดียว ยืนยัน end-to-end สำเร็จผ่านแอปจริงแล้ว (`mju6606105382@mju.ac.th`) รายละเอียด+กับดัก `DECISIONS.md` D-34 — **หนี้ที่เหลือ:** manual relay ไม่ scale, rate limit email 30/ชม. เป็นค่าดีบักชั่วคราว ทั้งคู่ต้องแก้ก่อน production
 > ✅ **D-33: ปิดช่องโหว่ `admin_sales_by_seller`** — เพิ่ม `AND private.is_admin()` ในตัว view เอง ไม่พึ่ง RLS ของ `products` (allow-all, D-03) อีกต่อไป ยืนยันด้วย impersonation test จริง (user ธรรมดา 0 แถว, admin เห็นถูกต้อง) รายละเอียด `DECISIONS.md` D-33 — ปิดข้อ 2 ของคิว D-32 แล้ว เหลือ 4 ข้อ
@@ -18,6 +19,7 @@
 2. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`/"แชทกับผู้ขาย"/"ติดต่อแอดมิน"/Drawer ของ `HomeAdmin` — **รู้อยู่แล้วว่าจุดแดงจะไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32)** ไม่ต้องรายงานซ้ำถ้าเจอ
 3. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
 4. ~~**[D-32] แก้ filter ของ `MyPost`**~~ **แก้แล้ว (D-35, 2026-08-18)** — เหลือทดสอบผ่านแอปจริงด้วย user ธรรมดาที่มีประกาศหลายสถานะ (pending/approved/rejected) ว่าเห็นเฉพาะของตัวเองจริง
+5. **[D-36] ทำให้ status chip บน `Mypost` กรอง list จริง** — chip กด SetState `selectedStatus` ได้แล้วแต่ list ไม่ตอบสนอง เพราะ widget-level query ไม่รองรับ filter ผูกตัวแปร `LOCAL_STATE` (ลองแล้ว 5 รอบ ดู `DECISIONS.md` D-36) ทางเลือกที่เหลือ: (a) conditional visibility ต่อแถวด้วย `generator variable` เทียบ `selectedStatus` — ยังไม่พิสูจน์ shape ของ 2-operand `FFFunctionCall` equality (b) ย้าย `Mypost` ไปใช้ pattern onLoad+state แบบ `Home` — ต้องสร้าง itemBuilder ใหม่ทั้งหมด งานใหญ่กว่า
 
 🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email production-readiness** ดู `DECISIONS.md` D-34 หัวข้อหนี้
 
@@ -28,8 +30,8 @@
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว 🔴 พบ 2 บัญชีไม่มี `Profile` (D-32) | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
-| 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) · `MyPost` filter `seller_id` แก้แล้ว (D-35) ยังไม่ทดสอบผ่านแอปจริง | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
-| 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
+| 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) · `MyPost` filter `seller_id` แก้แล้ว (D-35) ยังไม่ทดสอบผ่านแอปจริง · สถานะ chip (D-36) กด SetState ได้แต่ list ยังไม่ถูกกรอง | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
+| 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว · category filter chip (D-36) requery จริงแล้ว | ผูก `products_review_view` ยังไม่มี search รูปยังเป็น placeholder |
 | 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป · Realtime ยืนยันว่าไม่มีเลย (D-32) · จุดแดง unread มีบั๊ก stale-state (D-32) · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |

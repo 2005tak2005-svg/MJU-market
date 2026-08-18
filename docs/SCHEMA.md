@@ -291,7 +291,8 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     c.name AS category_name,
     p.seller_id,
     pr.full_name AS seller_name,
-    p.rejection_reason
+    p.rejection_reason,
+    p.image_urls[1] AS first_image_url
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id;
@@ -358,6 +359,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `reports_admin_view` (L7, เพิ่ม 2026-08-15, D-24) — mailbox สำหรับหน้า `Reports`/`ReportDetail` (admin) `security_invoker = true` พึ่ง RLS ของ `reports` เอง (`admin can read reports`) ในการกรองแถว ส่วน `public_profiles` 2 รอบ (reporter/seller) join แบบ D-01 ปกติ · `LEFT JOIN products` รองรับกรณี `reported_product_id` เป็น NULL หลังสินค้าโดนลบ (`ON DELETE SET NULL`)
 
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
+>
+> 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย (ยังไม่มี placeholder fallback)
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**
 > เหตุผลเต็มอยู่ `DECISIONS.md` D-01 — ละเมิดแล้วชื่อจะเป็น NULL เฉพาะตอน user ธรรมดาเปิดดู (admin เห็นปกติ จึงตรวจไม่เจอถ้าเทสด้วย admin อย่างเดียว)

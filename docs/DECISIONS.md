@@ -650,3 +650,13 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - **Manual relay ไม่ scale** — ทุก OTP ต้องมีแอดมินคอยเปิดกล่องแล้ว relay ให้ student เอง เป็นทางออกช่วง prototype เท่านั้น ก่อน production ต้อง verify domain จริงที่ Resend แล้วเปลี่ยนให้ส่งตรงถึง student
 - ค่า rate limit 30/ชม. เป็นค่าที่ปรับไว้ตอนดีบัก ยังไม่ได้ตัดสินใจค่าถาวรสำหรับ production
 - `mju6606105386@mju.ac.th` ยังเป็นบัญชีทดสอบค้างจากก่อนแก้ (สมัครไม่สำเร็จ ไม่มี Profile) ยังไม่ลบ
+
+## D-35 — แก้ `Mypost` filter `seller_id` (D-32 ข้อ 5) ด้วย widget-level query patch (2026-08-18)
+
+**บริบท:** D-32 พบว่า `Mypost` ใช้ widget-level Backend Query บน `ListView_7h86cihf` ตรง ๆ (`ProductsReviewViewTable().queryRows(queryFn: (q) => q,)`) ไม่ใช่ page onLoad + state แบบหน้าอื่น (`Home`/`chatList`) — query ไม่มี filter เลย โชว์สินค้าทุกคนทุกสถานะ
+
+**เลือก:** แก้ที่ตัว widget-level query เดิมโดยตรงผ่าน `page.mutateNode` เติม `FFPostgresFilter(seller_id EQUAL_TO SUPABASE_AUTH_USER/USER_ID)` เข้า `node.databaseRequest.postgres.filters` — ไม่ย้ายไปใช้ pattern onLoad+state (ของหน้าอื่น) เพราะ `itemBuilder` เดิมอ้างอิง item จาก generator variable ของ widget-level query อยู่แล้ว เปลี่ยนสถาปัตยกรรมจะกระทบมากกว่าจำเป็น
+
+**ผลตรวจ `generated_code/lib/mypost/mypost_widget.dart` หลัง push:** `queryFn: (q) => q.eqOrNull('seller_id', currentUserUid)` — ตรงกับ pattern เดียวกับที่ `ProfileUser` ใช้กับ `id`
+
+**ยังไม่ได้ทดสอบผ่านแอปจริง** (user ธรรมดา ต้องเห็นเฉพาะของตัวเอง) — รอคิวถัดไป

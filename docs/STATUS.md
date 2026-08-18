@@ -1,10 +1,11 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-08-17**
+> อัปเดตล่าสุด: **2026-08-18**
+> ✅ **D-35: แก้ filter `seller_id` ของ `Mypost`** — เดิม widget-level query ไม่มี filter เลย (D-32 ข้อ 5) เพิ่ม `seller_id = currentUserUid` ผ่าน `page.mutateNode` บน `ListView_7h86cihf` ยืนยันจาก `generated_code/` แล้วว่า query เปลี่ยนจริง รายละเอียด `DECISIONS.md` D-35 — **ยังไม่ทดสอบผ่านแอปจริง**
 > ✅ **D-34: L1 confirm-email (D-20) ปลดล็อกจริง** — เลิกส่ง OTP ตรงถึง student เปลี่ยนเป็น Send Email Hook → Edge Function `send-otp-email` → Resend → relay เข้า admin inbox เดียว ยืนยัน end-to-end สำเร็จผ่านแอปจริงแล้ว (`mju6606105382@mju.ac.th`) รายละเอียด+กับดัก `DECISIONS.md` D-34 — **หนี้ที่เหลือ:** manual relay ไม่ scale, rate limit email 30/ชม. เป็นค่าดีบักชั่วคราว ทั้งคู่ต้องแก้ก่อน production
 > ✅ **D-33: ปิดช่องโหว่ `admin_sales_by_seller`** — เพิ่ม `AND private.is_admin()` ในตัว view เอง ไม่พึ่ง RLS ของ `products` (allow-all, D-03) อีกต่อไป ยืนยันด้วย impersonation test จริง (user ธรรมดา 0 แถว, admin เห็นถูกต้อง) รายละเอียด `DECISIONS.md` D-33 — ปิดข้อ 2 ของคิว D-32 แล้ว เหลือ 4 ข้อ
-> 🔴 **D-32: DoD audit ทั้งโปรเจกต์ (db-verifier + ui-checker คู่ขนาน) พบบั๊กจริง 4 จุด** — (1) L1: 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` เลย ~~(`mju6606105382`/`mju6606105386`)~~ **`mju6606105382` แก้แล้ว (ลบบัญชีเก่า สมัครใหม่สะอาด, D-34) เหลือ `mju6606105386` ยังค้าง** (สาเหตุเดิมยังไม่ทราบ — สมัครปกติรอบล่าสุดไม่เจอบั๊กนี้ซ้ำ) (2) ~~L8: `admin_sales_by_seller` ไม่มี admin gate~~ **ปิดแล้ว (D-33)** (3) L4: ยืนยันแล้วว่า Realtime ไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (4) จุดแดง unread (D-31) มีบั๊ก stale-state บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายจนกว่าจะออกจากหน้าจริง นอกจากนี้ `MyPost` มีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง") แต่ query ไม่ filter `seller_id` เลย โชว์ของทุกคน รายละเอียด `DECISIONS.md` D-32
+> 🔴 **D-32: DoD audit ทั้งโปรเจกต์ (db-verifier + ui-checker คู่ขนาน) พบบั๊กจริง 4 จุด** — (1) L1: 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"` เลย ~~(`mju6606105382`/`mju6606105386`)~~ **`mju6606105382` แก้แล้ว (ลบบัญชีเก่า สมัครใหม่สะอาด, D-34) เหลือ `mju6606105386` ยังค้าง** (สาเหตุเดิมยังไม่ทราบ — สมัครปกติรอบล่าสุดไม่เจอบั๊กนี้ซ้ำ) (2) ~~L8: `admin_sales_by_seller` ไม่มี admin gate~~ **ปิดแล้ว (D-33)** (3) L4: ยืนยันแล้วว่า Realtime ไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (4) จุดแดง unread (D-31) มีบั๊ก stale-state บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายจนกว่าจะออกจากหน้าจริง (5) `MyPost` มีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง") query ไม่ filter `seller_id` เลย โชว์ของทุกคน ~~— แก้แล้ว (D-35)~~ รายละเอียด `DECISIONS.md` D-32
 > ก่อนหน้า 2026-08-17: **D-31: จุดแดง glow บอกยังไม่อ่าน (หายเมื่อแตะ) บน `chatList`/`Notifications`/`ReportsFeedback`** — `chat_user.last_read_at` (ต่อสมาชิก) + `chat_summary.is_unread`, `reports.is_read` + RPC `mark_chat_read`/`mark_report_read` (บล็อก non-admin จริง) 🔴 พบว่า pete rename หน้า "Reports" เป็น "ReportsFeedback" ตรงใน FlutterFlow editor ทำให้ `ensurePage('Reports', ...)` เดิมเกือบสร้างหน้าซ้อน (จับได้ตอน push fail แก้แล้ว) รายละเอียด `DECISIONS.md` D-31
 > ก่อนหน้า 2026-08-16: **D-29/D-30: L4 (chat) เริ่มและปิด Supabase ฝั่งสมบูรณ์ + FlutterFlow ฝั่งข้อความล้วนใช้งานได้จริงครบ 3 ทางเข้า** — RLS membership-based (เดิม allow-all), `find_or_create_chat`/`find_or_create_chat_with_admin`/`is_chat_member`/`get_my_chats` + trigger auto-update `last_message`, รองรับส่งรูปที่ schema (ยังไม่ทำฝั่ง UI), `chatList` ผูกข้อมูลจริง + หน้า `chatMessages` ใหม่ + ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails` + ปุ่ม "ติดต่อแอดมิน" ต่อจริงแล้ว (D-30) + ทางเข้า `chatList` ใน `HomeAdmin` drawer (D-30) รายละเอียด `layers/L4-chat.md` + `PATTERNS.md` PT-09/PT-22/PT-23
 > ก่อนหน้า 2026-08-15: D-24–D-27 (reject-flow, reports, addproduct flash bug, ContactAdminButton) ทดสอบผ่านแอปจริงโดย pete แล้ว
@@ -16,7 +17,7 @@
 1. **[D-32] `mju6606105386@mju.ac.th` ยังค้าง — ตัดสินใจว่าจะลบหรือปล่อยไว้** — สมัครไม่สำเร็จ (ไม่เคยยืนยันอีเมล) ไม่มี `"Profile"` คู่ `mju6606105382` แก้ไปแล้วด้วยการลบบัญชีเก่า+สมัครใหม่สะอาด (D-34) — ทางเดียวกันน่าจะใช้ได้ ไม่ใช่คิวด่วนแล้ว (root cause เดิมของ D-32 ยังไม่ทราบ แต่ไม่เกิดซ้ำในรอบทดสอบล่าสุด)
 2. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — ทดสอบระดับ DB ผ่านหมดแล้ว (`db-verifier` PASS) ยังไม่เคยเปิดแอปจริงเลย ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`/"แชทกับผู้ขาย"/"ติดต่อแอดมิน"/Drawer ของ `HomeAdmin` — **รู้อยู่แล้วว่าจุดแดงจะไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32)** ไม่ต้องรายงานซ้ำถ้าเจอ
 3. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
-4. **[D-32] แก้ filter ของ `MyPost`** — หน้ามีอยู่แล้วจริง (ไม่ใช่ "ยังไม่สร้าง" ตามที่เคยเข้าใจ) แต่ query ไม่ filter `seller_id`/`currentUserUid` เลย ตอนนี้โชว์สินค้าทุกคนทุกสถานะ ต้องเพิ่ม filter ให้ตรงชื่อหน้า
+4. ~~**[D-32] แก้ filter ของ `MyPost`**~~ **แก้แล้ว (D-35, 2026-08-18)** — เหลือทดสอบผ่านแอปจริงด้วย user ธรรมดาที่มีประกาศหลายสถานะ (pending/approved/rejected) ว่าเห็นเฉพาะของตัวเองจริง
 
 🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email production-readiness** ดู `DECISIONS.md` D-34 หัวข้อหนี้
 
@@ -27,7 +28,7 @@
 | L | ชื่อ | Supabase | FlutterFlow | หมายเหตุ |
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว 🔴 พบ 2 บัญชีไม่มี `Profile` (D-32) | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
-| 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
+| 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) · `MyPost` filter `seller_id` แก้แล้ว (D-35) ยังไม่ทดสอบผ่านแอปจริง | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว | ผูก `products_review_view` ยังไม่มี search/filter รูปยังเป็น placeholder |
 | 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป · Realtime ยืนยันว่าไม่มีเลย (D-32) · จุดแดง unread มีบั๊ก stale-state (D-32) · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
@@ -75,7 +76,6 @@
 
 - [ ] 🆕 **[D-32] 2 บัญชี `auth.users` ไม่มีแถวใน `"Profile"`** (`mju6606105382@mju.ac.th` ยืนยันอีเมลแล้ว ใช้แอปไม่ได้ตอนนี้ + `mju6606105386@mju.ac.th`) — สาเหตุยังไม่ทราบ ไม่มี UNIQUE ชนกัน ดู `layers/L1-auth-profile.md`
 - [ ] 🆕 **[D-32] จุดแดง unread (D-31) มีบั๊ก stale-state** บน `chatList`/`Notifications`/`ReportsFeedback` — ไม่หายทันทีตอนกลับมาหน้าเดิม (list ไม่ refetch ก่อน navigate ออก) ต้องออกจากหน้าจริงก่อนถึงจะหาย — ดู `layers/L4-chat.md` ข้อ 3
-- [ ] 🆕 **[D-32] `MyPost` มีอยู่แล้วจริง แต่ query ไม่ filter `seller_id` เลย** — โชว์สินค้าทุกคนทุกสถานะ ไม่ใช่แค่ของตัวเอง
 - [ ] `products` เป็น allow-all RLS นอกเหนือ 2 คอลัมน์ moderation — non-admin ยัง `UPDATE`/`DELETE` คอลัมน์อื่น (ราคา/รูป/ชื่อ) ของสินค้าคนอื่นได้ (คิวอนุมัติเองถูกปิดแล้วจริงด้วย trigger `enforce_moderation_admin_only`, D-23 — ยืนยัน live ว่าบล็อก non-admin จริง `chat`/`chat_user`/`chat_message` ก็ปิดหนี้นี้แล้ว D-29)
 - [ ] ไม่มีระบบกันกดปุ่มลบซ้ำ/popup ค้างใน reject flow (ยอมรับเป็น MVP)
 - [ ] `"Profile".id` มี default `gen_random_uuid()` ทั้งที่เป็นคอลัมน์ FK — ควรถอด default ออก (ยังไม่ทำ)

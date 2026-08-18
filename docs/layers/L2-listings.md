@@ -47,6 +47,8 @@
 Backend Query ผูก `products_review_view` filter `seller_id = currentUserId` — แสดงทุกแถวไม่ว่า `moderation_status` เป็นอะไร
 + เปิด **"Listen for realtime updates"** (ใช้ใน reject flow ข้อ D)
 
+✅ **filter `seller_id` apply แล้ว (D-35, 2026-08-18)** — เดิม query ไม่มี filter เลย (D-32 ข้อ 5) แก้ผ่าน widget-level query patch บน `ListView_7h86cihf` ยังไม่ได้ทดสอบผ่านแอปจริงด้วย user ธรรมดา
+
 ## 🎨 C. หน้า `Inspect` — Admin approve
 
 1. **DataTable** ผูก `products_review_view` filter `moderation_status = 'pending'`

@@ -711,3 +711,15 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **`ensureReplaced` retire แล้ว** ตาม PT-16/21 — ทดสอบด้วย `flutterflow ai validate` หลังลบออกจากสคริปต์แล้วผ่านสะอาด (ไม่มีอาการ PT-19 แบบ `PendingProductsList`) จึงไม่ต้องเก็บไว้ถาวร
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — โดยเฉพาะเคส "สินค้าไม่มีรูป" ว่า broken-image state จะรบกวนผู้ใช้แค่ไหน
+
+## D-39 — Filter chip highlight ตามการเลือกจริงแล้ว (2026-08-18)
+
+**บั๊กที่ pete เจอหลังทดสอบ D-37:** filter ทำงานถูกต้อง (list กรองจริง) แต่สี highlight ของ chip ที่กดไม่เปลี่ยนตาม — เพราะ `Button.color`/`textColor` เป็น `ColorToken` แบบ static ล้วน (กำหนดตอน author สคริปต์ ไม่ผูกกับ state) ทุก chip เลยค้างสไตล์เดิมตลอดไม่ว่าจะกดอันไหน
+
+**แก้:** แต่ละ filter option render เป็น **คู่ Button** (สไตล์ selected + สไตล์ unselected) ซ้อนตำแหน่งเดียวกัน สลับด้วย `visible:` (typed DSL param มาตรฐาน คอมไพล์เป็น node-level conditional visibility จริง — `_applyVisibility`/`setConditionalVisibility` ใน compiler — กลไกเดียวกับที่ `ProfileUser`'s avatar/name fallback ใช้อยู่แล้ว) เทียบด้วย `Equals(State(...), value)`/`Not(...)` (typed comparison expression ที่ใช้อยู่แล้วใน `If(...)` action condition ของไฟล์นี้) — **ไม่มี raw proto เลย** ต่างจาก D-36 ที่เสียหลายรอบไปกับของทำนองนี้
+
+**กับดักที่เจอ:** ทั้งสองปุ่มในคู่เดียวกัน (selected/unselected) เป็น **widget คนละตัว** ที่ compile จริงทั้งคู่ (แค่โชว์แค่อันเดียวตาม `visible:`) — ถ้าใช้ `onTap` list เดียวกันซ้ำสองครั้ง `PostgresQuery`'s `outputAs` จะชนกัน (`Action ... has an output variable with the same name as that of another widget`) แก้โดยเปลี่ยน `onTap` param เป็น `onTapBuilder(variantTag)` เรียกแยกต่อปุ่ม ('Selected'/'Unselected' ต่อท้าย `outputAs`)
+
+**ยืนยันจาก `generated_code/`:** `Home` — `if (_model.selectedCategoryId == N) Button(...)` / `if (!(_model.selectedCategoryId == N)) Button(...)` ครบ 13 คู่ · `Mypost` — `if (_model.selectedStatus == '...')` ครบ 4 คู่ — เป็น conditional list element จริง (`if (...) Widget()`) ไม่ใช่ `Visibility`/`Opacity` ที่จองพื้นที่ไว้ ดังนั้นไม่มีช่องว่างหลอนตอนสลับ
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

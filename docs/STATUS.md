@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-18**
+> ✅ **D-41: `chatMessages` bubble UI สองฝั่ง + ส่งรูปได้จริง** — เปลี่ยนจาก list คอลัมน์เดียวเป็น bubble ซ้าย/ขวา เพิ่มปุ่มแนบรูปเข้า bucket `chat-images` (มีอยู่แล้ว) + ดูรูปเต็มผ่าน component `FullImageViewer` (แตะ ไม่ใช่กดค้าง — DSL ไม่มี `onLongPress`) แก้บั๊ก null-crash (`has_message`/`has_image` ใน view แทนเทียบ `== ''`) + ComposeBar ไม่ติดขอบล่าง (`Expanded` แทน `shrinkWrap`) + `outputAs` ชนกันข้าม widget รายละเอียด `DECISIONS.md` D-41, pattern ใหม่ `PATTERNS.md` PT-24 — **ทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด**
 > ✅ **D-40: แก้ `chatList` ว่างเปล่า — เป็น layout crash ไม่ใช่บั๊ก RLS/data** — pete รายงานพร้อม console log (`Assertion failed: box.dart:2251` ซ้ำๆ) ตรวจ Supabase (db-verifier ยืนยัน `chat_summary` คืนแถวถูกต้อง) + widget binding ก่อนแล้วพบว่าถูกทั้งคู่ ตัวปัญหาจริงคือ `ChatListItems` (ListView) เป็นลูก `Column` โดยไม่ได้ห่อ `Expanded` และไม่ได้ตั้ง `shrinkWrap` → unbounded height ทำให้เรนเดอร์อะไรไม่ได้เลยไม่ว่าจะมีข้อมูลกี่แถว แก้ด้วย `shrinkWrap: true` (raw proto, ไม่มี typed/fast-lane op) ยืนยันจาก `generated_code/` แล้ว รายละเอียด `DECISIONS.md` D-40 — **ยังไม่ได้ให้ pete ทดสอบซ้ำ**
 > ✅ **D-39: Filter chip highlight ตามการเลือกจริงแล้ว** — บั๊กหลัง D-37: filter ทำงานถูกแต่สี chip ไม่เปลี่ยนตามที่กด (`Button.color` เป็น static, ไม่ผูก state) แก้ด้วยคู่ Button (selected/unselected) สลับด้วย `visible: Equals(...)`/`Not(...)` — typed DSL ล้วน ไม่มี raw proto ยืนยันจาก `generated_code/`: `if (_model.selectedX == N) Button(...)` ครบทุก chip ทั้ง `Home`/`Mypost` รายละเอียด `DECISIONS.md` D-39 — **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
 > ✅ **D-38: `Home` AllList เป็น GridView 2 คอลัมน์แบบ e-commerce แล้ว** — เปลี่ยนจาก `ListView` แถวเดียว ไม่แตะกลไก filter เดิมเลย (onLoad + 13 category chip ยังยิง query เหมือนเดิม) เพิ่มคอลัมน์ `first_image_url` (`image_urls[1]`) เข้า `products_review_view` เพราะ DSL ไม่มี list-index operator ยืนยันจาก `generated_code/`: `GridView.builder` + รูปจริงผูกแล้ว รายละเอียด `DECISIONS.md` D-38 — **ยังไม่ทดสอบผ่านแอปจริงโดย pete** โดยเฉพาะเคสสินค้าไม่มีรูป (ยังไม่มี placeholder)
@@ -19,8 +20,8 @@
 ## 🔥 คิวถัดไป
 
 1. **[D-32] `mju6606105386@mju.ac.th` ยังค้าง — ตัดสินใจว่าจะลบหรือปล่อยไว้** — สมัครไม่สำเร็จ (ไม่เคยยืนยันอีเมล) ไม่มี `"Profile"` คู่ `mju6606105382` แก้ไปแล้วด้วยการลบบัญชีเก่า+สมัครใหม่สะอาด (D-34) — ทางเดียวกันน่าจะใช้ได้ ไม่ใช่คิวด่วนแล้ว (root cause เดิมของ D-32 ยังไม่ทราบ แต่ไม่เกิดซ้ำในรอบทดสอบล่าสุด)
-2. **ทดสอบ L4 (chat) + จุดแดง unread ผ่านแอปจริง** — pete เปิดจริงรอบแรกเจอ `chatList` ว่างเปล่า (layout crash, แก้แล้ว D-40) **ต้องทดสอบซ้ำว่าห้องแชทขึ้นแล้วจริง** ใช้บัญชี `mju6512345678@mju.ac.th` + `mju6500000002@mju.ac.th` (มีห้องแชท 1 ห้องรออยู่แล้ว) เทส: ส่งข้อความ 2 ทาง, เปิดจาก `chatList`/"แชทกับผู้ขาย"/"ติดต่อแอดมิน"/Drawer ของ `HomeAdmin` — **รู้อยู่แล้วว่าจุดแดงจะไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32)** ไม่ต้องรายงานซ้ำถ้าเจอ
-3. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
+2. ~~**ทดสอบ L4 (chat) ผ่านแอปจริง**~~ **ทดสอบแล้ว (D-40/D-41, 2026-08-18)** — `chatList` ขึ้นถูก, ส่งข้อความ/รูปได้จริง, bubble UI ถูกฝั่ง, ComposeBar ติดขอบล่าง, ดูรูปเต็มได้ — เหลือแค่จุดแดง unread ที่**รู้อยู่แล้วว่าไม่หายทันที ต้องออกจากหน้าก่อน (บั๊ก stale-state, D-32, ยังไม่แก้)** ไม่ต้องรายงานซ้ำถ้าเจอ
+3. ~~**L4: ทำส่งรูปภาพ**~~ **แก้แล้ว (D-41, 2026-08-18)** — เหลือ **Realtime** (ยืนยันว่าไม่มีเลย D-32, ยังไม่ทำ)
 4. ~~**[D-32] แก้ filter ของ `MyPost`**~~ **แก้แล้ว (D-35, 2026-08-18)** — เหลือทดสอบผ่านแอปจริงด้วย user ธรรมดาที่มีประกาศหลายสถานะ (pending/approved/rejected) ว่าเห็นเฉพาะของตัวเองจริง
 5. ~~**[D-36] ทำให้ status chip บน `Mypost` กรอง list จริง**~~ **แก้แล้ว (D-37, 2026-08-18)** — ย้าย `Mypost` ไป onLoad+state pattern แบบ `Home` เหลือทดสอบผ่านแอปจริงว่ากด chip แล้ว list กรองถูกต้องจริง (category ของ `Home` ด้วย)
 6. **[D-38/D-39] ทดสอบ `Home` grid layout + filter chip highlight ผ่านแอปจริง** — ยังไม่เคยเปิดแอปดูทั้งคู่ เช็ค: การ์ดจัดเรียง 2 คอลัมน์ไม่ถูกตัด, กดการ์ดยังเข้า `ProductDetails` ถูก, สินค้าที่ไม่มีรูปเป็นยังไง (คาดว่า broken-image เพราะยังไม่มี placeholder — ถ้ารบกวนสายตามากให้กลับมาคิด `COALESCE` fallback), กด chip แล้วสี highlight ตามจริงทั้ง `Home` (หมวดหมู่)/`Mypost` (สถานะ)
@@ -36,7 +37,7 @@
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว 🔴 พบ 2 บัญชีไม่มี `Profile` (D-32) | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
 | 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) · `MyPost` filter `seller_id` แก้แล้ว (D-35) + status chip กรอง list จริงแล้ว (D-37) ยังไม่ทดสอบผ่านแอปจริง | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
 | 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว · category filter chip requery จริงแล้ว (D-37) · `AllList` เป็น grid 2 คอลัมน์ + รูปจริงแล้ว (D-38) ยังไม่ทดสอบผ่านแอปจริง | ผูก `products_review_view` ยังไม่มี search · สินค้าไม่มีรูปยัง broken-image (ไม่มี placeholder) |
-| 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป · Realtime ยืนยันว่าไม่มีเลย (D-32) · จุดแดง unread มีบั๊ก stale-state (D-32) · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
+| 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า + Drawer nav, ข้อความ+รูป+bubble UI ใช้ได้จริง **ทดสอบผ่านแอปจริงแล้ว (D-40/D-41)** | ยังไม่มี Realtime (D-32) · จุดแดง unread มีบั๊ก stale-state (D-32) · อ่าน PT-06/09/22/23/24 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |
 | 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) + `is_read` (D-31) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`ReportsFeedback`/`ReportDetail` + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เนื้อหาหลัก**ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | หน้า "Reports" ถูก pete rename เป็น "ReportsFeedback" ตรงใน editor (2026-08-17) — ตรวจแล้วไม่มีจุดอ้างชื่อเก่าค้าง |
@@ -50,7 +51,7 @@
 
 **L2** ปิดไม่ได้เพราะยังไม่เคยเทสอัปไฟล์เกิน 5MB/ผิดชนิดผ่านแอปจริง (บังคับที่ Storage API ไม่ใช่ Postgres ทดสอบจาก DB แทนไม่ได้) — อัปสำเร็จ + path ถูกต้องยืนยันแล้ว (`VERIFICATION.md` V-08)
 
-**L4** Supabase ปิดแล้ว (D-29, 2026-08-16) — `chat_summary.member_names` พิสูจน์แล้วว่าไม่เป็น NULL ด้วย user ธรรมดาจริง (มีห้องแชท 1 ห้อง 2 สมาชิกจากการทดสอบ) FlutterFlow ปิดไม่ได้เพราะยังไม่มีส่งรูป/Realtime และยังไม่เคยเทสผ่านแอปจริงเลย (แค่ตรวจ `generated_code/`) รายละเอียด `layers/L4-chat.md`
+**L4** Supabase ปิดแล้ว (D-29, 2026-08-16) — `chat_summary.member_names` พิสูจน์แล้วว่าไม่เป็น NULL ด้วย user ธรรมดาจริง (มีห้องแชท 1 ห้อง 2 สมาชิกจากการทดสอบ) FlutterFlow ปิดไม่ได้เพราะยังไม่มี Realtime — ข้อความ/รูป/bubble UI ทดสอบผ่านแอปจริงแล้ว (D-40/D-41) รายละเอียด `layers/L4-chat.md`
 
 ---
 
@@ -93,7 +94,6 @@
 - [ ] รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL (public bucket, D-12) — ห้ามเก็บของอ่อนไหวในนี้
 - [ ] `Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)` — ยังไม่มีปัญหาจริงเพราะ trigger `lower()` ให้ก่อน insert (P-11 ยังไม่ตอบรับ)
 - [ ] repo private (D-13) ไม่ใช่การปิดช่องโหว่ — ของจริงที่ต้องปิดคือ 2 ข้อบนสุดของรายการนี้
-- [ ] 🆕 **L4 `chatMessages`: `messageItem.message!` force-unwrap** — ตอนนี้ปลอดภัยเพราะทุกข้อความเป็นข้อความล้วน แต่ถ้าเพิ่มปุ่มส่งรูป (ทำให้ `message` เป็น NULL ได้จริง) โดยไม่แก้บรรทัดนี้ก่อน จะ crash หน้าห้องแชททันทีที่มีข้อความรูปล้วนแรก
 
 **บัญชีทดสอบที่ credential ถูกแก้ตรงด้วย SQL (ไม่ใช่สภาพ user จริง — ห้ามใช้เทสอย่างอื่นโดยไม่รู้ตัว):**
 

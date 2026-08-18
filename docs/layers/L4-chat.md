@@ -1,8 +1,8 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList` เคยว่างเปล่าจริงจาก layout crash ไม่ใช่บั๊ก data (แก้แล้ว D-40, 2026-08-18) — เหลือทดสอบผ่านแอปจริงซ้ำ ยังไม่มีรูป/Realtime, จุดแดง unread มีบั๊ก stale-state (D-32)**
-> ปิดได้เมื่อ: (1) ส่งรูปได้จริงผ่านแอป (2) Realtime ทำงาน (3) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
+> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList`+`chatMessages` ใช้งานได้จริง ทดสอบผ่านแอปจริงแล้ว (D-40/D-41, 2026-08-18) — ส่งข้อความ+รูปได้, bubble UI สองฝั่ง, ดูรูปเต็มได้ — เหลือ Realtime, จุดแดง unread มีบั๊ก stale-state (D-32)**
+> ปิดได้เมื่อ: (1) Realtime ทำงาน (2) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
 
 ## 🎯 เป้าหมาย
 
@@ -22,8 +22,10 @@
 - **ปุ่ม "ติดต่อแอดมิน" บน `ProductDetails`** (D-30, 2026-08-16) — เดิม mock (D-26) ต่อเข้าระบบแชทจริงแล้ว ผ่าน RPC ใหม่ `find_or_create_chat_with_admin` (หาแอดมินคนแรกสุดตาม `created_at` เอง เพราะ RLS ของ `"Profile"` ไม่ให้ user ธรรมดาเห็นแถวแอดมิน) — ส่งไปหาแอดมิน**คนเดียว** ไม่ใช่กลุ่ม
 - **ปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin`** (D-30) — Navigate ไป `chatList` ให้แอดมินเข้าไปอ่าน/ตอบได้
 - **จุดแดง glow บอกยังไม่อ่านใน `chatList`** (D-31, 2026-08-17) — `chat_summary.is_unread` (คำนวณต่อ `auth.uid()`) หายไปหลังแตะ (`mark_chat_read` RPC อัปเดต `chat_user.last_read_at` ของตัวเอง)
+- **`chatList` layout crash แก้แล้ว** (D-40, 2026-08-18) — `shrinkWrap: true`, ทดสอบผ่านแอปจริงแล้ว
+- **`chatMessages` bubble UI สองฝั่ง + ส่งรูปได้จริง** (D-41, 2026-08-18) — ของตัวเอง/คนอื่นแยกฝั่ง+สี, ปุ่มแนบรูปอัปโหลดเข้า `chat-images` แล้ว insert `chat_message.image_url`, แตะรูปเปิดดูเต็มผ่าน component `FullImageViewer`, ComposeBar ติดขอบล่างจอ (`Expanded`) — **ทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด**
 
-**กับดัก SDK ที่เจอใหม่ทั้งหมด:** `../PATTERNS.md` **PT-22** (state/onLoad ใน `ensurePage` เดียวกันอ้างกันเองไม่ได้ ต้องแยกพุช) และ **PT-23** (ItemRef นอก itemBuilder สด, ไม่มี RPC action, ไม่มี list literal, `SetState` vs `UpdateAppState.set`, custom function list arg nullable เสมอ, page param `.withDefault` ไม่ถึง constructor)
+**กับดัก SDK ที่เจอใหม่ทั้งหมด:** `../PATTERNS.md` **PT-22** (state/onLoad ใน `ensurePage` เดียวกันอ้างกันเองไม่ได้ ต้องแยกพุช) · **PT-23** (ItemRef นอก itemBuilder สด, ไม่มี RPC action, ไม่มี list literal, `SetState` vs `UpdateAppState.set`, custom function list arg nullable เสมอ, page param `.withDefault` ไม่ถึง constructor) · **PT-24** (nullable table/view row model field เป็น `String?` จริง ไม่ใช่ `''`, field ใหม่บน view ใช้พุชเดียวกันไม่ได้, `Expanded` vs `shrinkWrap` คนละปัญหา, `outputAs` ชนข้าม widget, ไม่มี `onLongPress`)
 
 **🔴 เจอบั๊ก build-breaking ระหว่างตรวจปิด layer:** `getOtherUsers`/`senderLabel` เข้าถึง `.length`/`[i]` บน `List<String>?` โดยไม่ guard null — `dart analyze` ไม่ผ่านทั้งโปรเจกต์ (custom function ทุกตัวอยู่ไฟล์เดียวกัน) แก้แล้วด้วย `?? []` (commit `jpfa1sqLhlVEuJ0SccWn`) ยืนยันด้วย `dart analyze` จริงซ้ำหลังแก้ — **ผ่านแล้ว**
 
@@ -34,22 +36,21 @@
 
 ## 🚧 ยังไม่ทำ (คิวถัดไป)
 
-1. **ส่งรูปภาพ** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูป/`UploadData` เข้า bucket นี้เลย ต้องทำตาม PT-08 pattern (bucket/path เหมือน `product-images`) — เมื่อทำแล้ว **ต้องแก้ `messageItem.message!`** (force-unwrap ตรง ๆ ตอนนี้) ให้เป็น conditional แสดงรูปแทนข้อความเมื่อ `message` เป็น null ไม่งั้นข้อความรูปล้วนแรกที่มีจะ crash หน้าห้องแชททันที
-2. **Realtime บน `chat_message`** — ยืนยันแล้วว่าไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (`ui-checker` grep `generated_code/lib/` ทั้งต้นไม้หา `.stream(`/`StreamBuilder`/`SupabaseStreamBuilder` เจอ 0 จุด, D-32) Supabase publication เปิดไว้แล้ว แต่ฝั่ง FF DSL ไม่มี subscribe เลย ตอนนี้ใช้ manual refetch หลังส่งข้อความแทน
-3. **🔴 จุดแดง unread (D-31) ไม่หายทันทีตอนกลับมาหน้าเดิม** (D-32, 2026-08-17) — `chatList`/`Notifications`/`ReportsFeedback` โหลด list ครั้งเดียวใน `initState`, ปุ่มกดเรียก mark-read RPC ถูกต้องแต่ไม่ refetch/แก้ค่า item ก่อน navigate ออก → pop กลับมาหน้าเดิม (`initState` ไม่รันซ้ำ) จุดแดงเลยยังค้างจนกว่าหน้าจะถูกสร้างใหม่จริง (เช่นสลับ tab) เทียบ pattern ที่ถูกต้องได้จาก `HomeAdmin` approve/reject (refetch หลัง mutate เสมอ) — ยังไม่ได้แก้
-4. **ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`** — ทางเข้าห้องแชทจาก `ProductDetails` ตอนนี้หัวข้อ/ชื่อผู้ส่งจะว่างเปล่าจนกว่าจะเปิดห้องเดิมซ้ำผ่าน `chatList` (ที่มี array จริงจาก `chat_summary`) — สาเหตุคือ PT-23 ข้อ 1 (ItemRef นอก scope) รวมกับไม่มี list literal (PT-23 ข้อ 7) ทางแก้ที่เป็นไปได้: ให้ `chatMessages` โหลด `chat_summary` เพิ่มเองตอน onLoad ด้วย `chatId` แทนพึ่ง param (ยังไม่ได้ลองเพราะ PT-10 เคยเจอปัญหา index list-state นอก ListView)
-5. **ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง** — เหตุผลเดียวกับข้อ 4 (ไม่มี `seller_id` แบบ item-scoped นอก itemBuilder) กดได้แต่ RPC คืน 0 เงียบ ๆ ไม่มี feedback ใด ๆ
-6. **การส่งข้อความยังไม่มี error feedback จริง** — ใช้ `PostgresCreate` ตรง ๆ (ไม่มี `onSuccess`/`onFailure`, PT-18) ส่งไม่สำเร็จ (เช่น เน็ตหลุด) จะเงียบ ไม่มี snackbar เตือน
+1. **Realtime บน `chat_message`** — ยืนยันแล้วว่าไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (`ui-checker` grep `generated_code/lib/` ทั้งต้นไม้หา `.stream(`/`StreamBuilder`/`SupabaseStreamBuilder` เจอ 0 จุด, D-32) Supabase publication เปิดไว้แล้ว แต่ฝั่ง FF DSL ไม่มี subscribe เลย ตอนนี้ใช้ manual refetch หลังส่งข้อความแทน
+2. **🔴 จุดแดง unread (D-31) ไม่หายทันทีตอนกลับมาหน้าเดิม** (D-32, 2026-08-17) — `chatList`/`Notifications`/`ReportsFeedback` โหลด list ครั้งเดียวใน `initState`, ปุ่มกดเรียก mark-read RPC ถูกต้องแต่ไม่ refetch/แก้ค่า item ก่อน navigate ออก → pop กลับมาหน้าเดิม (`initState` ไม่รันซ้ำ) จุดแดงเลยยังค้างจนกว่าหน้าจะถูกสร้างใหม่จริง (เช่นสลับ tab) เทียบ pattern ที่ถูกต้องได้จาก `HomeAdmin` approve/reject (refetch หลัง mutate เสมอ) — ยังไม่ได้แก้
+3. **ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`** — ทางเข้าห้องแชทจาก `ProductDetails` ตอนนี้หัวข้อ/ชื่อผู้ส่งจะว่างเปล่าจนกว่าจะเปิดห้องเดิมซ้ำผ่าน `chatList` (ที่มี array จริงจาก `chat_summary`) — สาเหตุคือ PT-23 ข้อ 1 (ItemRef นอก scope) รวมกับไม่มี list literal (PT-23 ข้อ 7) ทางแก้ที่เป็นไปได้: ให้ `chatMessages` โหลด `chat_summary` เพิ่มเองตอน onLoad ด้วย `chatId` แทนพึ่ง param (ยังไม่ได้ลองเพราะ PT-10 เคยเจอปัญหา index list-state นอก ListView)
+4. **ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง** — เหตุผลเดียวกับข้อ 3 (ไม่มี `seller_id` แบบ item-scoped นอก itemBuilder) กดได้แต่ RPC คืน 0 เงียบ ๆ ไม่มี feedback ใด ๆ
+5. **การส่งข้อความยังไม่มี error feedback จริง** — ใช้ `PostgresCreate` ตรง ๆ (ไม่มี `onSuccess`/`onFailure`, PT-18) ส่งไม่สำเร็จ (เช่น เน็ตหลุด) จะเงียบ ไม่มี snackbar เตือน
 
 ## 🧪 Definition of Done
 
-- [x] แชทระหว่าง 2+ บัญชีจริงแบบ**ข้อความล้วน** — ทดสอบระดับ DB แล้ว (RLS/RPC/trigger, `db-verifier` PASS) **ยังไม่เคยทดสอบผ่านแอปจริงบนมือถือ/เว็บ** — รอ pete
-- [ ] ข้อความขึ้นโดยไม่ต้อง refresh (Realtime) — ยืนยันแล้วว่าไม่มีเลย (ข้อ 2 ด้านบน, D-32)
+- [x] แชทระหว่าง 2+ บัญชีจริงแบบข้อความล้วน+รูป — ทดสอบผ่านแอปจริงโดย pete แล้ว (D-40/D-41)
+- [ ] ข้อความขึ้นโดยไม่ต้อง refresh (Realtime) — ยืนยันแล้วว่าไม่มีเลย (ข้อ 1 ด้านบน, D-32)
 - [x] Chat List แสดงเฉพาะห้องที่ตัวเองอยู่ — ยืนยันด้วย non-member account เห็น 0 แถวจริง
 - [x] ชื่อห้องถูกต้องผ่าน `getOtherUsers` — ไม่เป็น NULL ด้วยบัญชี user ธรรมดา (ยืนยันจาก `chat_summary` query จริง)
 - [x] ห้องแชท: ข้อความ + `sender_name`/`senderLabel` ถูกต้อง เรียงเวลาถูก (ascending, ยืนยันจาก generated code)
 - [x] เพิ่มสมาชิกซ้ำในห้องเดิมไม่ได้ — `find_or_create_chat` idempotent ยืนยันแล้ว
 - [x] `chat.last_message` ตรงกับข้อความล่าสุดจริงเสมอ — trigger ยืนยันแล้ว
-- [ ] ส่งรูปได้ — ยังไม่ทำ (ข้อ 1)
-- [ ] จุดแดงบอกยังไม่อ่าน + หายไปหลังแตะ — RPC/visibility ถูก แต่ **มีบั๊ก stale-state ยืนยันจากโค้ดแล้ว** (ข้อ 3 ด้านบน, D-32): ไม่หายจนกว่าจะออกจากหน้าจริง ยังไม่แก้
-- [ ] + DoD ร่วมใน `CLAUDE.md` (ทดสอบผ่านแอปจริงด้วยบัญชี user ธรรมดา — ยังไม่ทำ)
+- [x] ส่งรูปได้ + bubble UI สองฝั่ง + ดูรูปเต็ม — ทำแล้ว (D-41) ทดสอบผ่านแอปจริงแล้ว
+- [ ] จุดแดงบอกยังไม่อ่าน + หายไปหลังแตะ — RPC/visibility ถูก แต่ **มีบั๊ก stale-state ยืนยันจากโค้ดแล้ว** (ข้อ 2 ด้านบน, D-32): ไม่หายจนกว่าจะออกจากหน้าจริง ยังไม่แก้
+- [x] + DoD ร่วมใน `CLAUDE.md` (ทดสอบผ่านแอปจริงด้วยบัญชี user ธรรมดา) — ทำแล้ว (D-40/D-41)

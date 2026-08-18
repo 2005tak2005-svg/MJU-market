@@ -722,4 +722,21 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 **ยืนยันจาก `generated_code/`:** `Home` — `if (_model.selectedCategoryId == N) Button(...)` / `if (!(_model.selectedCategoryId == N)) Button(...)` ครบ 13 คู่ · `Mypost` — `if (_model.selectedStatus == '...')` ครบ 4 คู่ — เป็น conditional list element จริง (`if (...) Widget()`) ไม่ใช่ `Visibility`/`Opacity` ที่จองพื้นที่ไว้ ดังนั้นไม่มีช่องว่างหลอนตอนสลับ
 
+## D-40 — `chatList` ว่างเปล่าจริง: layout crash ไม่ใช่บั๊ก RLS/data (2026-08-18)
+
+**pete รายงาน:** เปิด `chatList` แล้วว่างเปล่า เห็นแค่หัวข้อ "My Messages" ไม่มีห้องแชทโผล่เลย แนบ console log มาด้วย: `Assertion failed: .../rendering/box.dart:2251` ซ้ำ ๆ (48 issues)
+
+**ตรวจ 3 ชั้นตามกฎข้อ 9 ก่อนแก้:**
+1. **Supabase** — ให้ `db-verifier` ทดสอบ `chat_summary` แบบ impersonate บัญชีที่มีห้องแชทจริง (`mju6512345678@mju.ac.th`) → **คืนแถวถูกต้องครบ ไม่มี error** RLS/`is_chat_member()`/view definition ตรงกับ `SCHEMA.md` ทุกจุด ไม่มี drift ตั้งแต่ D-29
+2. **Widget tree + binding** — `chatList`'s onLoad (`PostgresQuery(chatSummary)` + `SetState('myChats', ...)`) และ `ChatListItems`'s generator variable ผูกกับ `State('myChats')` ถูกต้องทุกจุด ตรงกับ pattern เดียวกับ `Home`/`HomeAdmin` ที่ใช้งานได้จริง
+3. **สรุป:** ไม่ใช่บั๊ก data/RLS เลย — เป็น **layout crash** ที่ทำให้พื้นที่ list เรนเดอร์อะไรไม่ได้เลย ไม่ว่าจะมีข้อมูลกี่แถว
+
+**root cause จริง:** `ChatListItems` (`ListView.builder`) เป็นลูกตรงของ page body's `Column` (คู่กับ subtitle Text "Below are messages with your friends." ด้านบน) โดย**ไม่ได้ห่อด้วย `Expanded`** และ `shrinkWrap` ไม่ได้ตั้งไว้ (default `false`) — คอมเมนต์เก่าในสคริปต์เข้าใจผิดว่ามันถูกห่อด้วย `Expanded` อยู่แล้ว ("ChatListSection (Expanded > ListView...)") แต่ `inspect` สดยืนยันว่าไม่ใช่ `Column` ให้ child ที่ไม่ใช่ `Expanded` เป็น unbounded height เสมอ → `ListView` ไม่มี `shrinkWrap` โดนความสูงไม่จำกัด throw assertion ทุกรอบ layout พอดีกับ `box.dart:2251` ที่เห็นในภาพ
+
+**แก้:** ตั้ง `shrinkWrap: true` ตรง ๆ (ไม่มี typed DSL หรือ fast-lane op ครอบคลุม `shrinkWrap` บน node ที่มีอยู่แล้ว ต้อง raw proto: `node.props.listView.shrinkWrapValue = FFBooleanValue(inputValue: true)`) — pattern เดียวกับที่ `Home`/`Mypost`/`HomeAdmin`'s list ทุกตัวใช้อยู่แล้วเป็นปกติ (`ChatListItems` เป็นตัวเดียวที่หลุด)
+
+**ตรวจสอบเพิ่ม (กันเจอซ้ำ):** เช็ค `Notifications`/`ReportsFeedback` (list ที่สร้างช่วงเดียวกับ D-31) ด้วย — โครงสร้างต่างกัน (`ListView` เป็นลูกตรงของ `SafeArea` ไม่มี sibling Text ไม่ต้องมี `Column` คั่น) จึง**ไม่มีบั๊กนี้**
+
+**ยืนยันจาก `generated_code/lib/chat_list/chat_list_widget.dart`:** `shrinkWrap: true` ปรากฏจริงบน `ListView.builder` แล้ว **ยังไม่ได้ให้ pete ทดสอบซ้ำผ่านแอปจริงว่าห้องแชทขึ้นแล้ว**
+
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

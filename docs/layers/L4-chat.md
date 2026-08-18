@@ -1,7 +1,7 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 แชทข้อความล้วนใช้งานได้จริง ยังไม่มีรูป/Realtime, จุดแดง unread มีบั๊ก stale-state (D-32)**
+> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList` เคยว่างเปล่าจริงจาก layout crash ไม่ใช่บั๊ก data (แก้แล้ว D-40, 2026-08-18) — เหลือทดสอบผ่านแอปจริงซ้ำ ยังไม่มีรูป/Realtime, จุดแดง unread มีบั๊ก stale-state (D-32)**
 > ปิดได้เมื่อ: (1) ส่งรูปได้จริงผ่านแอป (2) Realtime ทำงาน (3) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
 
 ## 🎯 เป้าหมาย

@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-18**
+> ✅ **D-38: `Home` AllList เป็น GridView 2 คอลัมน์แบบ e-commerce แล้ว** — เปลี่ยนจาก `ListView` แถวเดียว ไม่แตะกลไก filter เดิมเลย (onLoad + 13 category chip ยังยิง query เหมือนเดิม) เพิ่มคอลัมน์ `first_image_url` (`image_urls[1]`) เข้า `products_review_view` เพราะ DSL ไม่มี list-index operator ยืนยันจาก `generated_code/`: `GridView.builder` + รูปจริงผูกแล้ว รายละเอียด `DECISIONS.md` D-38 — **ยังไม่ทดสอบผ่านแอปจริงโดย pete** โดยเฉพาะเคสสินค้าไม่มีรูป (ยังไม่มี placeholder)
 > ✅ **D-37: Category/Status filter chips ใช้งานได้จริงทั้งคู่แล้ว** — บั๊กจริงคือ `Chip` widget (D-36) ห่อ `InkWell.onTap` รอบ Material `ChoiceChip` ที่มี gesture handler ของตัวเองอยู่แล้ว สองอันแย่ง tap กัน แก้ด้วยการเปลี่ยนเป็น `Button` ทั้ง `Home`/`Mypost` (ยืนยันจาก `generated_code/`: `FlutterFlowChoiceChips` เหลือ 0 จุด) `Mypost` ยังย้ายจาก widget-level query ไปเป็น onLoad+state pattern แบบ `Home` เพื่อให้ status chip กรอง list ได้จริง (เดิมติด platform limitation ตาม D-36) รายละเอียดเต็ม `DECISIONS.md` D-37 — **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
 > ✅ **D-35: แก้ filter `seller_id` ของ `Mypost`** — เดิม widget-level query ไม่มี filter เลย (D-32 ข้อ 5) เพิ่ม `seller_id = currentUserUid` ผ่าน `page.mutateNode` บน `ListView_7h86cihf` ยืนยันจาก `generated_code/` แล้วว่า query เปลี่ยนจริง รายละเอียด `DECISIONS.md` D-35 — **ยังไม่ทดสอบผ่านแอปจริง**
 > ✅ **D-34: L1 confirm-email (D-20) ปลดล็อกจริง** — เลิกส่ง OTP ตรงถึง student เปลี่ยนเป็น Send Email Hook → Edge Function `send-otp-email` → Resend → relay เข้า admin inbox เดียว ยืนยัน end-to-end สำเร็จผ่านแอปจริงแล้ว (`mju6606105382@mju.ac.th`) รายละเอียด+กับดัก `DECISIONS.md` D-34 — **หนี้ที่เหลือ:** manual relay ไม่ scale, rate limit email 30/ชม. เป็นค่าดีบักชั่วคราว ทั้งคู่ต้องแก้ก่อน production
@@ -20,6 +21,7 @@
 3. **L4: ทำส่งรูปภาพ + Realtime** — schema/bucket พร้อมแล้ว (`chat_message.image_url`, bucket `chat-images`) ฝั่ง FlutterFlow ยังไม่มีปุ่มแนบรูปเลย อ่าน PT-08 ก่อน — **ต้องแก้ `messageItem.message!` force-unwrap ก่อนเริ่ม** ไม่งั้นข้อความรูปล้วนแรกจะ crash หน้าห้องแชท
 4. ~~**[D-32] แก้ filter ของ `MyPost`**~~ **แก้แล้ว (D-35, 2026-08-18)** — เหลือทดสอบผ่านแอปจริงด้วย user ธรรมดาที่มีประกาศหลายสถานะ (pending/approved/rejected) ว่าเห็นเฉพาะของตัวเองจริง
 5. ~~**[D-36] ทำให้ status chip บน `Mypost` กรอง list จริง**~~ **แก้แล้ว (D-37, 2026-08-18)** — ย้าย `Mypost` ไป onLoad+state pattern แบบ `Home` เหลือทดสอบผ่านแอปจริงว่ากด chip แล้ว list กรองถูกต้องจริง (category ของ `Home` ด้วย)
+6. **[D-38] ทดสอบ `Home` grid layout ผ่านแอปจริง** — เปลี่ยน `AllList` เป็น grid 2 คอลัมน์ + รูปจริงแล้ว ยังไม่เคยเปิดแอปดู เช็ค: การ์ดจัดเรียง 2 คอลัมน์ไม่ถูกตัด, กดการ์ดยังเข้า `ProductDetails` ถูก, สินค้าที่ไม่มีรูปเป็นยังไง (คาดว่า broken-image เพราะยังไม่มี placeholder — ถ้ารบกวนสายตามากให้กลับมาคิด `COALESCE` fallback)
 
 🟡 **ไม่ใช่คิวด่วนแต่ยังไม่ปิด — L1 confirm-email production-readiness** ดู `DECISIONS.md` D-34 หัวข้อหนี้
 
@@ -31,7 +33,7 @@
 |---|---|---|---|---|
 | 1 | Auth & User Profiles | ✅ ปิดแล้ว 🔴 พบ 2 บัญชีไม่มี `Profile` (D-32) | 🟨 Login/SignUp/Home/HomeAdmin/`ProfileUser` ทำงานจริง เหลือ Confirm Email (D-20) | auth backend = Supabase แล้ว (D-21) · OTP ติด email deliverability |
 | 2 | Product Listings + Storage | 🟨 อัปจริงผ่านแอปแล้ว เหลือเทส reject >5MB/ผิดชนิด | 🟨 `addproduct` insert ผ่านแอปจริง + แก้บั๊กแฟลชไป Login (D-26) · `MyPost` filter `seller_id` แก้แล้ว (D-35) + status chip กรอง list จริงแล้ว (D-37) ยังไม่ทดสอบผ่านแอปจริง | seed `CAT` 12 หมวด · bucket+policy+CHECK 3 รูป · อ่าน PT-09/10/12 ก่อนเริ่ม |
-| 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว · category filter chip requery จริงแล้ว (D-37) ยังไม่ทดสอบผ่านแอปจริง | ผูก `products_review_view` ยังไม่มี search รูปยังเป็น placeholder |
+| 3 | Browse / Search / Filter | ⬜ | 🟨 `AllList`+`ProductDetails` ทำแล้ว · category filter chip requery จริงแล้ว (D-37) · `AllList` เป็น grid 2 คอลัมน์ + รูปจริงแล้ว (D-38) ยังไม่ทดสอบผ่านแอปจริง | ผูก `products_review_view` ยังไม่มี search · สินค้าไม่มีรูปยัง broken-image (ไม่มี placeholder) |
 | 4 | Chat & Messaging | ✅ RLS membership-based + RPC/trigger ทดสอบสิทธิ์จริงผ่านแล้ว (D-29/D-30) | 🟨 3 ทางเข้า (`chatList`, "แชทกับผู้ขาย", "ติดต่อแอดมิน") + Drawer nav ใน `HomeAdmin` ข้อความล้วนใช้ได้จริง — **ยังไม่เคยเทสผ่านแอปจริง** | ยังไม่มีส่งรูป · Realtime ยืนยันว่าไม่มีเลย (D-32) · จุดแดง unread มีบั๊ก stale-state (D-32) · อ่าน PT-06/09/22/23 ก่อนแตะต่อ |
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |

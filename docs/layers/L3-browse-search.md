@@ -1,7 +1,7 @@
 # Layer 3 — Browse / Search / Filter
 
 > schema → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L3.sql`
-> **สถานะ: ⬜ ยังไม่เริ่ม**
+> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) ยังไม่มี search/ช่วงราคา ดู `STATUS.md` คิวถัดไป
 
 ## 🎯 เป้าหมาย
 

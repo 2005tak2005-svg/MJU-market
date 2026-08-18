@@ -693,3 +693,21 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 - 🔴 **ระหว่างรื้อไฟล์ใหญ่ (ตัดท้ายไฟล์ด้วย `head -n` แล้วต่อเนื้อหาใหม่) เกือบทำ section chip หมวดหมู่ของ `Home` หายไปทั้งหมดโดยไม่ตั้งใจ** — ตัดที่บรรทัดก่อนหน้า section ที่ต้องการรื้อจริง (`Mypost`) แต่ section `Home` อยู่ *หลัง* จุดตัดพอดี เลยหายไปด้วย จับได้จาก `generated_code/lib/home/home_widget.dart` ยังโชว์ `FlutterFlowChoiceChips` อยู่ทั้งที่เพิ่ง push "สำเร็จ" — บทเรียน: หลัง full-file rewrite ต้อง grep หา symbol ของทุก section ที่ควรอยู่ในไฟล์ ไม่ใช่แค่เชื่อ exit code ของ push
 
 **ยืนยันผลจาก `generated_code/` หลัง push สุดท้าย:** `Home` — 13 `FFButtonWidget`, แต่ละอัน `onPressed` ยิง `PostgresQuery`+`SetState` จริง · `Mypost` — onLoad ดึง `seller_id`-only, 4 `FFButtonWidget` สถานะ แต่ละอัน `onPressed` ยิง `PostgresQuery(seller_id + moderation_status)`+`SetState(myPostsList)`, itemBuilder แสดง `title`/`price`/`moderationStatus` จริงจาก `_model.myPostsList` **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+## D-38 — `Home` AllList เปลี่ยนเป็น GridView 2 คอลัมน์ + เพิ่ม `first_image_url` (2026-08-18)
+
+**บริบท:** pete อยากได้ layout แบบ e-commerce ทั่วไป (grid การ์ดสินค้า) แทนที่ list แถวเดียวเดิม — สโคปเฉพาะ `Home` (`AllList`) เท่านั้น ไม่แตะ `Mypost`
+
+**ตัดสินใจ:** ใช้ typed DSL `GridView(source: State('productsList'), columns: 2, itemBuilder: ...)` แทน `ListView` ตัวเดิม (`ensureReplaced` บน `ListView_sxt9odnl`) — ไม่แตะกลไก filter เดิมเลย (onLoad query + 13 category chip `Button` ยังยิง `PostgresQuery`+`SetState('productsList', ...)` เหมือนเดิมทุกอย่าง เปลี่ยนแค่ widget ที่ render `productsList`)
+
+**ปัญหารูปภาพ:** การ์ดต้องโชว์รูปสินค้าจริง แต่ `products_review_view.image_urls` เป็น array (`text[]`) — DSL ไม่มี list-index operator เลย (`item['field']` ทำได้แค่ named field access ตรงๆ ดู `src/dsl/references.dart`'s `DslExpression.operator[]`) เขียน `item['image_urls'][0]` ไม่ได้ **แก้ที่ SQL แทนที่จะพยายาม raw-proto/generator-variable trick** (บทเรียนจาก D-36/D-37 ที่เสียหลายรอบไปกับของคล้ายกัน) — เพิ่มคอลัมน์คำนวณ `image_urls[1] AS first_image_url` เข้า `products_review_view` (`CREATE OR REPLACE VIEW` — ต้องวางคอลัมน์ใหม่ **ท้ายสุด** ของ SELECT ไม่งั้น Postgres ฟ้อง `cannot change name of view column` เพราะนับตำแหน่งคอลัมน์เดิม) เป็น NULL ถ้าไม่มีรูป (ยอมรับ broken-image state ชั่วคราว ยังไม่มี placeholder asset)
+
+**กับดักที่เจอ (คุ้มบันทึกกันซ้ำ):**
+- **field ที่เพิ่งลง `postgres_helpers.addTableField` ในพุชเดียวกัน ใช้ `item['fieldname']` อ้างอิงในพุชเดียวกันไม่ได้** — fail `Bad state: Field "products_review_view.first_image_url" was not compiled.` (คนละอาการกับปัญหา LOCAL_STATE ของ D-36 แต่หลักการเดียวกัน: field/table ที่เพิ่งลงทะเบียนสดในสคริปต์เดียวกันยังใช้งานผ่าน typed field access ไม่ได้ทันที) **ต้องแยกพุช**: พุชแรกลงทะเบียน field อย่างเดียว ยืนยันจาก `lib/flutterflow_project/schemas.dart` ว่าขึ้นจริง แล้วค่อยพุชที่สองที่ใช้ `item['first_image_url']` — ตรงกับ pattern ที่ `admin_sales_by_seller` เคยบันทึกไว้แล้ว (คอมเมนต์ใน `dsl/edit.dart`)
+- ระหว่างแก้ `banned_users`'s guarded-add block เพื่อแทรกโค้ดใหม่ต่อท้าย เกือบพิมพ์ `postgresType: 'int8'` เป็น `'text'` โดยไม่ตั้งใจ (copy-paste แล้วแก้ไม่ครบ) — จับได้จากอ่านทวนโค้ดก่อน push ไม่ได้เจอจาก error ของ compiler เพราะ `postgresType` เป็นแค่ string metadata ไม่ validate
+
+**ยืนยันผลจาก `generated_code/lib/home/home_widget.dart`:** `GridView.builder` + `SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.68)` + `shrinkWrap: true` (codegen ใส่ให้อัตโนมัติ ไม่ต้องระบุเอง — DSL's `GridView` ไม่มี param `shrinkWrap` เลย) + `productsListItemItem.firstImageUrl` ผูกกับ `Image.network` จริง ปุ่มหมวดหมู่/onTap→ProductDetails ไม่กระทบ
+
+**`ensureReplaced` retire แล้ว** ตาม PT-16/21 — ทดสอบด้วย `flutterflow ai validate` หลังลบออกจากสคริปต์แล้วผ่านสะอาด (ไม่มีอาการ PT-19 แบบ `PendingProductsList`) จึงไม่ต้องเก็บไว้ถาวร
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — โดยเฉพาะเคส "สินค้าไม่มีรูป" ว่า broken-image state จะรบกวนผู้ใช้แค่ไหน

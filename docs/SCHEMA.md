@@ -371,7 +371,7 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 >
 > 📌 `has_image` (เพิ่ม 2026-08-19, D-42) — boolean คำนวณจาก `image_urls IS NOT NULL AND array_length(...) > 0` ใช้เป็น `visible:` คู่กับ `Icon`/`Image` บน `ProductDetails` (`ProductDetailsContent`) กัน crash จากสินค้าไม่มีรูป — pattern เดียวกับ `chat_messages_view.has_message`/`has_image` (D-41) **ยังไม่ได้เอาไปใช้กับ `Home` grid**
 >
-> 📌 `second_image_url`/`third_image_url`/`has_second_image`/`has_third_image` (เพิ่ม 2026-08-19, D-43) — ตั้งใจทำไว้สำหรับ multi-photo carousel บน `ProductDetails` แต่ฝั่ง FlutterFlow **ทำไม่สำเร็จ** (SDK จำกัดไว้ที่ 1 `Image` widget ต่อ itemBuilder — ดู D-43) คอลัมน์ยังอยู่ใน view ไม่ได้ถอนออก เผื่อใช้ตอนแก้ปัญหานี้ได้จริง
+> 📌 `second_image_url`/`third_image_url`/`has_second_image`/`has_third_image` (เพิ่ม 2026-08-19, D-43) — ตั้งใจทำไว้สำหรับรูปที่ 2/3 บน `ProductDetails`; D-43's `ListView`/`item[]` approach ทำไม่สำเร็จ (SDK จำกัดไว้ที่ 1 `Image` widget ต่อ itemBuilder) แต่ **ใช้สำเร็จแล้วผ่าน scaffold-level `databaseRequest`+`nodeKeyRef` แทน (D-44/PT-26)** — ยังไม่ได้ทดสอบผ่านแอปจริง
 >
 > 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 

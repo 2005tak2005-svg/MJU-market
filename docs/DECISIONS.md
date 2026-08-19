@@ -791,3 +791,19 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ถ้าจะกลับมาทำต่อ:** ต้องเลี่ยง item-scope-in-list ทั้งหมด — แนวทางที่น่าจะได้ผล: bind รูปที่ 2/3 + ค่าที่ actions ต้องใช้ผ่าน **scaffold-level `databaseRequest` + `nodeKeyRef`** (raw proto, เทคนิคเดียวกับ `ProfileUser`/PT-14 — เป็น scalar field access จริง ไม่ใช่ list/generator variable) แทนการเพิ่ม `Image`/action ตัวที่ 2 เข้าไปใน `ListView`'s itemBuilder
 
 รายละเอียด pattern ใหม่ → `PATTERNS.md` **PT-25**
+
+## D-44 — `ProductDetails` โชว์รูปที่ 2/3 สำเร็จแล้ว: เลี่ยง `ListView`/`item[]` ทั้งหมดด้วย scaffold-level query (2026-08-19)
+
+**ทำตาม D-43's แนวทางที่แนะไว้:** bind รูป 2/3 ผ่าน scaffold-level `databaseRequest` + `nodeKeyRef` (เทคนิคเดียวกับ `ProfileUser`/`HomeAdmin`, PT-14) แทนที่จะพยายามยัดเข้า `ListView`'s itemBuilder เดิม — ไม่แตะ `ListView_k8hk1168` (hero image + text ทั้งหมด) เลย, เป็น query คนละตัว แยกอิสระ
+
+**สเปคที่ pete ยืนยัน:** ไม่ใช้ `Carousel`/`PageView` (กัน SDK state conflict ตามที่เจอใน D-43) ใช้รูปที่ 2/3 วางเคียงกันใน `Row(scrollable: true)` แทน (เลื่อนดูได้แบบ SingleChildScrollView ธรรมดา ไม่มี controller) — container ทั้งกลุ่มกับรูปทั้งสองใช้เงื่อนไข visibility เดียวกัน (`has_second_image`) ไม่ทำ OR สองเงื่อนไขในเวอร์ชันแรก
+
+**2 พุช:**
+1. **Push 1** — `page.ensureInsertedAfter(ListView_k8hk1168, Container('ProductPhotoGalleryContainer', ...))` แทรก node ใหม่ (Container > Column > [Text label, Row(scrollable:true) > [Image 'SecondProductImage', Image 'ThirdProductImage']]) + ผูก `productDetailsPage.node.databaseRequest` (raw proto, `app.raw`) กรอง `id = productId` (page param) ผ่าน `FFVariableSource.WIDGET_CLASS_PARAMETER`/`FFWidgetClassVariable` (ยืนยันตรงกับ SDK's เอง `varFromPageParam` helper ใน `variable_helpers.dart:31-36` เป๊ะ) `isSingleRow: true, hideOnEmpty: true`
+2. **Push 2** — bind ค่าจริงผ่าน `nodeKeyRef: FFNodeKeyReference(key: 'Scaffold_amt0m1za')` (ต้องตรงกับ node ที่ตั้ง `databaseRequest` ไว้): `node.props.image.pathValue = FFStringValue(variable: productField('second_image_url'))` + `node.props.ensureVisibility().visibleValue = FFBooleanValue(variable: productField('has_second_image'))` ต่อรูป และ container เอง — pattern ตรงกับ `ProfileUser`'s `profileField`/`setVisibility` และ `HomeAdmin`'s `statsField`/`bindText` เป๊ะ
+
+**🔴 กับดักใหม่ที่เจอระหว่างทำ (Push 1):** `visible: false` แบบ literal bool (static, ไม่ผูก variable) **ไม่ทำให้ widget หายจริงในโค้ดที่ export ออกมา** — Container/รูปทั้งสองโชว์ออกมาแบบไม่มีเงื่อนไข `if (...)` ห่อเลย (เห็นกล่องรูปว่างเปล่า `imageUrl: ''` โผล่บนแอปจริงช่วงสั้นๆ ระหว่าง Push 1→2) ตรวจ compiler source แล้วพบสาเหตุ: `visible: <literal bool>` compile ผ่าน `setVisibility()` (`FFBooleanValue(inputValue: ...)`) ซึ่งเป็นคนละ path จาก `setConditionalVisibility()` (`FFBooleanValue(variable: ...)`) ที่ `has_image` ใช้อยู่แล้วและได้ `if (...)` จริง — งานนี้ยังไม่รู้ว่า static `visible:false` ควรจะ render เป็นอะไร (`Visibility`/`Opacity` widget?) ที่ codegen export ไม่แสดงให้เห็น หรือเป็นบั๊กจริงของ codegen export path นี้ **ทางแก้ที่ใช้จริง:** อย่าพึ่ง static `visible:` เป็นตัวซ่อนชั่วคราวระหว่างรอพุชถัดไป — รีบทำพุชที่ผูก conditional visibility จริง (`variable:`-based) ทันทีแทน ไม่ต้องดีบัก static-literal path ต่อ
+
+**ยืนยันจาก `generated_code/lib/product_details/product_details_widget.dart`:** `if (productDetailsProductsReviewViewRow?.hasSecondImage ?? true) Container(...)`, รูปทั้งสองมี `if (...hasSecondImage/hasThirdImage ?? true)` ห่อจริง ผูก `.secondImageUrl!`/`.thirdImageUrl!` จริง, `FutureBuilder<List<ProductsReviewViewRow>>` ห่อทั้งหน้าจริงตามที่คาด (ยอมรับความเสี่ยงนี้แล้วตาม D-43's plan) เนื้อหาเดิม (hero/title/price/description/seller/phone) ไม่กระทบเลย — มีข้อมูลจริงพร้อมทดสอบ (`products.id = 930b4539-396a-48b1-bc35-8462d0301a89` มีครบ 3 รูป) **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**
+
+รายละเอียด pattern ใหม่ (static vs conditional visibility) → `PATTERNS.md` **PT-26**

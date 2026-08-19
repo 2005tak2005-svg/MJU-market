@@ -757,3 +757,17 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/`:** bubble ซ้าย/ขวาถูกฝั่ง, `if (messageItem.hasMessage ?? true)`/`hasImage` แทน `== ''`, `Expanded(flex: 1, child: ...ListView...)`, `uploadSupabaseStorageFiles(bucketName: 'chat-images', ...)`, `FullImageViewerWidget(imageUrl: messageItem.imageUrl)` — **ทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด (bubble/ส่งรูป/ComposeBar ติดขอบล่าง/ดูรูปเต็ม)**
 
 รายละเอียด pattern ใหม่ → `PATTERNS.md` **PT-24**
+
+## D-42 — `ProductDetails` ไม่เคยโชว์รูปสินค้าเลย: static placeholder icon ไม่ใช่ Image widget (2026-08-19)
+
+**pete รายงาน:** เปิด `ProductDetails` แล้วรูปสินค้าไม่ขึ้น ไม่ว่าสินค้าไหน
+
+**ตรวจ 3 ชั้นตามกฎข้อ 9:** widget tree (`lib/flutterflow_project/pages/product_details.dart`) + `generated_code/lib/product_details/product_details_widget.dart` ยืนยันตรงกัน — `Container_g5bpqqbn` (ช่องรูป สูง 220) มีลูกเป็น `Icon(Icons.image)` **คงที่** เท่านั้น ไม่มี `Image`/`CachedNetworkImage` widget อยู่บนหน้านี้เลยสักจุด เป็นซากจาก template doctor-booking เดิมที่ `ensureReplaced` ตัวที่สร้างหน้านี้ (retired แล้ว, ดู D-27) ไม่เคยเปลี่ยนเป็นรูปจริง ไม่ใช่บั๊ก data/RLS — `products_review_view` มี `image_urls`/`first_image_url` (D-38) พร้อมใช้อยู่แล้ว
+
+**แก้:** เพิ่ม `has_image` (boolean, `image_urls IS NOT NULL AND array_length(...) > 0`) เข้า `products_review_view` แล้ว rebuild `ProductDetailsContent` (`ListView_26isq2qt`) ทั้ง itemBuilder ใหม่ผ่าน `ensureReplaced` (จำเป็นต้อง rebuild ทั้งก้อน ไม่ใช่ patch เฉพาะ `Container_g5bpqqbn` เพราะ `ItemRef()`/`item[]` ใช้นอก itemBuilder สดไม่ได้ ตาม PT-23 §1/D-41) คัดลอกทุก field เดิม (title/price/condition/category/description/seller/phone) มาจาก `generated_code` เป๊ะ เปลี่ยนแค่ช่องรูป: `Image(item['first_image_url'], fit: cover)` โชว์เมื่อ `has_image`, `Icon('image')` โชว์เมื่อ `!has_image` (คู่ `visible:`/`Not(...)` แบบเดียวกับ D-39) — **ตั้งใจไม่เดินตาม Home's `first_image_url!` (force-unwrap ตรง ๆ ไม่มี fallback, D-38) เพราะจะ crash จริงถ้าสินค้าไม่มีรูป (เคสนี้ Home เองก็ยังไม่เคยทดสอบ ดู STATUS.md คิว 6)** — ทำให้ `ProductDetails` ปลอดภัยกว่า `Home` ในจุดนี้แล้ว ยังไม่ได้ย้อนไปแก้ `Home` ให้เหมือนกัน (แยกงาน)
+
+**แยก 2 พุชตาม PT-17 §1/PT-24 §2:** พุชแรกลงทะเบียน `has_image` อย่างเดียว ยืนยันจาก `lib/flutterflow_project/schemas.dart` (`ProductsReviewViewFields.hasImage`) ก่อน แล้วพุชที่สองค่อยใช้ `item['has_image']` ใน `ensureReplaced`
+
+**กับดักที่เจอ:** DSL ไม่มี `Icons.xxx` (ใช้ `Icon('image', ...)`/`Icon('call', ...)` เป็น string name แทน) และไม่มี `Padding` เป็น widget แยก (`Container`'s `padding:` param ทำหน้าที่แทน) — สองอันนี้ compile error ทันทีตอน validate ไม่ใช่ runtime bug
+
+**ยืนยันจาก `generated_code/lib/product_details/product_details_widget.dart`:** `if (productRowItem.hasImage ?? true) CachedNetworkImage(imageUrl: productRowItem.firstImageUrl!, ...)` / `if (!productRowItem.hasImage!) Icon(Icons.image, ...)` ครบ ทุก field อื่น (title/price/condition/categoryName/description/sellerName/contactPhone) ยังผูกถูกเหมือนเดิมทุกจุด — **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**

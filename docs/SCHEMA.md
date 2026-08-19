@@ -294,7 +294,8 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     p.seller_id,
     pr.full_name AS seller_name,
     p.rejection_reason,
-    p.image_urls[1] AS first_image_url
+    p.image_urls[1] AS first_image_url,
+    (p.image_urls IS NOT NULL AND array_length(p.image_urls, 1) > 0) AS has_image
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id;
@@ -362,7 +363,9 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
 >
-> 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย (ยังไม่มี placeholder fallback)
+> 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
+>
+> 📌 `has_image` (เพิ่ม 2026-08-19, D-42) — boolean คำนวณจาก `image_urls IS NOT NULL AND array_length(...) > 0` ใช้เป็น `visible:` คู่กับ `Icon`/`Image` บน `ProductDetails` (`ProductDetailsContent`) กัน crash จากสินค้าไม่มีรูป — pattern เดียวกับ `chat_messages_view.has_message`/`has_image` (D-41) **ยังไม่ได้เอาไปใช้กับ `Home` grid**
 >
 > 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 

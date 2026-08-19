@@ -376,6 +376,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 >
 > 📌 `shuffle_key` (`random()`, เพิ่ม 2026-08-19, D-45) — สุ่มลำดับสินค้าบน `Home` (`ORDER BY shuffle_key` แทน `created_at`) ค่าไม่ persist เพราะ view ไม่ materialize จึง recompute ใหม่ทุก SELECT จริง ทำที่ SQL แทน client-side shuffle เพราะ `SetState` ของ `List<PostgresRow>` field รับค่าจาก custom function ไม่ได้ (D-45/PT-27) — ยังไม่ได้ทดสอบผ่านแอปจริง
 >
+> 📌 `products.title` มี **GIN trigram index** (`products_title_trgm_idx`, `pg_trgm` extension, เพิ่ม 2026-08-19, D-46) — รองรับ `ILIKE '%keyword%'` (substring search บน `Home`) ให้ใช้ index แทน full table scan เมื่อข้อมูลโตขึ้น อยู่บนตาราง `products` ไม่ใช่ view (`products_review_view.title` เป็น passthrough ตรง ๆ ใช้ index เดียวกันได้) สร้างด้วย `CREATE INDEX` ธรรมดา ไม่ใช้ `CONCURRENTLY` เพราะ migration tool รันใน transaction block
+>
 > 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**

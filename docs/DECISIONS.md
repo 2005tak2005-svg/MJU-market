@@ -829,3 +829,27 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/home/home_widget.dart`:** `RefreshIndicator` ครอบ grid จริง, `.order('shuffle_key', ascending: true)` ทุกจุด (onLoad/search/26 chip), `.ilike('title', _model.searchQuery)`, 26 `FFButtonWidget` ยังอยู่ครบ (เช็คกัน D-37's near-miss) — **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**
 
 รายละเอียด pattern ใหม่ (outputAs ต้องเปลี่ยนตาม orderBys, CustomFunction ใช้กับ list-typed SetState ไม่ได้) → `PATTERNS.md` **PT-27**
+
+## D-46 — `Home`: ปิดช่อง substring search + trigram index + พยายามทำ empty-state (ไม่สำเร็จ) (2026-08-19)
+
+**pete รายงาน:** พิมพ์คำค้นบางส่วน (ไม่ตรงชื่อเป๊ะ) แล้วไม่เจอสินค้าเลย — สอบถามเพิ่มว่า filter ทำงานไหม ยืนยันว่า filter ทำงานจริงแต่กรองจนเหลือ 0 (D-45's `iLike` ไม่มี `%...%` ห่อ) ขอให้แก้แบบกระทบ layer อื่นน้อยที่สุด พร้อม null-safety, trigram index, empty-state UI
+
+**🔴 พบบั๊กเพิ่มระหว่างสืบ:** `buildSearchRefreshChain` ใช้ร่วมกับ pull-to-refresh ด้วย ค่า default ของ `searchQuery` คือ `''` → `title ILIKE ''` แมตช์เฉพาะ title ที่เป็นสตริงว่างจริง (ไม่มีสินค้าไหนเป็นแบบนั้น) **แปลว่า pull-to-refresh ตอนไม่ได้ค้นหาอยู่จะโชว์ grid ว่างเปล่า** — บั๊กจริงใน D-45 ที่ pete ยังไม่ทันเจอ (ยังไม่ได้ทดสอบแอปจริง) แก้พร้อมกันในตัวเดียวกับ search fix
+
+**ค้นพบสำคัญ (แก้ทฤษฎีเดิมของ D-45):** ตอนแรกกลัวว่า custom function ใช้กับ `PostgresFilter.value` ไม่ได้เหมือน `SetState` ที่พัง — ตรวจ compiler source แล้วพบว่า `PostgresFilter.value` compile ผ่าน path ทั่วไป (`_compileValue`/`_compileVariable`, compiler.dart:8390/8585) คนละเส้นทางกับ "Update App State" (ที่ปฏิเสธ custom function สำหรับ `List<PostgresRow>` state field) — เส้นทางเดียวกับที่ `Snackbar`/`Text` ใช้ `CustomFunction(...)` สำเร็จอยู่แล้วในตัวอย่าง SDK เอง **ทดสอบจริงแล้วใช้ได้** — เพิ่ม custom function `wrapSearchPattern(keyword) => '%$keyword%'` (มี guard trim + คืน `%%` เมื่อว่าง) ผูกเป็น `value:` ของ `title` filter แทน `State('searchQuery')` ตรง ๆ
+
+**🔴 กับดักที่เจอระหว่างทำ (Dart nullability ของ custom function param):** `args: {'keyword': string}` ใน DSL ก็ยัง compile parameter เป็น **nullable** (`String? keyword`) ในโค้ดจริงเสมอ ไม่ว่า DSL type จะระบุยังไง (ยืนยันจาก `generated_code/lib/flutter_flow/custom_functions.dart`) — พุชแรกเขียน `keyword.trim()` ตรง ๆ ไม่มี null-check `flutterflow ai run` push ผ่านเฉย ๆ (แค่ validate FlutterFlow proto ไม่ได้ dart-compile ตัว custom code body) ถ้าปล่อยไว้จะพังตอน build แอปจริง จับได้จากการอ่าน `generated_code/` ก่อนถือว่าเสร็จ ไม่ใช่จาก push สำเร็จ แก้เป็น `(keyword ?? '').trim()` — ตรงกับกับดักเดิมที่เคยเจอกับ `getOtherUsers`/`senderLabel` (chatMessages section) เป๊ะ ใช้ `custom_code_helpers.updateCustomFunction` แก้ (ไม่ใช้ `app.customFunction` ซ้ำ เพราะ `ensureCustomFunction` throw ถ้า payload ต่างจากที่ deploy ไปแล้ว)
+
+**Trigram index:** `CREATE EXTENSION pg_trgm` + `CREATE INDEX ... USING gin (title gin_trgm_ops)` บน `products` (ตาราง ไม่ใช่ view) — ใช้ `CREATE INDEX` ธรรมดา ไม่ใช้ `CONCURRENTLY` เพราะ migration tool รันใน transaction block (`CONCURRENTLY` รันในนั้นไม่ได้) ข้อมูลตอนนี้มีไม่กี่แถวเลยล็อกสั้น ๆ ไม่กระทบ
+
+**🔴 Empty-state UI — ลองแล้วไม่สำเร็จ ถอนออกทั้งหมด:** ลอง 2 วิธี ทั้งคู่ถูกปฏิเสธฝั่ง backend โดยไม่มี local validator เตือนล่วงหน้าเลย:
+1. Raw-proto: จำลอง shape เดียวกับที่ compiler สร้างให้ `Equals(...)` เอง (`FFVariable(source: FUNCTION_CALL, functionCall: FFFunctionCall(condition: FFCondition(relation: EQUAL_TO), ...))`) เทียบ `listLength(productsList)` กับ `0` ผูกเป็น `visible:` — compile ผ่าน push ผ่าน แต่ error "Condition configuration is invalid"
+2. Custom function: เพิ่ม state `hasNoResults` (bool) + custom function `isProductListEmpty(items) => items.isEmpty` เรียกคู่กับทุกจุดที่ set `productsList` — พังด้วย error เดียวกับที่ D-45 เจอกับ `productsList` เป๊ะ ("update value is not properly set") **ทั้งที่ target เป็น `bool` ไม่ใช่ `List<PostgresRow>`** — ล้มทฤษฎีเดิมของ D-45 ที่คิดว่าปัญหาอยู่ที่ type ของ field ปลายทาง
+
+**สรุปทฤษฎีใหม่ (ยังไม่ยืนยัน 100%):** custom function ที่รับ `List<PostgresRow>` ActionOutput เป็น argument จะถูกปฏิเสธทุกครั้งที่ผลลัพธ์ไปจบที่ SetState ไม่ว่า function จะ return type อะไรหรือ SetState ไป field ไหน (`wrapSearchPattern` รอดเพราะ argument เป็น `State('searchQuery')` ธรรมดา ไม่ใช่ list) — **ถอน `hasNoResults`/`isProductListEmpty`/`EmptySearchState` ออกทั้งหมด ไม่ทิ้งครึ่ง ๆ กลาง ๆ ไว้** ยืนยันจาก `generated_code/`: ทั้งสองชื่อไม่เหลือเลย, search fix + shuffle_key + 26 ปุ่ม + RefreshIndicator ยังอยู่ครบเหมือนเดิม
+
+**ทางที่ยังไม่ลอง (ถ้าจะกลับมาทำ):** scaffold-level `databaseRequest` + `nodeKeyRef` แบบ `ProfileUser`/PT-14/PT-26 (`hideOnEmpty`/`EXISTS_AND_NON_EMPTY` พิสูจน์แล้วว่าใช้ได้จริงกับ query แบบนั้น) แต่เป็นกลไกคนละแบบกับ action-chain query ที่ `Home` ใช้อยู่ตอนนี้ทั้งหน้า — ถือว่าเปลี่ยนโครงสร้างใหญ่เกินไปสำหรับ UX nicety ไม่ใช่บั๊กที่ต้องรีบปิด
+
+**ยืนยันจาก `generated_code/lib/home/home_widget.dart`:** `.ilike('title', functions.wrapSearchPattern(_model.searchQuery))` ทั้ง search-submit และ pull-to-refresh, `shuffle_key` 29 จุดเหมือนเดิม, 26 `FFButtonWidget` + `RefreshIndicator` ยังอยู่ครบ — **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**
+
+รายละเอียด pattern ใหม่ (custom function ใช้กับ `PostgresFilter.value` ได้จริง, custom function param เป็น nullable เสมอ, empty-state ผ่าน list-based condition ยังทำไม่ได้) → `PATTERNS.md` **PT-27** (ต่อท้าย)

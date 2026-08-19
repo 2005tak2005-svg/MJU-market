@@ -771,3 +771,21 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **กับดักที่เจอ:** DSL ไม่มี `Icons.xxx` (ใช้ `Icon('image', ...)`/`Icon('call', ...)` เป็น string name แทน) และไม่มี `Padding` เป็น widget แยก (`Container`'s `padding:` param ทำหน้าที่แทน) — สองอันนี้ compile error ทันทีตอน validate ไม่ใช่ runtime bug
 
 **ยืนยันจาก `generated_code/lib/product_details/product_details_widget.dart`:** `if (productRowItem.hasImage ?? true) CachedNetworkImage(imageUrl: productRowItem.firstImageUrl!, ...)` / `if (!productRowItem.hasImage!) Icon(Icons.image, ...)` ครบ ทุก field อื่น (title/price/condition/categoryName/description/sellerName/contactPhone) ยังผูกถูกเหมือนเดิมทุกจุด — **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**
+
+## D-43 — multi-photo carousel + tap-to-view บน `ProductDetails`: ทำไม่สำเร็จ พบขีดจำกัดจริงของ SDK 3 ข้อ (2026-08-19)
+
+**pete ขอ:** ถ้าประกาศมีรูปมากกว่า 1 ให้ทำ carousel เลื่อนดูรูปที่เหลือ + แตะรูปแล้วเปิด popup ดูรูปเต็ม
+
+**เตรียมฝั่ง Supabase สำเร็จ:** เพิ่ม `second_image_url`/`third_image_url`/`has_second_image`/`has_third_image` เข้า `products_review_view` (pattern เดียวกับ `first_image_url`/`has_image`, D-38/D-42) — `image_urls` จำกัดที่ 3 รูปอยู่แล้ว (L2 CHECK) จึงใช้ named column แทนการวน array (DSL ไม่มี list-index/iterate operator, D-38)
+
+**ฝั่ง FlutterFlow ทำไม่สำเร็จ — พบขีดจำกัดจริง 3 ข้อ จากการทดสอบแยกทีละตัวแปรกว่า 20 พุช (ทุกข้อ isolate แล้วจริง ไม่ใช่เดา):**
+
+1. **`item['field']` ส่งเป็น param/value ของ action ไม่ได้เลย** ไม่ว่า action ไหน (`Navigate`, `ShowDialog.component`, `ShowBottomSheet`, `SetState`) แม้โครงสร้างจะเหมือนโค้ดที่ใช้งานได้จริงอยู่แล้วเป๊ะ (`MyPostsList`'s `onTap: Navigate(ff.Pages.productDetails, params: {'productId': item['id']})`) — error เดิมทุกครั้ง: `Parameter X ... not properly set` + `Generator variable does not exist` ลามไปทุก node ที่เหลือใน itemBuilder เดียวกัน (แม้ node ที่ไม่เกี่ยวกับรูปเลยก็โดน) จุดนี้ทำให้ **tap-to-view-full-image ทำไม่ได้เลยในหน้านี้** ด้วยกลไกใดๆ ที่ลองมา
+2. **`item[]` ผ่าน Dart helper function ไม่ได้** — ฟังก์ชันแบบ `Container photoSlot(DslExpression url, ...) => Container(...)` เรียกด้วย `photoSlot(item['x'], ...)` จาก itemBuilder พังทันทีแม้ไม่มี action เลย (แค่ property ธรรมดา) ต้อง inline ทุกอย่างตรงจุดเรียกเท่านั้น — ขยาย PT-23 §1 ให้ครอบคลุมมากกว่าแค่ ensureInsertedAfter/action
+3. **🔴 ตัวบล็อกจริง: มี `Image` widget ที่ผูกกับ `item[]` ได้แค่ 1 ตัวต่อ itemBuilder** — ลองใส่ `Image` ตัวที่ 2 (คนละ field/field เดียวกันก็ได้) ทั้งในและนอก `Row`, มี/ไม่มี `visible:`, ตั้ง `name:` ไม่ซ้ำแล้วก็ยังพัง error เดิมทุกครั้ง ไม่พบวิธีแก้ในขอบเขต itemBuilder เดียวกันเลย
+
+**ผลลัพธ์ที่ push จริง:** เก็บแค่รูปเดียว (hero image, `first_image_url`/`has_image`) จาก D-42 ไว้เหมือนเดิม ไม่มี carousel ไม่มี tap-to-view — คอลัมน์ `second_image_url`/`third_image_url`/`has_second/has_third_image` ที่เตรียมไว้ยังอยู่ใน view เฉยๆ ยังไม่ได้ใช้
+
+**ถ้าจะกลับมาทำต่อ:** ต้องเลี่ยง item-scope-in-list ทั้งหมด — แนวทางที่น่าจะได้ผล: bind รูปที่ 2/3 + ค่าที่ actions ต้องใช้ผ่าน **scaffold-level `databaseRequest` + `nodeKeyRef`** (raw proto, เทคนิคเดียวกับ `ProfileUser`/PT-14 — เป็น scalar field access จริง ไม่ใช่ list/generator variable) แทนการเพิ่ม `Image`/action ตัวที่ 2 เข้าไปใน `ListView`'s itemBuilder
+
+รายละเอียด pattern ใหม่ → `PATTERNS.md` **PT-25**

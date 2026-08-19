@@ -299,7 +299,8 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     p.image_urls[2] AS second_image_url,
     (p.image_urls[2] IS NOT NULL) AS has_second_image,
     p.image_urls[3] AS third_image_url,
-    (p.image_urls[3] IS NOT NULL) AS has_third_image
+    (p.image_urls[3] IS NOT NULL) AS has_third_image,
+    random() AS shuffle_key
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id;
@@ -372,6 +373,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `has_image` (เพิ่ม 2026-08-19, D-42) — boolean คำนวณจาก `image_urls IS NOT NULL AND array_length(...) > 0` ใช้เป็น `visible:` คู่กับ `Icon`/`Image` บน `ProductDetails` (`ProductDetailsContent`) กัน crash จากสินค้าไม่มีรูป — pattern เดียวกับ `chat_messages_view.has_message`/`has_image` (D-41) **ยังไม่ได้เอาไปใช้กับ `Home` grid**
 >
 > 📌 `second_image_url`/`third_image_url`/`has_second_image`/`has_third_image` (เพิ่ม 2026-08-19, D-43) — ตั้งใจทำไว้สำหรับรูปที่ 2/3 บน `ProductDetails`; D-43's `ListView`/`item[]` approach ทำไม่สำเร็จ (SDK จำกัดไว้ที่ 1 `Image` widget ต่อ itemBuilder) แต่ **ใช้สำเร็จแล้วผ่าน scaffold-level `databaseRequest`+`nodeKeyRef` แทน (D-44/PT-26)** — ยังไม่ได้ทดสอบผ่านแอปจริง
+>
+> 📌 `shuffle_key` (`random()`, เพิ่ม 2026-08-19, D-45) — สุ่มลำดับสินค้าบน `Home` (`ORDER BY shuffle_key` แทน `created_at`) ค่าไม่ persist เพราะ view ไม่ materialize จึง recompute ใหม่ทุก SELECT จริง ทำที่ SQL แทน client-side shuffle เพราะ `SetState` ของ `List<PostgresRow>` field รับค่าจาก custom function ไม่ได้ (D-45/PT-27) — ยังไม่ได้ทดสอบผ่านแอปจริง
 >
 > 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 

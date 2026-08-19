@@ -853,3 +853,13 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/home/home_widget.dart`:** `.ilike('title', functions.wrapSearchPattern(_model.searchQuery))` ทั้ง search-submit และ pull-to-refresh, `shuffle_key` 29 จุดเหมือนเดิม, 26 `FFButtonWidget` + `RefreshIndicator` ยังอยู่ครบ — **ยังไม่ได้ให้ pete ทดสอบผ่านแอปจริง**
 
 รายละเอียด pattern ใหม่ (custom function ใช้กับ `PostgresFilter.value` ได้จริง, custom function param เป็น nullable เสมอ, empty-state ผ่าน list-based condition ยังทำไม่ได้) → `PATTERNS.md` **PT-27** (ต่อท้าย)
+
+## D-47 — 🔴 `shuffleProducts` custom function ค้าง orphan บนโปรเจกต์จริง ทำ custom_functions.dart ทั้งไฟล์ compile ไม่ผ่าน (2026-08-19)
+
+**pete รายงาน:** เปิด FlutterFlow editor เจอ error 2 จุด — เปิด `getOtherUsers` (ฟังก์ชันเก่าจาก L4, ไม่ได้แตะเลยวันนี้) ก็ error, เปิด `shuffleProducts` ก็ error คนละข้อความ (แนบสกรีนช็อตทั้งคู่)
+
+**ต้นเหตุจริง:** ตอน D-45 ย้ายจาก client-side shuffle ไปใช้ `shuffle_key` (SQL) ลบแค่บรรทัด `app.customFunction('shuffleProducts', ...)` ออกจากสคริปต์ — **แต่การไม่ declare ซ้ำ ไม่เท่ากับลบออกจากโปรเจกต์จริง** ต้องเรียก `app.removeCustomFunction(...)` อย่างชัดเจนเท่านั้นถึงจะลบ (ไม่เคยเรียก) `shuffleProducts` เลยค้างอยู่บนโปรเจกต์จริงพร้อม signature ที่ผิดเพี้ยน: `ProductsReviewViewRow? shuffleProducts(ProductsReviewViewRow? items)` (ทั้ง arg และ return ไม่ถูกตั้งเป็น list ทั้งที่สคริปต์ตอนประกาศระบุ `listOf(...)` ทั้งคู่) แต่ body ยังทำ `List<ProductsReviewViewRow>.from(items)..shuffle()` (ปฏิบัติกับ `items` เหมือนเป็น Iterable) — type mismatch จริง compile ไม่ผ่าน `flutterflow ai run` ไม่เคยจับได้เพราะ validate แค่ FlutterFlow proto ไม่ dart-compile ตัว custom code (กับดักเดียวกับที่เจอกับ `wrapSearchPattern`'s nullable param, D-46) เพราะ custom function **ทุกตัวในโปรเจกต์ compile รวมเป็นไฟล์เดียว** (`custom_functions.dart`) ฟังก์ชันเสียตัวเดียวทำทั้งไฟล์พังหมด แสดง error แม้เปิดฟังก์ชันอื่นที่ไม่เกี่ยวข้องเลย (`getOtherUsers`)
+
+**แก้:** `app.removeCustomFunction('shuffleProducts')` แล้ว push ยืนยันจาก `generated_code/lib/flutter_flow/custom_functions.dart`: `shuffleProducts` หายไปจริง เหลือ 6 ฟังก์ชัน (`mapProductCondition`/`parseProductPrice`/`parseCategoryId`/`senderLabel`/`getOtherUsers`/`wrapSearchPattern`) signature สะอาดทุกตัว ไม่กระทบ `Home`'s shuffle/search/26 chip/RefreshIndicator เลย (คนละกลไก, `shuffle_key` เป็น SQL ไม่ผ่าน custom function อยู่แล้ว)
+
+**บทเรียน:** เลิก declare custom function/entity อื่นในสคริปต์ **ไม่ได้แปลว่าลบออกจากโปรเจกต์จริง** ถ้าตั้งใจเลิกใช้ ต้อง `app.removeCustomFunction`/`removePage`/`removeComponent`/ฯลฯ ให้ตรงชนิด explicit เสมอ ไม่งั้นเหลือ orphan ค้างที่อาจพังทั้งไฟล์ร่วม (กรณี custom function ร้ายแรงกว่า widget เดี่ยว ๆ เพราะ compile รวมไฟล์เดียวกันทั้งโปรเจกต์)

@@ -895,3 +895,15 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/`:** ทั้ง `notifications_widget.dart`/`reports_feedback_widget.dart` มี `queryRows` + reassign `_model.notifications`/`_model.reports` ต่อท้าย mark-read แล้วก่อน `safeSetState` — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
 
 **เหมือน `chatList`:** refetch fire ทันทีตอนแตะ (ไม่ใช่ตอนกลับมาหน้าเดิม) เพราะ `context.pushNamed` ไม่ await — ใช้ได้เพราะ mark-read await เสร็จก่อนหน้านั้นแล้ว. `last_message`/content staleness จาก data ที่เปลี่ยนระหว่างอยู่หน้าอื่นยังไม่แก้ (ไม่มี pull-to-refresh บน 2 หน้านี้ ต่างจาก `chatList`) — ยังไม่มีคนขอ
+
+---
+
+## D-50 — `Home` เพิ่มปุ่ม "ค้นหา" ให้กด submit ได้จริง (2026-08-20)
+
+**pete รายงาน:** ช่องค้นหาไม่มีปุ่มให้กด submit เลย — ที่ผ่านมา (D-45–D-48) query จะยิงก็ต่อเมื่อกด IME "search"/"done" บนคีย์บอร์ดเท่านั้น (`ON_TEXTFIELD_SUBMIT`) ไม่มีปุ่มที่มองเห็น/แตะได้บนหน้าจอเลย
+
+**แก้:** เพิ่ม `Button` ชื่อ `SearchSubmitButton` (key จริง `Button_ym795py5`) เป็น sibling ต่อจาก `TextField_muyt5648` โดยตรง (ไม่แตะ/re-author ช่องค้นหาเดิมเลย) — onTap เรียก `buildSearchRefreshChain(...)` ฟังก์ชันเดียวกับที่ผูกกับ `ON_TEXTFIELD_SUBMIT`/pull-to-refresh อยู่แล้ว คนละ `outputAs` (`searchSubmitButtonExact...`) กันชนกับ 2 จุดเดิม (บทเรียนจาก D-38/Mypost status chip: reuse `outputAs` ข้าม widget compile ไม่ผ่าน)
+
+**เทคนิค:** `page.ensureInsertedAfter` (one-shot, ไม่ rerun-safe ตาม PT-16) ต่อ push แล้ว retire call ออกจากสคริปต์ทันทีหลังยืนยัน key จริงจาก `lib/flutterflow_project/pages/home.dart` — ยืนยันจาก `generated_code/`: `FFButtonWidget` "ค้นหา" ต่อท้าย search field จริง เรียก query/If/SetState shape เดียวกับปุ่ม submit เดิม ไม่มี outputAs ชนกัน
+
+**ยังไม่ได้ทดสอบผ่านแอปจริง**

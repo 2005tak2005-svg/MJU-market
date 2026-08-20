@@ -1,7 +1,7 @@
 # Layer 3 — Browse / Search / Filter
 
 > schema → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L3.sql`
-> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · ค้นหา (title, **exact match** — substring D-46 ใช้จริงไม่ได้ ถอนแล้ว D-48) + สุ่มลำดับสินค้า (`shuffle_key`) + pull-to-refresh เพิ่มแล้ว (D-45/D-48) ยังไม่มีช่วงราคา, ยังไม่มี empty-state UI (ลองแล้วไม่สำเร็จ D-46), ยังไม่ทดสอบผ่าน Live Test Mode ซ้ำหลัง D-48 — ดู `STATUS.md` คิวถัดไป
+> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · ค้นหา (title, **exact match** — substring D-46 ใช้จริงไม่ได้ ถอนแล้ว D-48) + ปุ่ม "ค้นหา" ให้กด submit ได้จริงแล้ว (D-50, เดิมมีแค่ IME submit) + สุ่มลำดับสินค้า (`shuffle_key`) + pull-to-refresh เพิ่มแล้ว (D-45/D-48) ยังไม่มีช่วงราคา, ยังไม่มี empty-state UI (ลองแล้วไม่สำเร็จ D-46), ยังไม่ทดสอบผ่านแอปจริง — ดู `STATUS.md` คิวถัดไป
 
 ## 🎯 เป้าหมาย
 
@@ -21,7 +21,7 @@
 
 **`Home` — ทำแล้ว (D-45/D-48):**
 
-- Search bar (`SearchField`) → Page State `searchQuery`, query ตอน submit เท่านั้น (ไม่ query ทุก keystroke)
+- Search bar (`SearchField`) → Page State `searchQuery`, query ตอน submit เท่านั้น (ไม่ query ทุก keystroke) — submit ได้ 2 ทาง: กด IME "search"/"done" บนคีย์บอร์ด (เดิม) **หรือปุ่ม "ค้นหา" ที่เพิ่ม (D-50, 2026-08-20)** ต่อจาก `SearchField` ใช้ query chain เดียวกันเป๊ะ (`buildSearchRefreshChain`)
 - 🔴 **ค้นหาเป็น exact match เท่านั้น (D-48, ถอยจาก D-46's substring)** — `equalTo` เป็น relation เดียวที่ null-safe จริง (`iLike`/`like`/`contains` ไม่มี `...OrNull` variant เลย ผูกกับค่าไดนามิกแล้วได้ `dart analyze` error จริงตอน Live Test Mode) ดู D-48/PT-27 ข้อ 6
 - "ค้นหาว่าง = โชว์ทุกอย่าง" ทำผ่าน `If(Equals(searchQuery, ''), then: [query ไม่มี title filter], orElse: [มี filter])` แทน trick `iLike('')` เดิมที่ใช้ไม่ได้แล้ว (D-48/PT-27 ข้อ 7)
 - Category chip (เดิม, D-37/D-38/D-39) กับ search เป็นคนละแกน กดอันหนึ่งล้างอีกอันทิ้ง

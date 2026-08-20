@@ -1,7 +1,7 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList`+`chatMessages` ใช้งานได้จริง ทดสอบผ่านแอปจริงแล้ว (D-40/D-41, 2026-08-18) — ส่งข้อความ+รูปได้, bubble UI สองฝั่ง, ดูรูปเต็มได้ — เหลือ Realtime; จุดแดง unread stale-state แก้แล้วทั้ง 3 หน้า (D-49) ยังไม่ทดสอบผ่านแอปจริง**
+> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList`+`chatMessages` ใช้งานได้จริง ทดสอบผ่านแอปจริงแล้ว (D-40/D-41, 2026-08-18) — ส่งข้อความ+รูปได้, bubble UI สองฝั่ง, ดูรูปเต็มได้, ปุ่ม "แชทกับผู้ขาย"/"รายงาน" ซ่อนจากเจ้าของประกาศเองแล้ว (D-51) — เหลือ Realtime; จุดแดง unread stale-state แก้แล้วทั้ง 3 หน้า (D-49); D-51 ยังไม่ทดสอบผ่านแอปจริง**
 > ปิดได้เมื่อ: (1) Realtime ทำงาน (2) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
 
 ## 🎯 เป้าหมาย
@@ -18,7 +18,7 @@
 
 - **`chatList`** (หน้าที่ pete สร้าง mock ไว้ก่อน) ผูก `chat_summary` แบบไม่มี filter (RLS กรองให้แล้ว ไม่ต้อง array-contains) → `getOtherUsers` (PT-06) ตัดชื่อตัวเองออกจากหัวข้อแถว → แตะแถว Navigate ไป `chatMessages` พร้อม `chatId`/`memberNames`/`userIds`
 - **`chatMessages`** (หน้าใหม่) — โหลด/ส่งข้อความข้อความล้วนได้จริง ผูก `chat_messages_view` (ไม่ใช่ table ตรง ๆ) เรียง `created_at` ascending ส่งข้อความผ่าน `PostgresCreate` + refetch มือ (ไม่มี Realtime)
-- **ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`** — custom action `findOrCreateChatWithSeller` หา `seller_id` จาก `productId` เอง (ไม่ใช้ query builder) แล้วเรียก RPC — ปุ่มแสดงเสมอ (ซ่อนไม่ได้ตอนดูประกาศตัวเอง เพราะเข้าถึง `seller_id` แบบ item-scoped จากนอก itemBuilder ไม่ได้ — ดู PT-23) การกดใน้อ่านเงียบถ้าเป็นเจ้าของประกาศเอง (RPC คืน 0)
+- **ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`** — custom action `findOrCreateChatWithSeller` หา `seller_id` จาก `productId` เอง (ไม่ใช้ query builder) แล้วเรียก RPC — **ซ่อนจากเจ้าของประกาศเองแล้ว (D-51, 2026-08-20)** เดิมเข้าใจผิดว่าติด item-scope (PT-23) ตัวจริงคือไม่เคยมี `seller_id` ระดับหน้าให้ผูกมาก่อน D-44 เพิ่ม page-scoped query ไว้ (ใช้กับรูป 2/3) เลยต่อยอดผูก `visible:` ได้เลย
 - **ปุ่ม "ติดต่อแอดมิน" บน `ProductDetails`** (D-30, 2026-08-16) — เดิม mock (D-26) ต่อเข้าระบบแชทจริงแล้ว ผ่าน RPC ใหม่ `find_or_create_chat_with_admin` (หาแอดมินคนแรกสุดตาม `created_at` เอง เพราะ RLS ของ `"Profile"` ไม่ให้ user ธรรมดาเห็นแถวแอดมิน) — ส่งไปหาแอดมิน**คนเดียว** ไม่ใช่กลุ่ม
 - **ปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin`** (D-30) — Navigate ไป `chatList` ให้แอดมินเข้าไปอ่าน/ตอบได้
 - **จุดแดง glow บอกยังไม่อ่านใน `chatList`** (D-31, 2026-08-17) — `chat_summary.is_unread` (คำนวณต่อ `auth.uid()`) หายไปหลังแตะ (`mark_chat_read` RPC อัปเดต `chat_user.last_read_at` ของตัวเอง)
@@ -39,7 +39,7 @@
 1. **Realtime บน `chat_message`** — ยืนยันแล้วว่าไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (`ui-checker` grep `generated_code/lib/` ทั้งต้นไม้หา `.stream(`/`StreamBuilder`/`SupabaseStreamBuilder` เจอ 0 จุด, D-32) Supabase publication เปิดไว้แล้ว แต่ฝั่ง FF DSL ไม่มี subscribe เลย ตอนนี้ใช้ manual refetch หลังส่งข้อความแทน
 2. ~~🔴 จุดแดง unread (D-31) ไม่หายทันทีตอนกลับมาหน้าเดิม~~ — **แก้ครบ 3 หน้าแล้ว (D-49, 2026-08-20)** ทั้ง `chatList`/`Notifications`/`ReportsFeedback` ต่อ refetch+SetState ท้าย ON_TAP chain เดิมแล้ว (raw proto ต่อท้าย Navigate node) ยืนยันจาก `generated_code/` ครบ 3 ไฟล์ — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
 3. **ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`** — ทางเข้าห้องแชทจาก `ProductDetails` ตอนนี้หัวข้อ/ชื่อผู้ส่งจะว่างเปล่าจนกว่าจะเปิดห้องเดิมซ้ำผ่าน `chatList` (ที่มี array จริงจาก `chat_summary`) — สาเหตุคือ PT-23 ข้อ 1 (ItemRef นอก scope) รวมกับไม่มี list literal (PT-23 ข้อ 7) ทางแก้ที่เป็นไปได้: ให้ `chatMessages` โหลด `chat_summary` เพิ่มเองตอน onLoad ด้วย `chatId` แทนพึ่ง param (ยังไม่ได้ลองเพราะ PT-10 เคยเจอปัญหา index list-state นอก ListView)
-4. **ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง** — เหตุผลเดียวกับข้อ 3 (ไม่มี `seller_id` แบบ item-scoped นอก itemBuilder) กดได้แต่ RPC คืน 0 เงียบ ๆ ไม่มี feedback ใด ๆ
+4. ~~ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง~~ — **แก้แล้ว (D-51, 2026-08-20)** ต่อยอด D-44's page-scoped `seller_id` query ผูก `visible:` ให้ทั้งปุ่มแชทและปุ่มรายงาน (`IconButton_k689spgx`) ยืนยันจาก `generated_code/` ว่าคอมไพล์เป็น conditional จริง — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 5. **การส่งข้อความยังไม่มี error feedback จริง** — ใช้ `PostgresCreate` ตรง ๆ (ไม่มี `onSuccess`/`onFailure`, PT-18) ส่งไม่สำเร็จ (เช่น เน็ตหลุด) จะเงียบ ไม่มี snackbar เตือน
 
 ## 🧪 Definition of Done

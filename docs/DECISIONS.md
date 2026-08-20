@@ -907,3 +907,17 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **เทคนิค:** `page.ensureInsertedAfter` (one-shot, ไม่ rerun-safe ตาม PT-16) ต่อ push แล้ว retire call ออกจากสคริปต์ทันทีหลังยืนยัน key จริงจาก `lib/flutterflow_project/pages/home.dart` — ยืนยันจาก `generated_code/`: `FFButtonWidget` "ค้นหา" ต่อท้าย search field จริง เรียก query/If/SetState shape เดียวกับปุ่ม submit เดิม ไม่มี outputAs ชนกัน
 
 **ยังไม่ได้ทดสอบผ่านแอปจริง**
+
+---
+
+## D-51 — `ProductDetails` ซ่อนปุ่ม "รายงาน"/"แชทกับผู้ขาย" จากเจ้าของประกาศเอง (2026-08-20)
+
+**pete สั่ง:** ตอนเข้าดู `ProductDetails` ของประกาศตัวเอง (เช่นจาก `MyPost`) ให้ซ่อน `IconButton_k689spgx` (ปุ่มรายงาน, AppBar action) กับ `Button_p7zb7whe` (ปุ่ม "แชทกับผู้ขาย")
+
+**เคยติดเป็นหนี้ (D-32 ข้อ 4):** บันทึกเดิมเข้าใจผิดว่าติดปัญหา ItemRef/generator scope เหมือน PT-23 — ตรวจ `lib/flutterflow_project/pages/product_details.dart` จริงแล้วพบว่า **ทั้งสองปุ่มเป็น sibling ระดับหน้าตรง ๆ** (`Button_p7zb7whe` อยู่ใต้ body Column โดยตรง, `IconButton_k689spgx` อยู่ใน AppBar actions) ไม่ได้อยู่ใน itemBuilder เลย — ตัวบล็อกจริงคือ **ไม่เคยมี `seller_id` ระดับหน้าให้ผูกมาก่อน** จนกระทั่ง D-44 เพิ่ม page-scoped `databaseRequest` (ผูกกับ `Scaffold_amt0m1za`, filter `id = productId`) ไว้ใช้กับรูปที่ 2/3 อยู่แล้ว — งานนี้แค่ต่อยอด query เดิม ไม่เพิ่ม query ใหม่
+
+**แก้:** raw proto ล้วน (`isNotOwner()` function คืน `FFVariable` ใหม่ทุกครั้งที่เรียก — protobuf message ผูกกับ parent ได้แค่ที่เดียว แชร์ instance เดียวกัน 2 จุดไม่ได้) hand-replicate shape ที่ compiler สร้างจาก `Not(Equals(...))` จริง (`FUNCTION_CALL` + `FFCondition(EQUAL_TO)` เทียบ 2 `FFValue` แล้วต่อ `FFVariableOperation(negate: ...)`) เพราะ typed `Equals()`/`Not()` รับแค่ `State`/`Param`/`AuthUser` ไม่รับ raw page-scoped `FFVariable` แบบ `productField('seller_id')` — เทียบกับ `SUPABASE_AUTH_USER`/`USER_ID` (shape เดียวกับที่ใช้ผูก storage path มาก่อนแล้วในไฟล์นี้) ผูกเป็น `visible:` ให้ทั้ง 2 widget ผ่าน `node.props.ensureVisibility()`
+
+**ยืนยันจาก `generated_code/lib/product_details/product_details_widget.dart`:** ปุ่มรายงานคอมไพล์เป็น `Visibility(visible: !(...sellerId == currentUserUid), ...)`, ปุ่มแชทคอมไพล์เป็น `if (!(...sellerId == currentUserUid)) FFButtonWidget(...)` — เป็น conditional จริง ไม่ใช่ static-visible:false ที่เคยพังใน D-43/D-44 push แรก
+
+**ยังไม่ได้ทดสอบผ่านแอปจริง** (โดยเฉพาะกรณี `seller_id` เป็น NULL — LEFT JOIN ของ `products_review_view` — คาดว่าจะโชว์ปุ่มตามปกติเพราะ `NULL == uid` เป็น false, `Not(false)` เป็น true แต่ยังไม่เคยมีเคสจริงให้ยืนยัน)

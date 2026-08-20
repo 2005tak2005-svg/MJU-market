@@ -879,3 +879,19 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/home/home_widget.dart`:** ไม่มี `.ilike(` เหลือเลยทั้งไฟล์, ทุก filter ใช้ `.eqOrNull(` หมด, if/else 2 กิ่งคอมไพล์ถูกทั้ง search-submit และ pull-to-refresh, `shuffle_key`/26 ปุ่ม/`RefreshIndicator` ไม่กระทบ, `custom_functions.dart` เหลือ 5 ฟังก์ชันสะอาด (`wrapSearchPattern`/`shuffleProducts`/`isProductListEmpty` หายหมดแล้ว) — **ยังไม่ได้ให้ pete รัน Live Test Mode ซ้ำเพื่อยืนยันว่า analyzer error หายจริง**
 
 รายละเอียด pattern ใหม่ (ทุก page-state field เป็น nullable เสมอ, `equalTo` เท่านั้นที่ null-safe, `If` คือ typed conditional action ตัวจริง) → `PATTERNS.md` **PT-27** ข้อ 6
+
+---
+
+## D-49 — จุดแดง unread ค้าง (D-32): แก้ครบ 3 หน้าแล้ว — `Notifications`/`ReportsFeedback` ยังขาด refetch ที่ `chatList` มีอยู่ก่อนแล้ว (2026-08-20)
+
+**พบว่า `chatList` แก้ไปแล้วจริงตั้งแต่ก่อนหน้านี้** (raw-proto refetch tail ต่อท้าย Navigate node, ยืนยันจาก `dsl/edit.dart` — งานนี้แค่ verify ผ่าน `generated_code`) แต่ `STATUS.md`/`L4-chat.md` ยังเขียนว่าเป็นหนี้ค้างอยู่ — เอกสารตกหล่นไม่ได้อัปเดตตามโค้ดที่ push แล้วจริง
+
+**`Notifications`/`ReportsFeedback` ยังไม่เคยแก้จริง:** onTap เดิม update DB (`is_read`) ถูกต้อง แต่ไม่ refetch list state ของหน้าตัวเอง (`_model.notifications`/`_model.reports`) เลย — `safeSetState()` rebuild ด้วยข้อมูลเดิม จุดแดงเลยไม่หายจนกว่าหน้าจะถูกสร้างใหม่จริง (สลับ tab)
+
+**แก้:** เทคนิคเดียวกับ `chatList` เป๊ะ — เดิน raw proto ไปหา Navigate node ท้ายสุดของ ON_TAP chain เดิม (ไม่แตะของเดิมเพราะมี generator-variable reference จาก itemBuilder scope) แล้วต่อท้ายด้วย tail ที่ compile ผ่าน `compileDslActionSequenceForExistingWidgetClass` (PostgresQuery + SetState) — `Notifications` chain ตื้นกว่า `chatList`/`ReportsFeedback` 1 ชั้น (root = update action ตรง ๆ ไม่มี pendingId SetState คั่น)
+
+**เจอบั๊กเดิมค้าง ระหว่างแก้:** `dsl/edit.dart` มี `app.removeCustomFunction('wrapSearchPattern')` (จาก D-48) ที่ตาม comment บอกว่า "สำเร็จแล้วและ retire แล้ว" แต่บรรทัดเรียกจริงยังไม่ถูกลบ — push ครั้งนี้ค้าง `CustomCodeNotFoundError` เพราะ remove ไม่ idempotent (D-27) ลบบรรทัดออกแล้ว push ผ่าน
+
+**ยืนยันจาก `generated_code/`:** ทั้ง `notifications_widget.dart`/`reports_feedback_widget.dart` มี `queryRows` + reassign `_model.notifications`/`_model.reports` ต่อท้าย mark-read แล้วก่อน `safeSetState` — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+**เหมือน `chatList`:** refetch fire ทันทีตอนแตะ (ไม่ใช่ตอนกลับมาหน้าเดิม) เพราะ `context.pushNamed` ไม่ await — ใช้ได้เพราะ mark-read await เสร็จก่อนหน้านั้นแล้ว. `last_message`/content staleness จาก data ที่เปลี่ยนระหว่างอยู่หน้าอื่นยังไม่แก้ (ไม่มี pull-to-refresh บน 2 หน้านี้ ต่างจาก `chatList`) — ยังไม่มีคนขอ

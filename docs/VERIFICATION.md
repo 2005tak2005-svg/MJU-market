@@ -259,3 +259,38 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 ⚠️ **3 object แต่ `avatar_url` ชี้แค่ 1** → เหลือ **ไฟล์กำพร้า 2 ไฟล์** ตรงกับหนี้ที่รับไว้แล้วใน **D-15** (เปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ) ไม่ใช่เคสใหม่
 
 **ยังไม่ได้ทดสอบหลัง D-21:** สมัครใหม่ · OTP · role-routing (user→`Home` / admin→`HomeAdmin`) · อัปรูปใน `addproduct`
+
+---
+
+## 2026-08-21 — ระบบ Ban User (D-52) impersonation test
+
+รันทุกเคสในธุรกรรมที่ `ROLLBACK` สวมบทบาทจริงผ่าน `SET LOCAL ROLE authenticated` + `request.jwt.claims` (ไม่ใช่ role `postgres`) ครอบ 3 บทบาท: แอดมิน · user ปกติ · user ที่ถูกแบน
+
+### V-12 · Phase A — บังคับที่ RLS
+
+| เคส | ผล |
+|---|---|
+| ผู้ถูกแบน: ลงประกาศ / ส่งรายงาน / แชทห้องที่ไม่มีแอดมิน | `42501` ทั้ง 3 |
+| ผู้ถูกแบน: แชทห้องที่มีแอดมิน + เปิดแชทกับแอดมินใหม่ | สำเร็จ (ช่องอุทธรณ์) |
+| ผู้ถูกแบน: เปิดแชทใหม่กับผู้ขาย | blocked |
+| ผู้ถูกแบน: `UPDATE "Profile" SET is_banned=false` | blocked ที่ trigger |
+| ผู้ถูกแบน: เห็นประกาศคนอื่น / ประกาศตัวเอง | 5 แถว / 4 แถว ครบ (soft ban) |
+| user ปกติ: เห็นประกาศของผู้ถูกแบน | 0 แถว (แอดมินเห็นครบ 4) |
+| user ปกติ: `admin_users_view` | 0 แถว (แอดมินเห็น 8, `can_ban`=6) |
+| แบนซ้ำครั้งที่ 2 | ไม่เกิดแจ้งเตือนซ้ำ (idempotent) |
+| ปลดแบน | 4 คอลัมน์ล้าง NULL + ประกาศกลับมาโผล่ |
+| regression: user ปกติ/แอดมิน ทำงานเดิมทุกอย่าง | ผ่านครบ (approve/insert noti/อ่าน view/self-escalate role ยัง blocked) |
+
+### V-13 · Phase B–D — ปลายทางที่ UI ใช้จริง
+
+| เคส | ผล |
+|---|---|
+| `dart analyze` custom action 3 ตัว (`adminBanUser`/`adminUnbanUser`/`getMyBanReason`) แบบ standalone | `No issues found` |
+| `generated_code/`: ปุ่ม Ban/Unban เป็น `if (...)` conditional จริง | ยืนยันแล้ว ไม่ใช่ static |
+| `generated_code/`: `ManageUsersList` มี `Expanded` ห่อ (ไม่เจอ D-40) | ยืนยันแล้ว |
+| `generated_code/`: `ReportDetail` ของเดิมครบ 11 Text ไม่หาย | ยืนยันแล้ว |
+| ผู้ถูกแบน: อ่าน `ban_reason` ตัวเอง (ที่ popup ใช้) | ได้ค่าจริง |
+| ผู้ถูกแบน: เห็นแจ้งเตือน `account_banned` | 1 รายการ |
+| สคริปต์ `dsl/edit.dart` rerun-safe หลัง retire ครบ (PT-21) | push เปล่าซ้ำผ่าน |
+
+**ยังไม่ทำ:** ทดสอบผ่านแอปจริงโดย pete (คิวอยู่ `STATUS.md` ข้อ 0)

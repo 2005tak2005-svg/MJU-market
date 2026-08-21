@@ -944,10 +944,9 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 6. **`can_ban`/`can_unban`/`is_self` เป็น computed boolean ใน `admin_users_view`** — คำนวณเงื่อนไข (ไม่ใช่ตัวเอง ไม่ใช่แอดมิน) ที่ SQL แล้วให้ UI ผูก `visible:` ตรง ๆ ซึ่งเป็นวิธีที่ PT-24 §1 ระบุว่าปลอดภัยที่สุด — เลี่ยง raw proto ที่ D-51 ต้องเจอ และเลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?`
 
-**ยืนยันด้วย impersonation test จริง 3 บทบาท (แอดมิน / user ปกติ / user ที่ถูกแบน) ทุกเคสอยู่ในธุรกรรมที่ rollback:**
-ผู้ถูกแบน — ลงประกาศ/ส่งรายงาน/แชทห้องปกติ → `42501` · แชทห้องแอดมิน + เปิดแชทกับแอดมิน → **ทำได้** · เปิดแชทใหม่กับผู้ขาย → blocked · ปลดแบนตัวเอง → blocked ที่ trigger · ยังเห็นประกาศคนอื่น 5 แถว (soft ban) และประกาศตัวเองครบ 4 แถว (Mypost) · user ปกติเห็นประกาศของผู้ถูกแบน **0 แถว** แอดมินเห็นครบ 4 · `admin_users_view` user ปกติได้ 0 แถว แอดมินได้ 8 แถว (can_ban=6 = 8−ตัวเอง−แอดมินอีกคน) · แบนซ้ำครั้งที่ 2 ไม่เกิดแจ้งเตือนซ้ำ · ปลดแบนล้าง 4 คอลัมน์เป็น NULL + ประกาศกลับมาโผล่ · regression: user ปกติทำได้ครบทุกอย่าง แอดมิน approve/insert noti/อ่าน view ได้ครบ self-escalate role ยัง blocked เหมือนเดิม
+**ยืนยันด้วย impersonation test ครบ 3 บทบาท** (แอดมิน/user ปกติ/user ที่ถูกแบน) — ผลเต็ม `VERIFICATION.md` V-12
 
-🔴 **กับดักที่เจอระหว่างทำ:** (1) `REVOKE ... FROM PUBLIC, anon` บน helper ใหม่ทำให้ `authenticated` เสีย EXECUTE ไปด้วย ต้อง `GRANT` คืนให้ตรงกับ `private.is_admin()` (`authenticated` + `service_role`) ไม่งั้น policy ที่เรียกมันพังทั้งชุด (2) **RESTRICTIVE `USING` บล็อกแบบเงียบ คืน 0 แถว ไม่ raise** ต่างจาก `WITH CHECK` ที่ raise `42501` — เทสด้วย "ไม่ error = ผ่าน" จะอ่านผลผิด ต้องเช็ค `GET DIAGNOSTICS ROW_COUNT` (ครั้งแรกอ่านว่า UPDATE ของผู้ถูกแบน "ทำได้" ทั้งที่จริงแก้ 0 จาก 4 แถว) → PT-28
+🔴 **กับดักที่เจอระหว่างทำ (รายละเอียดเต็ม PT-28):** grant ของ helper ใหม่หลุดจาก `authenticated` ตอน revoke · RESTRICTIVE `USING` บล็อกแบบเงียบ (คืน 0 แถว ไม่ raise) ทำให้เทสรอบแรกอ่านผลผิด
 
 **Phase A (Supabase) ปิดแล้ว** · Phase B–D (FlutterFlow: `ManageUsers`/`BanUserSheet`/popup บน Home/ปุ่มใน ReportDetail) ยังไม่ทำ
 
@@ -973,6 +972,6 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 
 🔴 **กับดักที่เจอเพิ่ม (รายละเอียดเต็ม PT-29):** query ได้ตัวเดียวต่อ itemBuilder (ตั้ง outputAs ไม่ซ้ำ/เปลี่ยน signature ไม่ช่วย) · `visible:` จาก view compile เป็น `?? true` → NULL = โชว์ ต้อง COALESCE ที่ SQL (แก้ `admin_users_view` แล้ว) · `AppState(ff.AppState.x)` handle ต้องอยู่ข้างใน error message ชวนเข้าใจผิด · `Button`/`Expanded` รับ positional, `Snackbar` ไม่ใช่ `SnackBar`, ไม่มี `Actions.chain` · PT-19 key ดริฟต์อีกครั้งจริง (`ListView_89z1y0to`→`ListView_qglcpyh5`)
 
-**ยืนยันแล้ว:** `generated_code/` ทุกพุช (conditional เป็น `if (...)` จริง · `Expanded` ห่อ ListView ไม่เจอ D-40 · ReportDetail ของเดิมครบ 11 Text ไม่หาย) · **`dart analyze` custom action ทั้ง 3 ตัวแบบ standalone → `No issues found`** (PT-29 §6 — เป็นด่านที่ `flutterflow ai run` ไม่ตรวจ และเป็นต้นเหตุ D-46/D-47) · impersonation test ปลายทาง: ผู้ถูกแบนอ่าน `ban_reason` ตัวเองได้ (ที่ popup ใช้) ลงประกาศไม่ได้ **แต่แชทอุทธรณ์กับแอดมินได้จริง** และเห็นแจ้งเตือน 1 รายการ · สคริปต์ rerun-safe แล้ว (push เปล่าซ้ำผ่าน หลัง retire ครบตาม PT-21)
+**ยืนยันแล้ว** (ผลเต็ม `VERIFICATION.md` V-13): `generated_code/` ทุกพุช, `dart analyze` custom action ทั้ง 3 ตัวสะอาด (ด่านที่ `flutterflow ai run` ไม่ตรวจ — ต้นเหตุ D-46/D-47), impersonation ปลายทาง, สคริปต์ rerun-safe หลัง retire ครบ (PT-21)
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — ทั้งหมดยืนยันจาก `generated_code/` + DB เท่านั้น

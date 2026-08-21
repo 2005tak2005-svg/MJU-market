@@ -466,3 +466,25 @@ PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto`
 **7. `Actions.conditional` (raw, `ui/actions.dart`) รับแค่ `FFVariable` ดิบ ไม่รับ `DslExpression` typed — ตัวที่ใช้ได้จริงคือ `If(...)` (`dsl/actions.dart`) (D-48)** — `If(condition, {required then, orElse})` รับ `condition:` เป็น `DslExpression` ตรง ๆ (เช่น `Equals(State('x'), '')`) normalize ให้เองผ่าน `normalizeExpression`, `then:`/`orElse:` รับ `List<DslAction>` ได้ตรง ๆ — ใช้แยก query เป็น 2 กิ่ง (มี filter / ไม่มี filter) ตามเงื่อนไข runtime ได้จริง โดยไม่ต้องยุ่งกับ raw proto เลย
 
 **ใช้แล้วที่:** L3 `Home` — สุ่มลำดับสินค้า (D-45), ค้นหาแบบ substring + trigram index (D-46, ถอนแล้ว) ทั้ง onLoad, search/pull-to-refresh chain, และ 26 category chip ล้วนโดนข้อ 1-2 — `wrapSearchPattern` เจอข้อ 3-4 แล้วโดนข้อ 6 ด้วย (D-48, ถอน `iLike` กลับเป็น `equalTo` + `If` แยกกิ่ง) — `shuffleProducts`/`wrapSearchPattern` orphan (D-47/D-48) โดนข้อ 5 — เช็คก่อนใช้ custom function ป้อน list-typed state field ที่ไหนก็ตาม, ก่อนแก้ `orderBys`/query payload ของ trigger เดิมที่เคย push แล้ว, ก่อนเขียน custom function body แบบไม่ null-check, ก่อนผูก `iLike`/`like`/`contains` กับค่าไดนามิกใดๆ, และทุกครั้งที่ "เลิกใช้" entity ใดในสคริปต์ — เช็คว่าลบออกจริงด้วย `removeX` หรือแค่ลบบรรทัด declare
+
+---
+
+## PT-28 — บังคับกฎทับตารางที่เป็น allow-all: `RESTRICTIVE` policy + gate-in-view (D-52)
+
+**1. `PERMISSIVE` policy ใหม่บนตารางที่มี allow-all อยู่ = ไม่มีผลเลย ต้องใช้ `AS RESTRICTIVE`** — policy ชนิดเดียวกัน **OR** กัน `true OR <เงื่อนไขใหม่>` เป็น `true` เสมอ (D-23 เคยเจอแล้วจึงเลี่ยงไปใช้ trigger) `RESTRICTIVE` อยู่คนละชุด ผลรวมคือ `(OR ของ permissive ทั้งหมด) AND (AND ของ restrictive ทั้งหมด)` จึงบังคับได้จริงโดยไม่ต้องแตะ allow-all เดิม — เหมาะกับกรณีที่ยังปิดหนี้ D-03 ไม่ได้แต่ต้องเพิ่มกฎเดี๋ยวนี้
+
+**2. 🔴 `RESTRICTIVE` ที่ `USING` บล็อกแบบเงียบ — คืน 0 แถว ไม่ raise** ต่างจาก `WITH CHECK` ที่ raise `42501` ชัดเจน แปลว่า:
+- `INSERT` (ใช้ `WITH CHECK`) → error จริง เห็นได้
+- `UPDATE`/`DELETE` (ใช้ `USING` คัดแถวก่อน) → **สำเร็จ 0 แถว** ฝั่งแอปไม่เห็น error อะไรเลย
+- **เทสด้วย "ไม่ error = ผ่าน" จะอ่านผลกลับด้าน** ต้องวัดด้วย `GET DIAGNOSTICS n = ROW_COUNT` เสมอ (D-52 อ่านผิดรอบแรกจริง — สรุปว่าผู้ถูกแบน UPDATE ประกาศได้ ทั้งที่แก้ 0 จาก 4 แถว)
+- ผลข้างเคียงกับ FlutterFlow: PT-18 บอกว่า Postgres action ไม่มี `onSuccess`/`onFailure` อยู่แล้ว — เจอ `USING` บล็อกยิ่งเงียบสองชั้น **ต้องปิด affordance ที่ UI ด้วย อย่าพึ่ง RLS อย่างเดียวเป็น UX**
+
+**3. helper function ใหม่ที่ policy เรียกใช้ ต้อง `GRANT EXECUTE TO authenticated` ให้ตรงกับตัวที่มีอยู่** — `REVOKE ... FROM PUBLIC, anon` (ตามกฎ D-29 §6) ตัด `authenticated` ทิ้งไปด้วยเพราะมันสืบทอดจาก `PUBLIC` ทำให้ policy ที่เรียกฟังก์ชันนั้นพังทั้งชุด **เช็คทุกครั้งด้วย `SELECT proname, proacl FROM pg_proc` แล้วเทียบกับ `private.is_admin()`** (ค่าที่ถูกคือ `{postgres=X, authenticated=X, service_role=X}`)
+
+**4. ซ่อนข้อมูลด้วย gate-in-view คุ้มกว่าไปแก้ filter ทีละ query ฝั่ง FlutterFlow (ต่อยอด D-33)** — เติม `WHERE` ในตัว view ครั้งเดียวได้ผลกับ**ทุก** query ที่อ้าง view นั้น (`Home` onLoad + ค้นหา + 26 category chip + pull-to-refresh + `Mypost` + `ProductDetails` + `HomeAdmin`) เทียบกับการใส่ filter ฝั่ง FF ที่ต้องแก้ทุกจุด **และต้องเปลี่ยน `outputAs` ทุกตัวด้วย** (PT-27 §2) — สูตรที่ใช้ได้: `WHERE <ซ่อน> OR <เจ้าของตัวเอง> OR private.is_admin()` ให้เจ้าของยังเห็นของตัวเองและแอดมินยังตรวจงานได้
+- 🔴 ฟังก์ชันที่อ่านคอลัมน์ของ**คนอื่น**ใน view ต้องเป็น **SECURITY DEFINER** ไม่งั้น RLS ซ่อนแถวแล้วคืน NULL → เงื่อนไขไม่ทำงาน (view เป็น `security_invoker = true`)
+- 🔴 ใส่ `COALESCE(..., false)` เสมอ — มีบัญชี `auth.users` ที่ไม่มีแถว `"Profile"` จริงในระบบนี้ (D-32) NULL จะทำให้เงื่อนไขเพี้ยนทั้งชุด
+
+**5. computed boolean ใน view = ตัวคุม `visible:` ที่ปลอดภัยที่สุด (ต่อยอด PT-24 §1)** — คำนวณเงื่อนไขซับซ้อน (เช่น "แบนได้ไหม" = ไม่ใช่ตัวเอง ∧ ไม่ใช่แอดมิน ∧ ยังไม่ถูกแบน) ที่ SQL แล้ว expose เป็นคอลัมน์ boolean ให้ UI ผูกตรง ๆ — เลี่ยง raw proto แบบ D-51 และเลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?` · UI ไม่ต้องรู้เงื่อนไขซ้ำ แก้กฎที่ SQL ที่เดียว
+
+**ใช้แล้วที่:** L8 ระบบ ban user (D-52) — 5 RESTRICTIVE policy บน `products`/`reports`/`chat_message`, `products_review_view` ซ่อนประกาศผู้ถูกแบน, `admin_users_view.can_ban/can_unban/is_self` · เช็คก่อนเพิ่มกฎใด ๆ ทับตารางที่ยัง allow-all, ก่อนสรุปผลเทส `UPDATE`/`DELETE` ว่า "ผ่าน", และก่อนตัดสินใจไปไล่แก้ filter ทีละ query ฝั่ง FlutterFlow

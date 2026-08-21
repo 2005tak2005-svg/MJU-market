@@ -921,3 +921,32 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/product_details/product_details_widget.dart`:** ปุ่มรายงานคอมไพล์เป็น `Visibility(visible: !(...sellerId == currentUserUid), ...)`, ปุ่มแชทคอมไพล์เป็น `if (!(...sellerId == currentUserUid)) FFButtonWidget(...)` — เป็น conditional จริง ไม่ใช่ static-visible:false ที่เคยพังใน D-43/D-44 push แรก
 
 **ยังไม่ได้ทดสอบผ่านแอปจริง** (โดยเฉพาะกรณี `seller_id` เป็น NULL — LEFT JOIN ของ `products_review_view` — คาดว่าจะโชว์ปุ่มตามปกติเพราะ `NULL == uid` เป็น false, `Not(false)` เป็น true แต่ยังไม่เคยมีเคสจริงให้ยืนยัน)
+
+---
+
+## D-52 — ระบบ Ban User: soft ban บังคับที่ RLS จริง (2026-08-21)
+
+**ปัญหา:** `"Profile".is_banned` มีมาตั้งแต่ 2026-08-14 แต่เป็นแค่ตัวนับบน `admin_dashboard_stats` — ไม่มี RLS/trigger/Action Flow ตัวไหนอ่านค่านี้เลย ผู้ที่ `is_banned = true` ยังลงประกาศ/แชท/รายงานได้ปกติ และไม่มี UI ให้แอดมินกดแบน (แก้ได้ทางเดียวคือ SQL ตรง ๆ) · 🔴 ระหว่างสำรวจพบช่องโหว่จริงเพิ่ม: `with_check` ของ policy `Users can update own profile` ล็อกแค่ `role`/`student_id` **ไม่ได้ล็อก `is_banned`** — ผู้ถูกแบนยิง API ตรงปลดแบนตัวเองได้
+
+**สเปคที่ pete เลือก:** soft ban (login/browse ได้ แต่ลงประกาศ/แชท/รายงานไม่ได้) · ถาวรอย่างเดียว + เหตุผลบังคับ · ทางเข้าแอดมิน = หน้า `ManageUsers` ใหม่ + ปุ่มใน `ReportDetail` · ประกาศเดิมถูก**ซ่อน**ไม่ใช่ลบ/reject · ผู้ถูกแบนเห็น popup การ์ดบน `Home` พร้อมปุ่มไปแชทแอดมิน ปัดทิ้งแล้วท่องแอปต่อได้
+
+**ตัดสินใจ 6 ข้อ:**
+
+1. **`RESTRICTIVE` policy ไม่ใช่ `PERMISSIVE`** — `products` เป็น allow-all อยู่ PERMISSIVE ใหม่จะ OR แล้วไม่มีผล (บทเรียนตรงจาก D-23) RESTRICTIVE จะ AND ทับผลรวม เป็น RESTRICTIVE ชุดแรกของโปรเจกต์นี้ · จงใจไม่แตะ `SELECT` เพราะเป็น soft ban
+
+2. **ปิดช่องปลดแบนตัวเองด้วย trigger ไม่ใช่แก้ `with_check`** — คัดแม่แบบ `enforce_moderation_admin_only` (D-23) มาตรง ๆ คุมครบ 4 คอลัมน์ ban ในที่เดียว และ `with_check` เทียบ OLD/NEW ไม่ได้อยู่แล้ว
+
+3. **ซ่อนประกาศด้วย gate-in-view ไม่ใช่ filter ฝั่ง FlutterFlow** — เติม `WHERE NOT is_user_banned(seller_id) OR seller_id = auth.uid() OR is_admin()` ใน `products_review_view` (แม่แบบ D-33) **ผลคือไม่ต้องแตะ query ฝั่ง FF เลยสักตัว** — Home onLoad + ค้นหา + 26 category chip + pull-to-refresh + Mypost + ProductDetails + HomeAdmin ถูกต้องหมดทันที (ถ้าไปใส่ filter ฝั่ง FF ต้องแก้ทุก query และต้องเปลี่ยน `outputAs` ทุกตัวตาม D-45)
+
+4. **รวมทุก write ไว้ใน RPC เดียว `admin_set_user_ban`** — update `"Profile"` + insert `notifications` อยู่ใน SECURITY DEFINER ตัวเดียว ทำให้ insert แจ้งเตือนไม่ผ่าน PostgREST จึง**ไม่โดน select-back ที่เคยฆ่า action chain เงียบ ๆ ใน D-24** และเป็นทางเดียวที่ได้ error handling จริงเพราะ Postgres action ใน DSL ไม่มี `onSuccess`/`onFailure` (PT-18) · guard 4 ชั้นในตัวเอง ไม่เชื่อ client (D-29)
+
+5. **เปิดช่องอุทธรณ์ไว้โดยตั้งใจ** — `chat_message` RESTRICTIVE มีข้อยกเว้น `OR private.chat_has_admin(chat_id)` และ `find_or_create_chat_with_admin` จงใจไม่ใส่ ban guard (ต่างจาก `find_or_create_chat`) ถ้าปิดหมดผู้ถูกแบนจะติดต่อใครไม่ได้เลย · guard ใน `find_or_create_chat` วางไว้**หลัง** early-return ห้องเดิม → ห้องที่มีอยู่แล้วยังเข้าได้ ปิดเฉพาะการเปิดห้องใหม่
+
+6. **`can_ban`/`can_unban`/`is_self` เป็น computed boolean ใน `admin_users_view`** — คำนวณเงื่อนไข (ไม่ใช่ตัวเอง ไม่ใช่แอดมิน) ที่ SQL แล้วให้ UI ผูก `visible:` ตรง ๆ ซึ่งเป็นวิธีที่ PT-24 §1 ระบุว่าปลอดภัยที่สุด — เลี่ยง raw proto ที่ D-51 ต้องเจอ และเลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?`
+
+**ยืนยันด้วย impersonation test จริง 3 บทบาท (แอดมิน / user ปกติ / user ที่ถูกแบน) ทุกเคสอยู่ในธุรกรรมที่ rollback:**
+ผู้ถูกแบน — ลงประกาศ/ส่งรายงาน/แชทห้องปกติ → `42501` · แชทห้องแอดมิน + เปิดแชทกับแอดมิน → **ทำได้** · เปิดแชทใหม่กับผู้ขาย → blocked · ปลดแบนตัวเอง → blocked ที่ trigger · ยังเห็นประกาศคนอื่น 5 แถว (soft ban) และประกาศตัวเองครบ 4 แถว (Mypost) · user ปกติเห็นประกาศของผู้ถูกแบน **0 แถว** แอดมินเห็นครบ 4 · `admin_users_view` user ปกติได้ 0 แถว แอดมินได้ 8 แถว (can_ban=6 = 8−ตัวเอง−แอดมินอีกคน) · แบนซ้ำครั้งที่ 2 ไม่เกิดแจ้งเตือนซ้ำ · ปลดแบนล้าง 4 คอลัมน์เป็น NULL + ประกาศกลับมาโผล่ · regression: user ปกติทำได้ครบทุกอย่าง แอดมิน approve/insert noti/อ่าน view ได้ครบ self-escalate role ยัง blocked เหมือนเดิม
+
+🔴 **กับดักที่เจอระหว่างทำ:** (1) `REVOKE ... FROM PUBLIC, anon` บน helper ใหม่ทำให้ `authenticated` เสีย EXECUTE ไปด้วย ต้อง `GRANT` คืนให้ตรงกับ `private.is_admin()` (`authenticated` + `service_role`) ไม่งั้น policy ที่เรียกมันพังทั้งชุด (2) **RESTRICTIVE `USING` บล็อกแบบเงียบ คืน 0 แถว ไม่ raise** ต่างจาก `WITH CHECK` ที่ raise `42501` — เทสด้วย "ไม่ error = ผ่าน" จะอ่านผลผิด ต้องเช็ค `GET DIAGNOSTICS ROW_COUNT` (ครั้งแรกอ่านว่า UPDATE ของผู้ถูกแบน "ทำได้" ทั้งที่จริงแก้ 0 จาก 4 แถว) → PT-28
+
+**Phase A (Supabase) ปิดแล้ว** · Phase B–D (FlutterFlow: `ManageUsers`/`BanUserSheet`/popup บน Home/ปุ่มใน ReportDetail) ยังไม่ทำ

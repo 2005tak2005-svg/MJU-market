@@ -48,3 +48,63 @@ SELECT
   (SELECT count(*) FROM public.products WHERE moderation_status='approved')      AS approved_products,
   (SELECT count(*) FROM public.reports)                                          AS total_reports,
   (SELECT count(*) FROM public."CAT")                                            AS categories;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- [8.7]–[8.11] ระบบ ban user (D-52, 2026-08-21)
+-- 🔴 execute_sql หลายคำสั่งคืนแค่ผลสุดท้าย — รันทีละบล็อก
+-- ═══════════════════════════════════════════════════════════════════
+
+-- [8.7] ของครบไหม (ต้องได้ 3 helper + 1 trigger fn + 1 RPC + 1 trigger + 5 policy + 1 view)
+SELECT 'function' AS ชนิด, n.nspname||'.'||p.proname AS ชื่อ, p.prosecdef::text AS security_definer
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE (n.nspname='private' AND p.proname IN ('is_banned','is_user_banned','chat_has_admin','enforce_ban_admin_only'))
+    OR (n.nspname='public'  AND p.proname='admin_set_user_ban')
+UNION ALL
+SELECT 'trigger', t.tgname, t.tgenabled::text
+  FROM pg_trigger t WHERE t.tgname='enforce_ban_admin_only'
+UNION ALL
+SELECT 'policy('||CASE WHEN pol.polpermissive THEN 'PERMISSIVE!ผิด' ELSE 'RESTRICTIVE' END||')',
+       pol.polrelid::regclass::text||'.'||pol.polname, pol.polcmd::text
+  FROM pg_policy pol WHERE pol.polname LIKE '%block_banned%'
+UNION ALL
+SELECT 'view', 'admin_users_view',
+       (SELECT count(*)::text FROM information_schema.views
+         WHERE table_schema='public' AND table_name='admin_users_view');
+
+-- [8.8] 🔴 grant ของ helper ต้องตรงกับ private.is_admin() เป๊ะ
+--       ({postgres=X, authenticated=X, service_role=X}) — ถ้า authenticated หาย policy พังทั้งชุด (PT-28 §3)
+SELECT p.proname, p.proacl::text AS grants
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='private' AND p.proname IN ('is_admin','is_banned','is_user_banned','chat_has_admin')
+ ORDER BY 1;
+
+-- [8.9] products_review_view ต้องมี WHERE ซ่อนผู้ถูกแบน (ต้องเจอทั้ง 3 ท่อน)
+SELECT (view_definition LIKE '%is_user_banned%')  AS มี_ซ่อนผู้ถูกแบน,
+       (view_definition LIKE '%seller_id = auth.uid()%') AS เจ้าของยังเห็นของตัวเอง,
+       (view_definition LIKE '%is_admin()%')      AS แอดมินเห็นทุกอย่าง
+  FROM information_schema.views
+ WHERE table_schema='public' AND table_name='products_review_view';
+
+-- [8.10] notifications.type ต้องรับ account_banned/account_unbanned แล้ว
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='notifications_type_check';
+
+-- [8.11] 🔴 การบังคับจริง — ต้องรันในธุรกรรมที่ ROLLBACK และสวมเป็น user จริง ไม่ใช่ role postgres
+--        (postgres bypass RLS — ผลที่ได้จะหลอกว่าผ่าน ดู AGENTS.md ข้อห้าม)
+--        ⚠️ UPDATE/DELETE ที่โดน RESTRICTIVE USING บล็อกจะ "สำเร็จ 0 แถว" ไม่ raise
+--           ต้องวัดด้วย GET DIAGNOSTICS ROW_COUNT ห้ามสรุปจาก "ไม่ error" (PT-28 §2)
+-- BEGIN;
+--   SET LOCAL ROLE authenticated;
+--   SET LOCAL request.jwt.claims = '{"sub":"<uuid แอดมิน>","role":"authenticated"}';
+--   SELECT public.admin_set_user_ban('<uuid เป้าหมาย>', true, 'ทดสอบ');
+--   SET LOCAL request.jwt.claims = '{"sub":"<uuid เป้าหมาย>","role":"authenticated"}';
+--   -- ต้อง 42501 ทั้ง 3: ลงประกาศ / ส่งรายงาน / แชทห้องที่ไม่มีแอดมิน
+--   -- ต้องสำเร็จ: แชทห้องที่มีแอดมิน (ช่องอุทธรณ์) + find_or_create_chat_with_admin
+--   -- ต้อง exception: UPDATE "Profile" SET is_banned=false WHERE id=auth.uid()
+--   -- ต้อง 0 แถว: UPDATE/DELETE products WHERE seller_id=auth.uid()  ← เช็ค ROW_COUNT
+--   -- ต้องยังเห็นประกาศคนอื่น (soft ban) และเห็นประกาศตัวเองครบ (Mypost)
+-- ROLLBACK;
+
+-- [8.12] สถานะ ban ปัจจุบัน (ควรว่างถ้ายังไม่ได้แบนใครจริง)
+SELECT p.email, p.is_banned, p.ban_reason, p.banned_at, b.email AS banned_by_email
+  FROM public."Profile" p LEFT JOIN public."Profile" b ON b.id = p.banned_by
+ WHERE p.is_banned;

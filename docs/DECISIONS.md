@@ -950,3 +950,29 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 🔴 **กับดักที่เจอระหว่างทำ:** (1) `REVOKE ... FROM PUBLIC, anon` บน helper ใหม่ทำให้ `authenticated` เสีย EXECUTE ไปด้วย ต้อง `GRANT` คืนให้ตรงกับ `private.is_admin()` (`authenticated` + `service_role`) ไม่งั้น policy ที่เรียกมันพังทั้งชุด (2) **RESTRICTIVE `USING` บล็อกแบบเงียบ คืน 0 แถว ไม่ raise** ต่างจาก `WITH CHECK` ที่ raise `42501` — เทสด้วย "ไม่ error = ผ่าน" จะอ่านผลผิด ต้องเช็ค `GET DIAGNOSTICS ROW_COUNT` (ครั้งแรกอ่านว่า UPDATE ของผู้ถูกแบน "ทำได้" ทั้งที่จริงแก้ 0 จาก 4 แถว) → PT-28
 
 **Phase A (Supabase) ปิดแล้ว** · Phase B–D (FlutterFlow: `ManageUsers`/`BanUserSheet`/popup บน Home/ปุ่มใน ReportDetail) ยังไม่ทำ
+
+### D-52 (ต่อ) — Phase B–D: UI ครบแล้ว (2026-08-21)
+
+**ทำอะไรไปบ้าง (5 พุช)**
+
+| พุช | ได้อะไร |
+|---|---|
+| B | register `admin_users_view` · app state 4 ตัว (`banTargetUserId`/`banTargetUserName`/`banReason`/`myBanReason`) · custom action 3 ตัว 0-arg (`adminBanUser`/`adminUnbanUser`/`getMyBanReason`) |
+| C1 | หน้า `ManageUsers` (placeholder) + component `BanUserSheet` |
+| C2 | body จริงของ `ManageUsers` (ListView + ปุ่ม Ban/Unban) + ปลุกเมนู "ผู้ใช้งาน" บน `HomeAdmin` |
+| C2b | ปุ่ม "รีเฟรช" ระดับหน้า (จำเป็นเพราะ PT-29 §1) |
+| D | popup `BannedNoticeDialog` บน `Home` + ปุ่ม "ระงับผู้ขายรายนี้" บน `ReportDetail` |
+
+**เพิ่มจากสเปคเดิม (pete สั่งระหว่างทำ):** ฝั่งผู้ใช้เป็น **popup การ์ด** ไม่ใช่แบนเนอร์นิ่ง — บอกเหตุผล + รายการสิ่งที่ทำไม่ได้ + ปุ่ม "ติดต่อแอดมิน" (ไปห้องแชทแอดมินเพื่อเคลียร์ปัญหา) + ปุ่มปิด **ปัดทิ้งแล้วท่องแอปต่อได้** (`showAlignedDialog` barrier-dismissible) ซึ่งคือนิยามของ soft ban พอดี
+
+**ตัดสินใจเพิ่ม 3 ข้อ**
+
+7. **ปุ่ม Ban/Unban แยกเป็น 2 widget สลับด้วย `visible:`** ผูกกับ `can_ban`/`can_unban` ที่คำนวณใน view (D-52 ข้อ 6) — ยืนยันจาก `generated_code/` ว่าคอมไพล์เป็น `if (userItem.canBan ?? true) IconButton(...)` จริง ไม่ใช่ static
+8. **ปุ่ม "รีเฟรช" ระดับหน้าเป็นสิ่งจำเป็น ไม่ใช่ของแถม** — เจอขีดจำกัดใหม่ว่า itemBuilder เดียวมี PostgresQuery ได้แค่ตัวเดียว (PT-29 §1) ปุ่ม Ban ใช้โควตาไปแล้ว ปุ่ม Unban จึงยิง refetch เองไม่ได้ ต้องมีปุ่มรีเฟรชนอก itemBuilder มารับหน้าที่นี้
+9. **`BanUserSheet` ไม่มี params ใช้ซ้ำได้ 2 ทางเข้า** — เป้าหมายเดินทางผ่าน App State (`item['id']` เป็น action param ไม่ได้ PT-25 §1) ผลพลอยได้คือ `ManageUsers` กับ `ReportDetail` ใช้ component ตัวเดียวกันได้เลย ไม่ต้องทำสองอัน
+
+🔴 **กับดักที่เจอเพิ่ม (รายละเอียดเต็ม PT-29):** query ได้ตัวเดียวต่อ itemBuilder (ตั้ง outputAs ไม่ซ้ำ/เปลี่ยน signature ไม่ช่วย) · `visible:` จาก view compile เป็น `?? true` → NULL = โชว์ ต้อง COALESCE ที่ SQL (แก้ `admin_users_view` แล้ว) · `AppState(ff.AppState.x)` handle ต้องอยู่ข้างใน error message ชวนเข้าใจผิด · `Button`/`Expanded` รับ positional, `Snackbar` ไม่ใช่ `SnackBar`, ไม่มี `Actions.chain` · PT-19 key ดริฟต์อีกครั้งจริง (`ListView_89z1y0to`→`ListView_qglcpyh5`)
+
+**ยืนยันแล้ว:** `generated_code/` ทุกพุช (conditional เป็น `if (...)` จริง · `Expanded` ห่อ ListView ไม่เจอ D-40 · ReportDetail ของเดิมครบ 11 Text ไม่หาย) · **`dart analyze` custom action ทั้ง 3 ตัวแบบ standalone → `No issues found`** (PT-29 §6 — เป็นด่านที่ `flutterflow ai run` ไม่ตรวจ และเป็นต้นเหตุ D-46/D-47) · impersonation test ปลายทาง: ผู้ถูกแบนอ่าน `ban_reason` ตัวเองได้ (ที่ popup ใช้) ลงประกาศไม่ได้ **แต่แชทอุทธรณ์กับแอดมินได้จริง** และเห็นแจ้งเตือน 1 รายการ · สคริปต์ rerun-safe แล้ว (push เปล่าซ้ำผ่าน หลัง retire ครบตาม PT-21)
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — ทั้งหมดยืนยันจาก `generated_code/` + DB เท่านั้น

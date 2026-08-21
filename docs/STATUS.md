@@ -2,7 +2,11 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-08-21**
-> ✅ **D-52: ระบบ Ban User — ฝั่ง Supabase ปิดครบแล้ว (Phase A)** — `is_banned` มีมาตั้งแต่ 2026-08-14 แต่เป็นแค่ตัวนับ ไม่มี enforcement เลย (ปิดหนี้ข้อนี้แล้ว) · ระหว่างทางพบช่องโหว่จริง: `with_check` ของ `Users can update own profile` ล็อกแค่ `role`/`student_id` **ไม่ล็อก `is_banned`** ผู้ถูกแบนปลดแบนตัวเองได้ — ปิดด้วย trigger `enforce_ban_admin_only` (แม่แบบ D-23) · soft ban บังคับด้วย **RESTRICTIVE policy 5 ตัว** (ตัวแรกของโปรเจกต์ — PERMISSIVE ใช้ไม่ได้เพราะ OR กับ allow-all ของ `products`) · ซ่อนประกาศผู้ถูกแบนด้วย gate-in-view ใน `products_review_view` → **ไม่ต้องแตะ query ฝั่ง FF เลยสักตัว** · RPC `admin_set_user_ban` รวม update+notification ไว้ที่เดียว เลี่ยงกับดัก select-back ของ D-24 · เปิดช่องอุทธรณ์ไว้ (แชทกับแอดมินได้) · ทดสอบ impersonation ครบ 3 บทบาทแล้ว รายละเอียด `DECISIONS.md` D-52, pattern ใหม่ `PATTERNS.md` PT-28 — **Phase B–D (UI) ยังไม่ทำ**
+> ✅ **D-52: ระบบ Ban User — เสร็จครบทั้ง Supabase + UI (Phase A–D, 8 พุช)** — `is_banned` มีมาตั้งแต่ 2026-08-14 แต่เป็นแค่ตัวนับ ไม่มี enforcement เลย (ปิดหนี้ข้อนี้แล้ว) · ระหว่างทางพบช่องโหว่จริง: `with_check` ของ `Users can update own profile` ล็อกแค่ `role`/`student_id` **ไม่ล็อก `is_banned`** ผู้ถูกแบนปลดแบนตัวเองได้ — ปิดด้วย trigger `enforce_ban_admin_only` (แม่แบบ D-23)
+> **Supabase:** soft ban บังคับด้วย **RESTRICTIVE policy 5 ตัว** (ตัวแรกของโปรเจกต์ — PERMISSIVE ใช้ไม่ได้เพราะ OR กับ allow-all ของ `products`) · ซ่อนประกาศผู้ถูกแบนด้วย gate-in-view ใน `products_review_view` → **ไม่ต้องแตะ query ฝั่ง FF เลยสักตัว** · RPC `admin_set_user_ban` รวม update+notification ที่เดียว เลี่ยงกับดัก select-back D-24 · **เปิดช่องอุทธรณ์ไว้ (แชทกับแอดมินได้จริง)**
+> **FlutterFlow:** หน้า `ManageUsers` ใหม่ (ปุ่ม Ban/Unban สลับด้วย `visible:` จาก computed boolean) + `BanUserSheet` (ใช้ซ้ำ 2 ทางเข้า) + ปุ่ม "ระงับผู้ขายรายนี้" บน `ReportDetail` + **popup การ์ดแจ้งผู้ถูกแบนบน `Home` พร้อมปุ่มติดต่อแอดมิน ปัดทิ้งได้** + ปลุกเมนู "ผู้ใช้งาน" บน `HomeAdmin` ที่ตายมาตลอด
+> ยืนยันจาก `generated_code/` + impersonation test 3 บทบาท + **`dart analyze` custom action ผ่านสะอาด** รายละเอียด `DECISIONS.md` D-52, pattern ใหม่ `PATTERNS.md` PT-28/PT-29 — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
 > ✅ **D-51: `ProductDetails` ซ่อนปุ่ม "รายงาน"/"แชทกับผู้ขาย" จากเจ้าของประกาศเอง** — ปิดหนี้ D-32 ข้อ 4 ที่เข้าใจผิดว่าติด ItemRef/generator scope — ตัวจริงทั้งสองปุ่ม (`IconButton_k689spgx`/`Button_p7zb7whe`) เป็น page-level sibling ธรรมดา ไม่ได้อยู่ใน itemBuilder เลย บล็อกจริงคือไม่เคยมี `seller_id` ระดับหน้าให้ผูกมาก่อน D-44 ต่อยอด page-scoped query เดิมของ D-44 (รูปที่ 2/3) hand-replicate `Not(Equals(...))` shape ผ่าน raw proto (typed `Equals()`/`Not()` รับแค่ State/Param/AuthUser ไม่รับ raw page-scoped FFVariable) ยืนยันจาก `generated_code/`: คอมไพล์เป็น `Visibility`/`if` conditional จริง ไม่ใช่ static ที่เคยพังมาก่อน รายละเอียด `DECISIONS.md` D-51 — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 > ✅ **D-50: `Home` เพิ่มปุ่ม "ค้นหา" ให้กด submit ได้จริง** — pete รายงานว่าช่องค้นหาไม่มีปุ่ม submit เลย (เดิมยิง query แค่ตอนกด IME "search"/"done" บนคีย์บอร์ด) เพิ่ม `Button` "ค้นหา" (`Button_ym795py5`, ชื่อ `SearchSubmitButton`) เป็น sibling ต่อจากช่องค้นหาเดิม ไม่แตะช่องเดิมเลย เรียก query chain เดียวกับปุ่ม submit เดิม (`buildSearchRefreshChain`) คนละ `outputAs` กันชน ยืนยันจาก `generated_code/` รายละเอียด `DECISIONS.md` D-50 — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 > ✅ **D-49: จุดแดง unread stale-state (D-32) แก้ครบ 3 หน้าแล้ว** — พบว่า `chatList` แก้ไปแล้วจริงตั้งแต่ก่อนหน้านี้ (เอกสารตกหล่นไม่ได้อัปเดตตาม) `Notifications`/`ReportsFeedback` ยังไม่เคยแก้จริง เพิ่ม refetch+SetState ต่อท้าย ON_TAP chain เดิมทั้งคู่ (เทคนิคเดียวกับ `chatList`) ระหว่างทางเจอ `app.removeCustomFunction('wrapSearchPattern')` (D-48) ที่สำเร็จแล้วแต่ไม่ได้ retire ออกจากสคริปต์ ทำให้ push นี้ค้าง `CustomCodeNotFoundError` — ลบบรรทัดออกแล้ว push ผ่าน ยืนยันจาก `generated_code/` ครบ 3 หน้า รายละเอียด `DECISIONS.md` D-49 — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
@@ -30,11 +34,17 @@
 
 ## 🔥 คิวถัดไป
 
-0. **🔨 [D-52] ทำ UI ของระบบ ban ต่อ (Phase B–D) — ฝั่ง Supabase พร้อมหมดแล้ว รอแค่ FlutterFlow**
-   - **Phase B** (push 1, ลงทะเบียนของ): `postgres_helpers.addTable('admin_users_view')` · App State 4 ตัว (`banTargetUserId`/`banTargetUserName`/`banReason`/`myBanReason`) · custom action 3 ตัว **0-argument** ตาม PT-09 (`adminBanUser`/`adminUnbanUser`/`getMyBanReason`) เรียก `Supabase.instance.client.rpc(...)` — 🔴 ต้องเขียน `import 'package:supabase_flutter/supabase_flutter.dart';` เองบรรทัดแรก
-   - **Phase C** (push 2): หน้า `ManageUsers` (ListView ผูก `admin_users_view` · ปุ่ม Ban/Unban สลับด้วย `visible: item['can_ban']`/`item['can_unban']` แม่แบบ D-39 · ส่ง id ผ่าน App State ไม่ใช่ action param เพราะ PT-25 §1) + component `BanUserSheet` (ก๊อป `RejectProductSheet`) + ปลุกเมนู "ผู้ใช้งาน" ที่ตายอยู่ (`Container_hm29v9qs` ไม่มี action เลย) ด้วย `page.ensureActions`
-   - **Phase D** (push 3): **popup การ์ดบน `Home`** เมื่อ `myBanReason != ''` — บอกเหตุผล + สิ่งที่ทำไม่ได้ + ปุ่ม "ติดต่อแอดมิน" (ใช้ custom action เดิมจาก D-30) + ปุ่มปิด (ปัดทิ้งแล้วท่องแอปต่อได้) · ปุ่ม "ระงับผู้ขายรายนี้" ใน `ReportDetail` (`seller_id`/`seller_name` อยู่ใน scope แล้ว หน้านี้ยังไม่มี action เลยสักตัว) · ซ่อน affordance ที่กดแล้วจะ fail เงียบ (`addproduct` submit / ComposeBar / ปุ่มรายงาน)
-   🔴 ทุก push ที่แตะ `dsl/edit.dart` ต้องจ่ายภาษี PT-19/PT-21: `PendingProductsList`'s `ensureReplaced` ห้ามลบ + เช็ค key ก่อน · `ensure*` อื่นที่เพิ่มใหม่ต้อง retire ทันทีหลังสำเร็จ
+0. **[D-52] ทดสอบระบบ ban ผ่านแอปจริง** — โค้ดครบทั้ง DB+UI แล้ว ยังไม่เคยกดจริง เช็ค:
+   - แอดมิน → `HomeAdmin` → กด **"ผู้ใช้งาน"** ใน sidebar → เข้าหน้า `ManageUsers` เห็นรายชื่อครบ
+   - แถวของตัวเอง/แอดมินคนอื่น **ต้องไม่มีปุ่มระงับ** · แถว user ปกติมีปุ่มระงับ (ไอคอน `block` แดง) · แถวที่ถูกแบนแล้วมีปุ่มปลดระงับ (`lock_open` เขียว)
+   - กดระงับ → sheet ขึ้น → ไม่กรอกเหตุผลแล้วกดยืนยัน **ต้องขึ้น error ไม่ใช่เงียบ** → กรอกแล้วยืนยัน → snackbar + รายการอัปเดต
+   - กด **ปุ่มรีเฟรช** หลังปลดระงับ (ปุ่ม unban ยิง refetch เองไม่ได้ ตาม PT-29 §1 — จงใจ)
+   - `ReportDetail` → ปุ่ม **"ระงับผู้ขายรายนี้"** → ได้ sheet ตัวเดียวกัน
+   - login บัญชีที่เพิ่งถูกแบน → **popup การ์ดขึ้นบน `Home`** บอกเหตุผล → กด "ติดต่อแอดมิน" ต้องเข้าห้องแชทแอดมินและ**ส่งข้อความได้จริง** → กด "ปิด" แล้วท่องแอปต่อได้
+   - บัญชีที่ถูกแบน: ลงประกาศไม่ได้ · แชทกับผู้ขายไม่ได้ · **`Mypost` ยังเห็นประกาศตัวเองครบ**
+   - user ปกติอีกคน: ประกาศของคนที่ถูกแบน**หายจาก Home และผลค้นหา** → ปลดแบนแล้วกลับมา
+   🟡 รู้อยู่แล้ว ไม่ต้องรายงานซ้ำ: ปุ่มปลดระงับไม่รีเฟรชเอง (ต้องกดปุ่มรีเฟรช) · popup ขึ้นทุกครั้งที่เข้า Home ไม่ได้จำว่าเคยปิด (ตั้งใจ เอาแค่นี้ก่อน) · ยังไม่ได้ซ่อนปุ่มลงประกาศ/ComposeBar ของผู้ถูกแบน (RLS บล็อกอยู่ แต่ UI ยังกดได้แล้วเงียบ)
+
 1. **[D-32] `mju6606105386@mju.ac.th` ยังค้าง — ตัดสินใจว่าจะลบหรือปล่อยไว้** — สมัครไม่สำเร็จ (ไม่เคยยืนยันอีเมล) ไม่มี `"Profile"` คู่ `mju6606105382` แก้ไปแล้วด้วยการลบบัญชีเก่า+สมัครใหม่สะอาด (D-34) — ทางเดียวกันน่าจะใช้ได้ ไม่ใช่คิวด่วนแล้ว (root cause เดิมของ D-32 ยังไม่ทราบ แต่ไม่เกิดซ้ำในรอบทดสอบล่าสุด)
 1b. **[D-49] ทดสอบจุดแดง unread ผ่านแอปจริง** — `chatList`/`Notifications`/`ReportsFeedback` แก้ stale-state แล้ว (refetch หลังแตะ) ยืนยันแค่จาก `generated_code/` ยังไม่เคยกดจริงในแอป
 2. ~~**ทดสอบ L4 (chat) ผ่านแอปจริง**~~ **ทดสอบแล้ว (D-40/D-41, 2026-08-18)** — `chatList` ขึ้นถูก, ส่งข้อความ/รูปได้จริง, bubble UI ถูกฝั่ง, ComposeBar ติดขอบล่าง, ดูรูปเต็มได้ — จุดแดง unread stale-state แก้แล้ว (D-49, ดูข้อ 1b)
@@ -62,7 +72,7 @@
 | 5 | Transaction & Status | ⬜ ไม่มีตาราง `transactions` | ⬜ | |
 | 6 | Notifications | 🟨 ตาราง+RLS apply แล้ว | 🟨 `Notifications` page + bell icon + link ไป `ProductDetails` (D-26) + จุดแดง unread (D-31) stale-state แก้แล้ว (D-49) ยังไม่ทดสอบผ่านแอปจริง | เขียนได้ทางเดียว: reject→insert · ไม่มี realtime/push จริง |
 | 7 | Reviews & Reports | 🟨 `reports` RLS+constraint เสร็จ (D-24) + `is_read` (D-31) · `reviews` ยังไม่มี | 🟨 `ReportProductSheet`/`ReportsFeedback`/`ReportDetail` + จุดแดง unread (D-31) stale-state แก้แล้ว (D-49) ยังไม่ทดสอบผ่านแอปจริง — เนื้อหาหลัก**ทดสอบผ่านแอปจริงแล้ว (pete, 2026-08-15)** | หน้า "Reports" ถูก pete rename เป็น "ReportsFeedback" ตรงใน editor (2026-08-17) — ตรวจแล้วไม่มีจุดอ้างชื่อเก่าค้าง |
-| 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 · `admin_sales_by_seller` gate ปิดแล้ว (D-33) · **ระบบ ban ปิดครบแล้ว (D-52)** | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ · **UI ban ยังไม่ทำ (D-52 Phase B–D)** | trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) + ban 4 คอลัมน์ (D-52) · 5 RESTRICTIVE policy กันผู้ถูกแบน (D-52) · เหลือ RLS admin-only เต็มรูปแบบ (`products` คอลัมน์อื่น), `"CAT"` CRUD |
+| 8 | Admin Dashboard | 🟨 เริ่มแล้ว 2026-08-14 · `admin_sales_by_seller` gate ปิดแล้ว (D-33) · **ระบบ ban ปิดครบแล้ว (D-52)** | 🟨 `HomeAdmin` ผูกข้อมูลจริง + approve/reject ใช้งานได้ · **หน้า `ManageUsers` + `BanUserSheet` + popup แจ้งผู้ถูกแบน ทำครบแล้ว (D-52) ยังไม่ทดสอบผ่านแอปจริง** | trigger คุ้มกัน moderation 2 คอลัมน์ (D-23) + ban 4 คอลัมน์ (D-52) · 5 RESTRICTIVE policy กันผู้ถูกแบน (D-52) · เหลือ RLS admin-only เต็มรูปแบบ (`products` คอลัมน์อื่น), `"CAT"` CRUD |
 
 ✅ เสร็จ · 🟨 กำลังทำ · ⬜ ยังไม่เริ่ม — คอลัมน์ FlutterFlow คือสถานะใน **v2** (`m-j-u-market-v2-0xhjhg`) เท่านั้น งานฝั่ง v1 (archived) ไม่นับ (D-16)
 
@@ -109,7 +119,7 @@
 - [ ] ข้อมูลทดสอบค้างใน DB: `"Profile"` มี 7 แถว — 4 แถวมี `full_name` ปลอม (`ทดสอบ นักศึกษาหนึ่ง/สอง/สาม`, `สมชาย ใจดี`) ต้องล้างก่อน production
 - [ ] 🆕 **พบบัญชี admin `mju6500000001@mju.ac.th` ที่ไม่มีบันทึกที่มา** (ตรวจพบ 2026-08-15 ตอน sync เอกสาร) — `created_at` = `email_confirmed_at` เป๊ะ (ไม่ผ่าน OTP flow จริง เพราะ confirm-email ยังไม่เคยทำงาน) ไม่อยู่ในตารางบัญชีทดสอบด้านล่าง — ต้องหาว่าใครสร้าง/ทำไม แล้วบันทึกหรือลบทิ้ง
 - [ ] `"CAT"` ไม่มี UNIQUE บน `name` — seed ซ้ำได้
-- [x] ~~`"Profile".is_banned` ไม่มี enforcement~~ **ปิดแล้ว 2026-08-21 (D-52)** — soft ban บังคับที่ RLS จริงแล้ว (ลงประกาศ/แชท/รายงานไม่ได้ · ปลดแบนตัวเองไม่ได้ · ประกาศถูกซ่อนจากคนอื่น) เหลือ **UI ให้แอดมินกดแบน (Phase B–D)** ตอนนี้ยังต้องเรียก RPC `admin_set_user_ban` เอง
+- [x] ~~`"Profile".is_banned` ไม่มี enforcement~~ **ปิดแล้ว 2026-08-21 (D-52)** — soft ban บังคับที่ RLS จริงแล้ว (ลงประกาศ/แชท/รายงานไม่ได้ · ปลดแบนตัวเองไม่ได้ · ประกาศถูกซ่อนจากคนอื่น) UI ครบแล้วด้วย (Phase B–D: `ManageUsers`/`BanUserSheet`/popup บน Home/ปุ่มใน `ReportDetail`) — เหลือแค่ pete ทดสอบผ่านแอปจริง
 - [ ] ไฟล์กำพร้าใน `avatars`/`product-images` — เปลี่ยน/ลบแล้วไฟล์เก่าไม่ถูกลบ (D-15) ยังไม่มีระบบเก็บกวาด (P-12 ยังไม่เลือกแนวทาง)
 - [ ] รูปของประกาศ `pending`/`rejected` เปิดดูได้ถ้ารู้ URL (public bucket, D-12) — ห้ามเก็บของอ่อนไหวในนี้
 - [ ] `Profile_email_key` เป็น unique ธรรมดา ไม่ใช่ index บน `lower(email)` — ยังไม่มีปัญหาจริงเพราะ trigger `lower()` ให้ก่อน insert (P-11 ยังไม่ตอบรับ)

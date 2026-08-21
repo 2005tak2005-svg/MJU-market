@@ -1,7 +1,7 @@
 # Layer 8 — Admin Dashboard
 
 > schema → `../SCHEMA.md` · ตรวจ → `../checks/L8.sql`
-> **สถานะ: 🟨 เริ่มแล้ว 2026-08-14 — `HomeAdmin` ผูกข้อมูลจริง approve/reject ใช้งานได้ · `admin_sales_by_seller` ปิดช่องโหว่แล้ว (D-33, 2026-08-17)**
+> **สถานะ: 🟨 เริ่มแล้ว 2026-08-14 — `HomeAdmin` ผูกข้อมูลจริง approve/reject ใช้งานได้ · `admin_sales_by_seller` ปิดช่องโหว่แล้ว (D-33) · ระบบ ban user ครบทั้ง DB+UI แล้ว (D-52, 2026-08-21) รอทดสอบผ่านแอปจริง**
 
 ## 🎯 เป้าหมาย
 
@@ -20,8 +20,10 @@ Admin จัดการผู้ใช้ / สินค้า / รายง�
 
 `HomeAdmin` ผูก `admin_dashboard_stats`/`admin_sales_by_seller` จริง · ปุ่ม approve/reject ใช้งานได้ (update + refetch ถูกต้อง) · Drawer nav ไป `chatList`/`ReportsFeedback`
 
-**ยังไม่ทำ:** หน้า `ManageUsers` + `BanUserSheet` + popup แจ้งผู้ถูกแบนบน `Home` + ปุ่มระงับใน `ReportDetail` (D-52 Phase B–D — ฝั่ง Supabase พร้อมหมดแล้ว รอทำ UI) · หน้า `Inspect` แยก (คิวรออยู่ใน `HomeAdmin` เอง มีปุ่มอนุมัติ/ปฏิเสธแล้ว) · `"CAT"` CRUD UI
-> 📌 เมนู "ผู้ใช้งาน" ใน sidebar ของ `HomeAdmin` (`Container_hm29v9qs`) render อยู่แล้วแต่**ไม่มี action เลย** — เป็นจุดต่อของหน้า `ManageUsers`
+**ระบบ ban — UI ครบแล้ว (D-52 Phase B–D, 2026-08-21):** หน้า `ManageUsers` (ListView ผูก `admin_users_view` · ปุ่ม Ban/Unban สลับด้วย `visible:` จาก computed boolean · ปุ่มรีเฟรชระดับหน้า จำเป็นเพราะ PT-29 §1) · component `BanUserSheet` ใช้ซ้ำได้ 2 ทางเข้า (ไม่มี params — เป้าหมายเดินทางผ่าน App State) · ปุ่ม "ระงับผู้ขายรายนี้" บน `ReportDetail` · popup `BannedNoticeDialog` บน `Home` (เหตุผล + สิ่งที่ทำไม่ได้ + ปุ่มติดต่อแอดมิน + ปิดได้) · เมนู "ผู้ใช้งาน" บน `HomeAdmin` ต่อสายแล้ว
+
+**ยังไม่ทำ:** หน้า `Inspect` แยก (คิวรออยู่ใน `HomeAdmin` เอง มีปุ่มอนุมัติ/ปฏิเสธแล้ว) · `"CAT"` CRUD UI
+> 📌 เมนู "ผู้ใช้งาน" ใน sidebar ของ `HomeAdmin` (`Container_hm29v9qs`) เคย render อยู่แต่ไม่มี action เลยตั้งแต่ import template — ต่อ `Navigate(ManageUsers)` ผ่าน `page.ensureActions` แล้ว (D-52) · เมนูอีก 3 ตัวข้างเคียง (`Container_r5vbmzah` Dashboard / `Container_sy9a9rqk` สินค้ารอตรวจ / `Container_sqntfu80` รายงาน) **ยังไม่มี action เหมือนกัน** ถ้าจะต่อใช้วิธีเดียวกัน
 
 ## 🧪 Definition of Done
 
@@ -29,5 +31,5 @@ Admin จัดการผู้ใช้ / สินค้า / รายง�
 - [ ] **user ทั่วไปเข้า route หรือยิง query ของ admin ไม่ได้ แม้จะยิง Supabase API ตรง ๆ** — ปิดแล้วเฉพาะ 2 คอลัมน์ moderation (D-23) + `admin_sales_by_seller` (D-33) `products` คอลัมน์อื่นยังไม่ปิด (D-03)
 - [x] user ทั่วไปเปลี่ยน `role` ตัวเองไม่ได้ — ยืนยันซ้ำจริง (`db-verifier`, self-escalate → 42501)
 - [x] **ผู้ถูกแบนปลดแบนตัวเองไม่ได้ + ลงประกาศ/แชท/รายงานไม่ได้ แม้ยิง API ตรง** (D-52) — impersonation test ครบ 3 บทบาท
-- [ ] **แอดมินกดแบน/ปลดแบนผ่าน UI ได้** — ฝั่ง DB พร้อมแล้ว (RPC `admin_set_user_ban`) รอ Phase B–D
+- [x] **แอดมินกดแบน/ปลดแบนผ่าน UI ได้** (D-52 Phase B–D) — ยืนยันจาก `generated_code/` + `dart analyze` custom action สะอาด · 🔴 **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
 - [ ] + DoD ร่วมใน `CLAUDE.md`

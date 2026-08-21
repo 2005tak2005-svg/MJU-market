@@ -488,3 +488,33 @@ PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto`
 **5. computed boolean ใน view = ตัวคุม `visible:` ที่ปลอดภัยที่สุด (ต่อยอด PT-24 §1)** — คำนวณเงื่อนไขซับซ้อน (เช่น "แบนได้ไหม" = ไม่ใช่ตัวเอง ∧ ไม่ใช่แอดมิน ∧ ยังไม่ถูกแบน) ที่ SQL แล้ว expose เป็นคอลัมน์ boolean ให้ UI ผูกตรง ๆ — เลี่ยง raw proto แบบ D-51 และเลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?` · UI ไม่ต้องรู้เงื่อนไขซ้ำ แก้กฎที่ SQL ที่เดียว
 
 **ใช้แล้วที่:** L8 ระบบ ban user (D-52) — 5 RESTRICTIVE policy บน `products`/`reports`/`chat_message`, `products_review_view` ซ่อนประกาศผู้ถูกแบน, `admin_users_view.can_ban/can_unban/is_self` · เช็คก่อนเพิ่มกฎใด ๆ ทับตารางที่ยัง allow-all, ก่อนสรุปผลเทส `UPDATE`/`DELETE` ว่า "ผ่าน", และก่อนตัดสินใจไปไล่แก้ filter ทีละ query ฝั่ง FlutterFlow
+
+---
+
+## PT-29 — 🔴 ขีดจำกัดที่เจอตอนทำ UI ระบบ ban (D-52 Phase B–D, 2026-08-21)
+
+**1. 🔴 ใน itemBuilder เดียว มี PostgresQuery ได้แค่ "ตัวเดียว" ต่อให้อยู่คนละ widget**
+ปุ่ม Ban/Unban อยู่คนละ `IconButton` ใน itemBuilder เดียวกัน แต่ละตัวมี refetch chain ของตัวเอง → validate fail:
+`IconButton 'UnbanUserButton' — Name "<outputAs>" already in use.` + `Action in UnbanUserButton has an output variable with the same name as that of another widget`
+- ❌ **ตั้ง `outputAs` ไม่ซ้ำกันไม่ช่วย** (ลองแล้ว — D-39 ข้อนี้ไม่พอสำหรับเคสนี้) ลองเปลี่ยนชื่อให้ต่างกันสุด ๆ ก็ยัง fail
+- ❌ **ทำให้ query signature ต่างกันก็ไม่ช่วย** (ลองเปลี่ยน `limit` 200→201 ยัง fail) → ไม่ใช่เรื่อง dedupe ตาม signature แบบ PT-24 §4
+- ✅ **`CallCustomAction(outputAs:)` ไม่โดนข้อจำกัดนี้** — พิสูจน์แล้วว่า `unbanResult` อยู่ร่วมกับปุ่มอีกตัวที่มี query ได้ปกติ ข้อจำกัดเจาะจงที่ **backend query action** เท่านั้น
+- ✅ **ทางแก้: ย้าย query ออกไปนอก itemBuilder** — วางปุ่ม/action ที่ยิง query ไว้ระดับหน้า (เช่นปุ่ม "รีเฟรช" ในหัวตาราง) แล้วให้ในแถวทำแค่ mutate + set App State
+- ญาติกับ PT-25 §3 ("มี `item[]`-bound `Image` ได้แค่ 1 ตัวต่อ itemBuilder") — itemBuilder มีโควตาทรัพยากรบางอย่างเป็น 1 เสมอ **ออกแบบแถวโดยตั้งสมมติฐานว่าได้ query เดียว**
+
+**2. 🔴 conditional visibility จาก boolean ของ view คอมไพล์เป็น `?? true` — NULL = โชว์**
+`visible: item['can_ban']` ได้โค้ดจริงเป็น `if (userItem.canBan ?? true)` — **fallback เป็น `true` ไม่ใช่ `false`** ถ้าคอลัมน์เป็น NULL ปุ่มจะโผล่ทั้งที่ไม่ควร (เคสจริง: `can_ban` คำนวณจาก `p.role <> 'admin'` แต่ `role` nullable → `NULL <> 'admin'` = NULL → ปุ่มแบนโผล่บนแถวที่ไม่ควรแบน)
+**กฎ: boolean ทุกตัวใน view ที่จะเอาไปผูก `visible:` ต้อง `COALESCE(..., false)` เสมอ** — อย่าพึ่งว่า "ข้อมูลจริงไม่มี NULL หรอก" · ใช้ `IS DISTINCT FROM` แทน `<>` เมื่อเทียบกับค่าที่อาจ NULL (`p.id <> auth.uid()` เป็น NULL ตอนยังไม่ล็อกอิน)
+
+**3. typed handle ของ App State ต้องอยู่ "ข้างใน" `AppState(...)` ไม่ใช่แทนที่มัน — error message ชวนเข้าใจผิด**
+validator บอก `Use ff.AppState.banTargetUserName instead of AppState("banTargetUserName")` ทำให้เขียนเป็น `ff.AppState.x` เปล่า ๆ แล้วเจอ `Expected a DSL expression or scalar literal` ตัวที่ถูกคือ **`AppState(ff.AppState.x)`** (handle เป็น `ProjectAppStateFieldHandle` ไม่ใช่ `DslExpression`) · ฝั่งเขียนใช้ `UpdateAppState.set(ff.AppState.x, ...)` รับ handle ตรง ๆ ได้
+🔴 ข้อนี้โผล่ทันทีที่ app-state field ถูก push ขึ้นไปแล้ว (พุชก่อนหน้าเขียน `AppState('name')` ผ่านได้เพราะ field ยังไม่มีในโปรเจกต์)
+
+**4. ชื่อ DSL ที่เขียนผิดบ่อย (คอมไพล์ไม่ผ่านทันที ไม่ใช่พังเงียบ)**
+`Button('label', ...)` label เป็น **positional** ไม่ใช่ `text:` · `Expanded(child)` child เป็น **positional** ไม่ใช่ `child:` · `WidgetState('name', WidgetStateProperty.text)` ต้องมี **2 อาร์กิวเมนต์** · **`Snackbar`** ไม่ใช่ `SnackBar` · **ไม่มี `Actions.chain`** ใน edit flow — `onTap:` รับ `List<DslAction>` ตรง ๆ · `ensureReplaced` ต้องมี **`name:` บน root widget** ที่เอาไปแทน ไม่งั้น `requires an inserted or replacement root widget with a non-empty name`
+
+**5. ยืนยัน PT-19 อีกครั้ง: key ของ `PendingProductsList` ดริฟต์จริงทุกครั้ง** — รอบนี้ `ListView_89z1y0to` → `ListView_qglcpyh5` ต้อง `inspect --page HomeAdmin --outline` แล้วอัปเดต `findByKey` **ก่อน push ทุกครั้ง** ไม่งั้นพังทั้งไฟล์
+
+**6. `dart analyze` custom action แบบ standalone ทำได้จริง และควรทำ** — `flutterflow ai run` ไม่ dart-compile custom code (PT-12) ต้นเหตุ D-46/D-47 คัด body ออกจาก `generated_code/lib/custom_code/actions/*.dart` (ตัดหัว `// DO NOT REMOVE OR MODIFY THE CODE ABOVE!` ทิ้ง) แทน `Supabase.instance.client`/`FFAppState()` ด้วย stub แล้วรัน `dart analyze` ในโปรเจกต์เปล่า — จับ null-safety/syntax ได้ครบก่อนที่ pete จะเปิด Live Test Mode
+
+**ใช้แล้วที่:** L8 `ManageUsers`/`BanUserSheet`/`BannedNoticeDialog`/`ReportDetail` (D-52) — เช็คก่อนออกแบบแถวที่มีปุ่มหลายปุ่มยิง query, ก่อนผูก `visible:` กับ boolean จาก view, และก่อน push แรกหลังเพิ่ม app-state field ใหม่

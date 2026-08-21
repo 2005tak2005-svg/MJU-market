@@ -371,9 +371,11 @@ CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
     ( SELECT count(*) FROM reports r
         JOIN products pd2 ON pd2.id = r.reported_product_id
        WHERE pd2.seller_id = p.id) AS reports_against_count,
-    ((NOT p.is_banned) AND p.role::text <> 'admin' AND p.id <> auth.uid()) AS can_ban,
-    (p.is_banned AND p.id <> auth.uid()) AS can_unban,
-    (p.id = auth.uid()) AS is_self
+    COALESCE((NOT p.is_banned)
+             AND COALESCE(p.role::text, 'user') <> 'admin'
+             AND p.id IS DISTINCT FROM auth.uid(), false) AS can_ban,
+    COALESCE(p.is_banned AND p.id IS DISTINCT FROM auth.uid(), false) AS can_unban,
+    COALESCE(p.id = auth.uid(), false) AS is_self
    FROM "Profile" p
      LEFT JOIN public_profiles banner ON banner.id = p.banned_by
   WHERE private.is_admin();
@@ -382,6 +384,8 @@ CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
 > 📌 `admin_users_view` (L8, เพิ่ม 2026-08-21, D-52) — แหล่งข้อมูลของหน้า `ManageUsers` gate ด้วย `private.is_admin()` **ในตัว view เอง** ตามแม่แบบ D-33 ไม่พึ่ง RLS ของ `"Profile"` (user ธรรมดาได้ 0 แถว ยืนยันแล้ว)
 >
 > `can_ban` / `can_unban` / `is_self` เป็น **computed boolean ตั้งใจให้ผูก `visible:` ตรง ๆ** ซึ่งเป็นวิธีที่ PT-24 §1 ระบุว่าปลอดภัยที่สุดกับ Supabase row model (เลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?` และเลี่ยง raw proto แบบ D-51) · `can_ban` ตัดทั้งแอดมินและตัวเองออกให้แล้วที่ SQL — UI ไม่ต้องคิดเงื่อนไขซ้ำ
+>
+> 🔴 **ทั้ง 3 ตัวต้อง `COALESCE(..., false)` ห้ามลืม** — FlutterFlow codegen ผูก `visible:` เป็น `if (userItem.canBan ?? true)` **fallback เป็น `true`** ถ้าคอลัมน์เป็น NULL ปุ่มจะโผล่ทั้งที่ไม่ควร (`role` nullable → `NULL <> 'admin'` = NULL) และใช้ `IS DISTINCT FROM` แทน `<>` ตอนเทียบ `auth.uid()` ที่เป็น NULL ได้ — เจอจริงตอนอ่าน `generated_code/` (PT-29 §2)
 >
 > `banned_by` join ผ่าน `public_profiles` ไม่ใช่ `"Profile"` ตรง ๆ ตามกฎ PT-01/D-01
 

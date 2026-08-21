@@ -32,11 +32,15 @@
 | 8 | `phone` | varchar | nullable | – |
 | 9 | `bio` | text | nullable | – |
 | 10 | `is_banned` | boolean | **NOT NULL** | `false` |
+| 11 | `ban_reason` | text | nullable | – |
+| 12 | `banned_at` | timestamptz | nullable | – |
+| 13 | `banned_by` | uuid | nullable | – |
 
 ```sql
 -- constraint ทั้งหมด (pg_get_constraintdef คำต่อคำ)
 PRIMARY KEY (id)
 FOREIGN KEY (id) REFERENCES auth.users(id)          -- Profile_id_fkey (ไม่มี CASCADE)
+FOREIGN KEY (banned_by) REFERENCES "Profile"(id)    -- Profile_banned_by_fkey (D-52)
 UNIQUE (email)                                       -- Profile_email_key
 UNIQUE (student_id)                                  -- profile_student_id_unique
 
@@ -58,7 +62,11 @@ CHECK (((email IS NULL)
 >
 > 🔴 `profile_email_domain` anchor ทั้งสองด้าน (`^[^@]+@...$`) **จงใจ** — ถ้าใช้แค่ `@mju\.ac\.th$` อีเมลอย่าง `hacker@evil.com@mju.ac.th` จะผ่าน `[^@]+` บังคับให้มี `@` ตัวเดียว ยืนยันด้วยการทดสอบจริง `VERIFICATION.md` **V-09**
 
-> 📌 `is_banned` (L8, เพิ่ม 2026-08-14) — คอลัมน์ boolean แยกจาก `role` โดยตั้งใจ ไม่ใช่ค่าใน `role` เพิ่มอีกตัว (`role` คุม **สิทธิ์** user/admin, `is_banned` คุม **การเข้าถึง** — คนละมิติกัน ผสมกันจะทำให้ CHECK/logic ของ `role` ซับซ้อนขึ้นโดยไม่จำเป็น) ยังไม่มี RLS/Action Flow ใดบังคับพฤติกรรมจากค่านี้จริง (เช่น กัน login/กันโพสต์) — ตอนนี้แค่ให้แอดมินเห็นจำนวนผ่าน `admin_dashboard_stats` เท่านั้น ยังเป็นแค่ตัวนับ ไม่ใช่ enforcement
+> 📌 `is_banned` (L8, เพิ่ม 2026-08-14) — คอลัมน์ boolean แยกจาก `role` โดยตั้งใจ (`role` คุม **สิทธิ์** user/admin, `is_banned` คุม **การเข้าถึง** — คนละมิติ ผสมกันจะทำให้ CHECK/logic ของ `role` ซับซ้อนโดยไม่จำเป็น)
+>
+> ✅ **มี enforcement จริงแล้วตั้งแต่ 2026-08-21 (D-52)** — soft ban: login/browse ได้ แต่ลงประกาศ/แก้/ลบ · ส่งรายงาน · แชท (ยกเว้นห้องที่มีแอดมิน) ไม่ได้ บังคับด้วย RESTRICTIVE policy 5 ตัว + guard ใน `find_or_create_chat` · เขียนค่าได้ทางเดียวคือ RPC `admin_set_user_ban` (trigger `enforce_ban_admin_only` กันคนแก้เอง)
+>
+> `ban_reason`/`banned_at`/`banned_by` (D-52) — เซ็ตพร้อมกันทั้งชุดโดย `admin_set_user_ban` เท่านั้น ตอนปลดแบนถูกล้างเป็น NULL ทั้ง 3 · `banned_by` FK ชี้กลับ `"Profile"(id)` = แอดมินคนที่กดแบน
 
 ### `public.products`
 
@@ -212,11 +220,14 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
 
 CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
-                                   'listing_rejected'::character varying])::text[])))
+                                   'listing_rejected'::character varying,
+                                   'account_banned'::character varying,
+                                   'account_unbanned'::character varying])::text[])))
 ```
 
 - `ref_product_id` nullable โดยตั้งใจ — เผื่อ `ref_chat_id bigint` เพิ่มทีหลัง (แก้บล็อกเดิมของ P-07 ดู D-23)
-- `type` CHECK: มี path เขียนจริงแค่ `listing_rejected` (จาก `RejectProductSheet`) — `listing_approved` เผื่อไว้ ยังไม่มี path เขียน
+- `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน
+- 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - ไม่เปิด Realtime
 
 ### ตารางที่ยังไม่มี
@@ -227,7 +238,7 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 
 ## Views
 
-7 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+8 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
@@ -303,7 +314,11 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     random() AS shuffle_key
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
-     LEFT JOIN public_profiles pr ON pr.id = p.seller_id;
+     LEFT JOIN public_profiles pr ON pr.id = p.seller_id
+  -- ↓ D-52: ซ่อนประกาศของผู้ถูกแบนจากคนอื่น (gate-in-view แบบ D-33)
+  WHERE NOT private.is_user_banned(p.seller_id)   -- ผู้ขายไม่ถูกแบน
+     OR p.seller_id = auth.uid()                  -- เจ้าของยังเห็นของตัวเองใน Mypost
+     OR private.is_admin();                       -- แอดมินเห็นทุกอย่าง
 
 -- reloptions: security_invoker=true
 CREATE VIEW public.admin_dashboard_stats WITH (security_invoker = true) AS
@@ -338,7 +353,37 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
     AND private.is_admin()
   GROUP BY p.seller_id, pr.full_name
   ORDER BY (sum(p.price)) DESC;
+
+-- reloptions: security_invoker=true   (L8, เพิ่ม 2026-08-21, D-52)
+CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
+ SELECT p.id,
+    p.full_name,
+    p.email,
+    p.student_id,
+    p.role,
+    p.created_at,
+    p.is_banned,
+    p.ban_reason,
+    p.banned_at,
+    banner.full_name AS banned_by_name,
+    ( SELECT count(*) FROM products pd
+       WHERE pd.seller_id = p.id) AS product_count,
+    ( SELECT count(*) FROM reports r
+        JOIN products pd2 ON pd2.id = r.reported_product_id
+       WHERE pd2.seller_id = p.id) AS reports_against_count,
+    ((NOT p.is_banned) AND p.role::text <> 'admin' AND p.id <> auth.uid()) AS can_ban,
+    (p.is_banned AND p.id <> auth.uid()) AS can_unban,
+    (p.id = auth.uid()) AS is_self
+   FROM "Profile" p
+     LEFT JOIN public_profiles banner ON banner.id = p.banned_by
+  WHERE private.is_admin();
 ```
+
+> 📌 `admin_users_view` (L8, เพิ่ม 2026-08-21, D-52) — แหล่งข้อมูลของหน้า `ManageUsers` gate ด้วย `private.is_admin()` **ในตัว view เอง** ตามแม่แบบ D-33 ไม่พึ่ง RLS ของ `"Profile"` (user ธรรมดาได้ 0 แถว ยืนยันแล้ว)
+>
+> `can_ban` / `can_unban` / `is_self` เป็น **computed boolean ตั้งใจให้ผูก `visible:` ตรง ๆ** ซึ่งเป็นวิธีที่ PT-24 §1 ระบุว่าปลอดภัยที่สุดกับ Supabase row model (เลี่ยง `Equals(item['f'], '')` ที่เทียบผิดกับ `String?` และเลี่ยง raw proto แบบ D-51) · `can_ban` ตัดทั้งแอดมินและตัวเองออกให้แล้วที่ SQL — UI ไม่ต้องคิดเงื่อนไขซ้ำ
+>
+> `banned_by` join ผ่าน `public_profiles` ไม่ใช่ `"Profile"` ตรง ๆ ตามกฎ PT-01/D-01
 
 > 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" จาก `products.status = 'sold'` — **ไม่มีตาราง `transactions`/`orders` จริง** (L5 ยังไม่เริ่ม) นี่คือ view ชั่วคราวที่ใช้คอลัมน์ที่มีอยู่แล้ว (`products.status`/`price`/`seller_id`) แทน · `status` **ไม่มี CHECK** (ดูหัวข้อ `products` ด้านบน) ตอนนี้ทุกแถวเป็น `NULL` จริง (ยังไม่มีใครขายของสำเร็จ) → view นี้คืน **0 แถว** ในสภาพปัจจุบัน ซึ่งเป็นค่าจริงของระบบ ไม่ใช่บั๊ก ถ้า L5 เปลี่ยนไปใช้ตาราง `transactions` แยกในอนาคต ต้องพิจารณาว่า view นี้ยังจำเป็นไหมหรือย้ายไปอ้างอิง `transactions` แทน
 >
@@ -394,15 +439,15 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | ตาราง | policy | สรุป |
 |---|---|---|
 | `"Profile"` | 4 | ดูตารางค่าจริงด้านล่าง |
-| `products` | 1 | allow-all (+ trigger กัน moderation_status/rejection_reason — ดู Function/Trigger) |
+| `products` | **4** | allow-all + **RESTRICTIVE กันผู้ถูกแบน 3 ตัว** (D-52) (+ trigger กัน moderation_status/rejection_reason — ดู Function/Trigger) |
 | `chat` | 1 | membership-based ผ่าน `is_chat_member()` (D-29, 2026-08-16 — เดิม allow-all) |
 | `chat_user` | 1 | membership-based ผ่าน `is_chat_member()` (D-29) |
-| `chat_message` | 2 | membership-based select + insert เฉพาะของตัวเอง (D-29) |
+| `chat_message` | **3** | membership-based select + insert เฉพาะของตัวเอง (D-29) + **RESTRICTIVE กันผู้ถูกแบน** (D-52) |
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
-| `reports` | **3** | admin อ่านทั้งหมด, reporter อ่าน/insert ของตัวเอง (D-24, 2026-08-15) |
+| `reports` | **4** | admin อ่านทั้งหมด, reporter อ่าน/insert ของตัวเอง (D-24, 2026-08-15) + **RESTRICTIVE กันผู้ถูกแบน** (D-52) |
 | `notifications` | **4** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert **และอ่านทั้งหมด** (D-24 เพิ่ม admin-read แก้ root cause select-back RLS) |
 
-**ค่าจริงจาก `pg_policies` — ทุก policy เป็น `PERMISSIVE` ไม่มี `RESTRICTIVE` สักตัว**
+**ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
 | ตาราง | policyname | cmd | roles | qual | with_check |
 |---|---|---|---|---|---|
@@ -424,6 +469,16 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | `notifications` | users can mark own notifications read | UPDATE | `{authenticated}` | `(user_id = auth.uid())` | `(user_id = auth.uid())` |
 | `notifications` | admin can insert notifications | INSERT | `{authenticated}` | – | `private.is_admin()` |
 
+**RESTRICTIVE — กันผู้ถูกแบน (D-52, 2026-08-21) ทุกตัว `TO authenticated`**
+
+| ตาราง | policyname | cmd | qual (USING) | with_check |
+|---|---|---|---|---|
+| `products` | products_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
+| `products` | products_block_banned_update | UPDATE | `NOT private.is_banned()` | `NOT private.is_banned()` |
+| `products` | products_block_banned_delete | DELETE | `NOT private.is_banned()` | – |
+| `reports` | reports_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
+| `chat_message` | chat_message_block_banned_insert | INSERT | – | `NOT private.is_banned() OR private.chat_has_admin(chat_id)` |
+
 ```sql
 -- with_check ของ "Users can update own profile" (ค่าจริง คำต่อคำ)
 ((auth.uid() = id)
@@ -431,6 +486,12 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
  AND ((private.current_profile_student_id() IS NULL)
       OR ((student_id)::text = (private.current_profile_student_id())::text)))
 ```
+
+> 🔴 **`with_check` นี้ไม่ได้ล็อก `is_banned`** — ของเดิมล็อกแค่ `role`/`student_id` ผู้ถูกแบนยิง API ตรงปลดแบนตัวเองได้ **ปิดด้วย trigger `enforce_ban_admin_only` แทน** (D-52) ไม่ใช่แก้ policy นี้ เพราะ trigger คุมครบทั้ง 4 คอลัมน์ ban ในที่เดียว
+>
+> 🔴 **ทำไมต้อง `RESTRICTIVE`** — `products` เป็น allow-all อยู่ การเพิ่ม PERMISSIVE policy จะ **OR** กับ allow-all แล้วไม่มีผลอะไรเลย (บทเรียนเดียวกับ D-23) `RESTRICTIVE` **AND** ทับผลรวมจึงบังคับได้จริง · ทั้ง 5 ตัวจงใจไม่แตะ `SELECT` เพราะเป็น **soft ban** (ผู้ถูกแบนยังท่องแอปได้)
+>
+> ⚠️ **RESTRICTIVE `USING` บล็อกแบบเงียบ ไม่ raise** — `UPDATE`/`DELETE` ของผู้ถูกแบนคืน **0 แถว** ไม่ใช่ error (ต่างจาก `WITH_CHECK` ที่ raise `42501`) ยืนยันด้วย `GET DIAGNOSTICS ROW_COUNT` แล้ว — ฝั่ง FlutterFlow จะไม่เห็น error ต้องปิด affordance ที่ UI ด้วย
 
 > ⚠️ 3 policy ที่ `roles = {public}` (ไม่ใช่ `authenticated`) ครอบคลุม `anon` ด้วย — ปลอดภัยอยู่เพราะ `auth.uid()` / `is_admin()` เป็น NULL/false สำหรับ anon แต่ควรเปลี่ยนเป็น `authenticated` ให้ชัดเจน
 
@@ -461,7 +522,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-12 function (`public` 8 + `private` 4) · 3 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+17 function (`public` 9 + `private` 8) · 4 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -579,6 +640,116 @@ CREATE TRIGGER enforce_moderation_admin_only
 - ใช้ trigger ไม่ใช่ policy เพราะ permissive policy OR กับ allow-all เดิมของ `products` เสมอ (ไม่มีผล) และ `WITH CHECK` เทียบ OLD/NEW ไม่ได้ — ยืนยันด้วย impersonation test จริง (ดู D-23)
 - คุ้มกันแค่ 2 คอลัมน์นี้ — คอลัมน์อื่นยังอยู่ใต้ allow-all เดิม (D-03)
 
+### L8 ban — `private.is_banned` / `is_user_banned` / `chat_has_admin` (เพิ่ม 2026-08-21, D-52)
+
+```sql
+-- ผู้เรียกถูกแบนไหม — ใช้ใน RESTRICTIVE policy ทั้ง 5 ตัว
+CREATE OR REPLACE FUNCTION private.is_banned()
+ RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
+AS $function$
+  SELECT COALESCE((SELECT is_banned FROM public."Profile" WHERE id = auth.uid()), false);
+$function$;
+
+-- user คนนั้นถูกแบนไหม — ใช้ใน products_review_view
+CREATE OR REPLACE FUNCTION private.is_user_banned(target uuid)
+ RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
+AS $function$
+  SELECT COALESCE((SELECT is_banned FROM public."Profile" WHERE id = target), false);
+$function$;
+
+-- ห้องแชทนี้มีแอดมินไหม — ข้อยกเว้น "ช่องอุทธรณ์" ใน chat_message policy
+CREATE OR REPLACE FUNCTION private.chat_has_admin(target_chat_id bigint)
+ RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.chat_user cu
+    JOIN public."Profile" p ON p.id = cu.user_id
+    WHERE cu.chat_id = target_chat_id AND p.role = 'admin'
+  );
+$function$;
+```
+
+- 🔴 **`COALESCE(..., false)` จำเป็น** — มีบัญชี `auth.users` ที่ไม่มีแถว `"Profile"` จริง (D-32) ถ้าคืน NULL จะโดนบล็อกทั้งที่ไม่ได้ถูกแบน
+- 🔴 `is_user_banned` ต้อง **SECURITY DEFINER** เพราะ `"Profile"` RLS ซ่อนแถวคนอื่น — ถ้าเป็น invoker จะคืน NULL แล้วซ่อนประกาศไม่สำเร็จ
+- grant: `authenticated` + `service_role` (ตรงกับ `private.is_admin()` เป๊ะ) — `anon` ไม่ได้
+
+### `private.enforce_ban_admin_only()` + trigger `enforce_ban_admin_only` (L8, เพิ่ม 2026-08-21, D-52)
+
+```sql
+CREATE OR REPLACE FUNCTION private.enforce_ban_admin_only()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF NOT private.is_admin() THEN
+    RAISE EXCEPTION 'Only admins can change ban status';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER enforce_ban_admin_only
+  BEFORE UPDATE ON public."Profile"
+  FOR EACH ROW
+  WHEN (old.is_banned  IS DISTINCT FROM new.is_banned
+     OR old.ban_reason IS DISTINCT FROM new.ban_reason
+     OR old.banned_at  IS DISTINCT FROM new.banned_at
+     OR old.banned_by  IS DISTINCT FROM new.banned_by)
+  EXECUTE FUNCTION private.enforce_ban_admin_only();   -- tgenabled = 'O' (เปิดอยู่)
+```
+
+- แม่แบบเดียวกับ `enforce_moderation_admin_only` เป๊ะ (D-23) — ปิดช่องที่ `with_check` ของ `Users can update own profile` ล็อกไม่ถึง
+- คุม 4 คอลัมน์ในที่เดียว · `WHEN` เทียบ OLD/NEW ก่อน แก้ `full_name`/`avatar_url` ปกติไม่โดน
+- ยังผ่านตอน `admin_set_user_ban` เรียก เพราะ `private.is_admin()` อ่าน `auth.uid()` ซึ่งคงเป็นแอดมินคนเรียกแม้อยู่ใน SECURITY DEFINER
+
+### `public.admin_set_user_ban()` (L8, เพิ่ม 2026-08-21, D-52)
+
+```sql
+CREATE OR REPLACE FUNCTION public.admin_set_user_ban(
+  target_user_id uuid, should_ban boolean, reason text DEFAULT NULL
+) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NOT private.is_admin() THEN RAISE EXCEPTION 'only admins can ban or unban users'; END IF;
+  IF target_user_id = auth.uid() THEN RAISE EXCEPTION 'cannot ban yourself'; END IF;
+  IF should_ban AND EXISTS (
+    SELECT 1 FROM public."Profile" WHERE id = target_user_id AND role = 'admin'
+  ) THEN RAISE EXCEPTION 'cannot ban an admin'; END IF;
+  IF should_ban AND btrim(coalesce(reason, '')) = '' THEN
+    RAISE EXCEPTION 'ban reason is required'; END IF;
+
+  UPDATE public."Profile" SET
+    is_banned  = should_ban,
+    ban_reason = CASE WHEN should_ban THEN btrim(reason) ELSE NULL END,
+    banned_at  = CASE WHEN should_ban THEN now()         ELSE NULL END,
+    banned_by  = CASE WHEN should_ban THEN auth.uid()    ELSE NULL END
+  WHERE id = target_user_id
+    AND is_banned IS DISTINCT FROM should_ban;   -- PT-05: กันกดซ้ำ
+
+  IF NOT FOUND THEN RETURN; END IF;              -- อยู่สถานะนั้นแล้ว ไม่ยิงแจ้งเตือนซ้ำ
+
+  INSERT INTO public.notifications (user_id, type, title, body) VALUES (
+    target_user_id,
+    CASE WHEN should_ban THEN 'account_banned' ELSE 'account_unbanned' END,
+    CASE WHEN should_ban THEN 'บัญชีของคุณถูกระงับ' ELSE 'บัญชีของคุณถูกปลดระงับแล้ว' END,
+    CASE WHEN should_ban THEN btrim(reason)
+         ELSE 'คุณสามารถลงประกาศและแชทได้ตามปกติแล้ว' END
+  );
+END;
+$function$;
+```
+
+- **ทางเดียวที่เขียน `is_banned` ได้** — trigger บล็อกทุกเส้นทางอื่น
+- guard 4 ชั้นในตัวเอง (ไม่เชื่อ client เลย ตาม D-29): ต้องเป็นแอดมิน · แบนตัวเองไม่ได้ · แบนแอดมินไม่ได้ · เหตุผลห้ามว่าง
+- `IS DISTINCT FROM` + `IF NOT FOUND RETURN` = idempotent กดซ้ำไม่ยิงแจ้งเตือนซ้ำ (ยืนยันแล้ว)
+- 🔴 **insert notification ฝั่ง server โดยตั้งใจ** — ไม่ผ่าน PostgREST จึงไม่โดน select-back ที่เคยฆ่า action chain เงียบ ๆ ใน D-24 และเป็นทางเดียวที่ได้ error handling จริงเพราะ Postgres action ใน DSL ไม่มี `onSuccess`/`onFailure` (PT-18)
+- grant: `authenticated` เท่านั้น (`PUBLIC`/`anon` revoke แล้ว) — advisor เตือน `authenticated_security_definer_function_executable` เป็นเรื่องปกติ คลาสเดียวกับ `mark_report_read`/`find_or_create_chat` ที่ guard ในตัวเองเหมือนกัน
+
 ### L4 chat — `is_chat_member` / `find_or_create_chat` / `update_chat_last_message` / `get_my_chats` (เพิ่ม 2026-08-16, D-29)
 
 ```sql
@@ -600,6 +771,10 @@ BEGIN
   FROM chat_user cu1 JOIN chat_user cu2 ON cu1.chat_id = cu2.chat_id
   WHERE cu1.user_id = user_a AND cu2.user_id = user_b LIMIT 1;
   IF existing_chat_id IS NOT NULL THEN RETURN existing_chat_id; END IF;
+  -- D-52: ผู้ถูกแบนเปิดห้องใหม่ไม่ได้ (ห้องเดิมยังเข้าได้ เพราะ guard อยู่หลัง early-return)
+  IF private.is_banned() THEN
+    RAISE EXCEPTION 'banned users cannot start new chats';
+  END IF;
   INSERT INTO chat (last_message) VALUES ('เริ่มการสนทนาแล้ว') RETURNING id INTO new_chat_id;
   INSERT INTO chat_user (chat_id, user_id) VALUES (new_chat_id, user_a), (new_chat_id, user_b);
   RETURN new_chat_id;
@@ -644,6 +819,7 @@ END; $function$;
 
 - **`is_chat_member`** — SECURITY DEFINER เพื่อเลี่ยง RLS วนซ้ำตัวเองบน `chat_user` (self-referential policy) EXECUTE grant ให้เฉพาะ `authenticated` (revoke `anon` ออกแล้ว — ค่า default ของ Supabase คือ grant `anon` ให้อัตโนมัติตอน `CREATE FUNCTION` ต้อง revoke เองทีละ role ไม่ใช่แค่ `REVOKE ... FROM PUBLIC`)
 - **`find_or_create_chat_with_admin`** (เพิ่ม 2026-08-16, D-30) — เหมือน `find_or_create_chat` (guard impersonation, default `last_message`) ต่างแค่ `user_b` ไม่ได้รับจาก caller แต่หาเองจาก `"Profile" WHERE role='admin' ORDER BY created_at ASC LIMIT 1` (แอดมินคนแรกสุด แบบ deterministic) — ต้องเป็น SECURITY DEFINER เพราะ RLS ของ `"Profile"` ปกติไม่ให้ user ธรรมดาเห็นแถวของแอดมิน EXECUTE grant `authenticated` เท่านั้น ทดสอบแล้วว่า idempotent + ได้แอดมินที่คาดหวังจริง (`mju6577778888`)
+- 🔴 **`find_or_create_chat_with_admin` จงใจ *ไม่มี* ban guard** ต่างจาก `find_or_create_chat` (D-52) — เป็น **ช่องอุทธรณ์** ของผู้ถูกแบน คู่กับข้อยกเว้น `private.chat_has_admin(chat_id)` ใน policy `chat_message_block_banned_insert` ถ้าใส่ guard ที่นี่ = ตัดทางติดต่อแอดมินทิ้ง ผู้ถูกแบนจะอุทธรณ์ไม่ได้เลย
 
 ```sql
 CREATE OR REPLACE FUNCTION public.mark_chat_read(target_chat_id bigint)

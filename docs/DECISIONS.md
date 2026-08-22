@@ -1203,3 +1203,57 @@ onChanged, ปุ่ม conditional update 3 field + refetch) — diff กับ
 toggle/Edit Profile/Account Settings/Log Out) ไม่กระทบเลย
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+---
+
+## D-58 — Admin advertisement posts + likes บน `Home` (`ListView_6etuspo6`) (2026-08-22)
+
+**ปัญหา:** `ListView_6etuspo6` บน `Home` เป็น static placeholder ทิ้งจาก template
+เดิม (2 การ์ดข่าวปลอม ไม่ผูกข้อมูล) — pete ขอให้โชว์รูปประกาศที่แอดมินโพสต์ พร้อม
+ฟีเจอร์ไลก์เล็ก ๆ และหน้าแอดมินสำหรับสร้างโพสต์ใหม่
+
+**ตัดสินใจหลัก:**
+
+1. **รูปเดียวต่อโพสต์ ไม่ใช่ grid หลายรูปแบบ `products`** — เป็น banner/ประกาศ
+   ไม่ใช่สินค้า ไม่ต้องการความซับซ้อนแบบเดียวกัน
+2. **`is_active` soft-hide แทน hard delete** — แอดมิน "ลบ" โพสต์คือ flip flag
+3. **ไลก์แบบ per-user จริง (junction table `advertisement_likes`, composite PK)**
+   ไม่ใช่ counter column เปล่า ๆ — pete เลือกแบบนี้เมื่อถามตรง ๆ (กันกดไลก์ซ้ำ,
+   รองรับ unlike, นับจริง) ตรงกับ pattern junction table เดิมของโปรเจกต์
+   (`chat_user`/`reports`)
+4. **การ์ดไม่โชว์ผู้โพสต์** — เป็นประกาศของระบบ ไม่ต้อง join `public_profiles`
+5. **admin gate ใช้ `IsCurrentUserAdmin` เดิมซ้ำ** (custom action เดียวกับที่
+   `login_widget.dart` ใช้แยก Home/HomeAdmin) ไม่สร้าง gate ใหม่
+6. **ปุ่มไลก์/เลิกไลก์ refetch เต็มแทน optimistic update ฝั่ง client** — DSL ไม่มี
+   per-item state mutation สำหรับ ListView ที่ผูกกับ Postgres โดยตรง (มีแค่
+   `StateFieldUpdate.removeAtIndex`/`insertAtIndex` สำหรับ AppState-backed list)
+   list จำกัด 20 แถวอยู่แล้วทำให้ refetch เต็มไม่แพง
+
+**กับดักใหม่ที่เจอระหว่างทำ:**
+
+7. **table ใหม่ที่สร้างตรงใน Supabase + ถูกอ้างจากหน้า/component ใหม่ในพุชเดียวกัน
+   พังด้วย "Table was not compiled"** (PT-15/PT-30 ยืนยันซ้ำ) — compiler compile
+   หน้า/component ใหม่ *ก่อน* apply `app.raw` mutation เสมอ ส่วน edit บนหน้าที่มี
+   อยู่แล้ว (`editPageOnLoad`ฯลฯ) ปลอดภัยในพุชเดียวกัน แก้ด้วยแยก 4 พุช: (1)
+   register ตาราง + rebind `Home` (หน้าเดิม) (2) `ensurePage` shell เปล่า (3) body
+   จริง + admin gate + nav entry (4) raw-proto patch bucket/path ของปุ่มอัปโหลด
+8. **`PostgresCreate`/`PostgresDelete` ไม่ใส่ `outputAs` default เป็น `'rows'`
+   เสมอ** — สอง widget บนหน้าเดียวกันชนกันทันทีถ้าไม่ตั้งชื่อเอง (บทเรียนเดิมที่
+   เคยเจอมาแล้วที่ `insertAndRefetchChain`, ย้ำอีกครั้งเพราะพลาดซ้ำ)
+9. **🔴 คีย์ state field ต้องอ่านจาก generated schema ตรง ๆ ห้ามเดาจาก grep ผลรวม
+   หลายบรรทัด** — พุชแรกของ raw-proto capture node ผูก URL ที่อัปโหลดเข้าผิด field
+   (`body` แทน `imageUrl`) เพราะ grep คนละ pattern คืนบรรทัด key/name ของคนละ field
+   มาอยู่ติดกันโดยบังเอิญ จับได้จาก `generated_code/` ก่อนส่งมอบ แก้ด้วยพุชแก้ไข
+   เดี่ยว — บทเรียน: อ่านไฟล์ตรง ๆ (`Read` ทั้ง state class) แทน grep เดายามมีหลาย
+   field ชื่อคล้ายกัน
+
+**ยืนยันจาก `generated_code/`:** `Home`'s `AdPostsList` ผูก `_model.adPosts`
+จริง พร้อมปุ่มไลก์/เลิกไลก์ที่ยิง insert/delete บน `advertisement_likes` +
+refetch; `AdminCreatePost` มี on-load gate เรียก `isCurrentUserAdmin()`,
+ปุ่มอัปโหลดรูปเข้า bucket `ad-post-images` ผูก URL เข้า `imageUrl` ถูกต้อง,
+ปุ่มโพสต์ insert เข้า `advertisement_posts` ครบ 3 field; `HomeAdmin` มี nav
+item ใหม่ navigate ไปหน้านี้จริง
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — RLS ยืนยันด้วย impersonation test จริง
+แล้ว (non-admin insert/update/delete โพสต์ถูกบล็อก, ไลก์แทนคนอื่นถูกบล็อก, admin
+insert สำเร็จ) ผ่าน SQL โดยตรง แต่ยังไม่เคยกดผ่านแอปจริง

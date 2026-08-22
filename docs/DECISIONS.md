@@ -975,3 +975,26 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันแล้ว** (ผลเต็ม `VERIFICATION.md` V-13): `generated_code/` ทุกพุช, `dart analyze` custom action ทั้ง 3 ตัวสะอาด (ด่านที่ `flutterflow ai run` ไม่ตรวจ — ต้นเหตุ D-46/D-47), impersonation ปลายทาง, สคริปต์ rerun-safe หลัง retire ครบ (PT-21)
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — ทั้งหมดยืนยันจาก `generated_code/` + DB เท่านั้น
+
+---
+
+## D-53 — หน้า `BannedUsers` แยกจาก `ManageUsers` (2026-08-22)
+
+**ปัญหา:** `ManageUsers` (D-52) list ผู้ใช้ทั้งหมด ไม่กรอง — pete ขอหน้าแยกที่โชว์เฉพาะคนถูกแบนอยู่ พร้อมปุ่ม Unban เดียว
+
+**สเปคที่ pete เลือก:** หน้าใหม่แยกต่างหาก (ไม่ใช่ filter บน `ManageUsers` เดิม) · ระบบ ban เป็นถาวรอย่างเดียว (D-52) ไม่มี `banned_until`/duration ใน DB จึงโชว์ **`banned_at`** ("ถูกแบนเมื่อ") แทน ไม่ใช่ duration/expiry ที่ไม่มีจริง
+
+**ทำอะไรไปบ้าง (2 พุช, PT-22 split เหมือน `ManageUsers` C1/C2):**
+
+| พุช | ได้อะไร |
+|---|---|
+| E1 | หน้า `BannedUsers` (placeholder, route `banned-users`) |
+| E2 | body จริง — `ListView` ผูก `admin_users_view` กรอง `is_banned = true` เรียงตาม `banned_at desc`, แถวโชว์ชื่อ/อีเมล/ถูกแบนเมื่อ/เหตุผล/ระงับโดย + ปุ่ม Unban เดียว (`visible: can_unban`, เรียก `adminUnbanUser` ตัวเดิมจาก D-52), ปุ่มรีเฟรชระดับหน้า (เหตุผลเดียวกับ PT-29 §1) + ปลุก tap ให้การ์ดสถิติ "ผู้ใช้ถูกระงับ" บน `HomeAdmin` ให้ Navigate มาหน้านี้ |
+
+**ยืนยันว่า `BannedUsersValue` (การ์ดสถิติ) ผูกอยู่แล้วจริง** กับ `admin_dashboard_stats.banned_users` มาตั้งแต่ D-52 (ไม่ใช่ placeholder ตามที่ดูตอนแรก) — ไม่ต้องเพิ่มอะไร แค่ปลุก tap ให้ navigate
+
+🔴 **กับดักซ้ำที่ยืนยันอีกครั้ง:** `ensurePage` แยกพุชจาก `state:`/`onLoad:`/body ที่อ้างอิง state เดิม ใช้ได้กับหน้าที่**เพิ่งสร้างใหม่**เหมือนกับหน้าที่มีอยู่แล้ว (PT-22) · `SetState(...)` เขียน app state (`banTargetUserId`) ไม่ได้ ต้องใช้ `UpdateAppState.set(...)` (PT-23 ข้อ 4) · `ensureReplaced` ของ root ใหม่ต้องมี `name:` ไม่งั้น validate fail ทันที ("requires an inserted or replacement root widget with a non-empty name")
+
+**ยืนยันจาก `generated_code/lib/banned_users/banned_users_widget.dart`** (conditional `if (bannedUserItem.canUnban ?? true)` จริง, ปุ่มเรียก `actions.adminUnbanUser()`) + `generated_code/lib/home_admin/home_admin_widget.dart` (การ์ดสถิติ `onTap` ยิง `context.pushNamed(BannedUsersWidget.routeName)` จริง)
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

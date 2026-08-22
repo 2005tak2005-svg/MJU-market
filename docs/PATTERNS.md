@@ -398,7 +398,7 @@ PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto`
 
 **กระทบเดียวกัน:** widget ใหม่ (เช่น `TextField`/`IconButton`) ที่ `ensureReplaced`/`ensureInsertedAfter` แทรกเข้าไป **อ้างชื่อตัวเอง** (`WidgetState('name', ...)`/`ClearTextField('name')`) ในพุชเดียวกันไม่ได้เหมือนกัน — error รูปแบบเดียวกัน (`Widget "name" was not found on "Page"`) ทางแก้เดียวกัน: พุชแยก โดยฝั่ง action ให้ใช้ `page.ensureActions(page.findByKey(realKey), triggerType:, actions:)` แทนการฝัง `onTap:` ตรง ๆ ตอนสร้าง widget — `ensureActions` เป็น idempotent จริง (rerun แล้วแทนที่ trigger chain เดิม ไม่ error ไม่ซ้ำ) ต่างจาก `ensureReplaced`/`ensureInsertedInto` จึง **ไม่ต้อง retire ทิ้งตาม PT-16/21** ปล่อยไว้ในสคริปต์ถาวรได้
 
-**ใช้แล้วที่:** L4 `chatMessages` (state `messages` + ListView), ปุ่มส่งข้อความ `SendMessageButton` (แยก `ensureActions` ออกจาก `ensureReplaced` ที่สร้างปุ่ม) — เช็คทุกครั้งที่สร้างหน้า/widget ใหม่ที่มี state-list หรือ action อ้างชื่อตัวเองในคำสั่งเดียวกัน
+**ใช้แล้วที่:** L4 `chatMessages` (state `messages` + ListView), ปุ่มส่งข้อความ `SendMessageButton` (แยก `ensureActions` ออกจาก `ensureReplaced` ที่สร้างปุ่ม), L8 `ManageUsers` (D-52), L8 `BannedUsers` (D-53) — เช็คทุกครั้งที่สร้างหน้า/widget ใหม่ที่มี state-list หรือ action อ้างชื่อตัวเองในคำสั่งเดียวกัน
 
 ---
 
@@ -412,7 +412,7 @@ PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto`
 6. **page param ที่ตั้ง `.withDefault(...)` ไม่ได้ทำให้ constructor field ของ widget เป็น non-null** — `int_.withDefault(0)`/`listOf(string).withDefault(<String>[])` ยัง generate เป็น `int? chatId`/`List<String>? memberNames` เฉย ๆ ไม่มี fallback ผูกอยู่ที่ constructor เลย (ต่างจากที่คาดตามกฎ "Default values on params" ใน `CLAUDE.md`) — จุดที่ Navigate ไปโดยไม่ส่ง param บาง key (เช่น ปุ่มจาก `ProductDetails` ที่ส่งแค่ `chatId` ไม่ส่ง `memberNames`/`userIds`) ปลายทางได้ `null` จริง ไม่ใช่ list ว่าง ต้อง guard ที่ปลายทาง (custom function ข้อ 5) ไม่ใช่หวังพึ่ง default ที่ page param
 7. **ไม่มี list-literal expression** — `normalizeExpression` รับแค่ `DslExpression`/`null`/`String`/`num`/`bool` ส่ง Dart `List` literal ตรง ๆ เป็นค่า param (เช่น `params: {'x': [a, b]}`) จะได้ `Expected a DSL expression or scalar literal` ไม่มีทางสร้าง array literal ผ่าน DSL นี้ได้เลยในเวอร์ชันนี้ ถ้าต้องส่ง list ต้องมี field ที่เป็น array อยู่แล้วจาก query/state (เช่น `item['some_array_col']`) ไม่ใช่ประกอบขึ้นเองสด ๆ
 
-**ใช้แล้วที่:** L4 `ChatWithSellerButton` (ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`) — เช็คทุกครั้งที่ต้องเรียก RPC จากปุ่มใหม่ หรือ Navigate ข้าม page พร้อมพารามิเตอร์ที่มาจาก item/list scope
+**ใช้แล้วที่:** L4 `ChatWithSellerButton` (ปุ่ม "แชทกับผู้ขาย" บน `ProductDetails`), L8 `BannedUsers` UnbanUserButton (ข้อ 4 — `SetState('banTargetUserId', ...)` พังด้วย `State field ... not found` ต้องเปลี่ยนเป็น `UpdateAppState.set(ff.AppState.banTargetUserId, ...)`, D-53) — เช็คทุกครั้งที่ต้องเรียก RPC จากปุ่มใหม่ หรือ Navigate ข้าม page พร้อมพารามิเตอร์ที่มาจาก item/list scope
 
 ---
 

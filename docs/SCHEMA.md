@@ -35,6 +35,8 @@
 | 11 | `ban_reason` | text | nullable | – |
 | 12 | `banned_at` | timestamptz | nullable | – |
 | 13 | `banned_by` | uuid | nullable | – |
+| 14 | `year_of_study` | smallint | nullable | – |
+| 15 | `faculty` | text | nullable | – |
 
 ```sql
 -- constraint ทั้งหมด (pg_get_constraintdef คำต่อคำ)
@@ -56,6 +58,8 @@ CHECK (((student_id IS NULL)
 
 CHECK (((email IS NULL)
         OR (lower((email)::text) ~ '^[^@]+@mju\.ac\.th$'::text)))            -- profile_email_domain
+
+CHECK ((year_of_study IS NULL) OR (year_of_study BETWEEN 1 AND 8))          -- profile_year_of_study_range
 ```
 
 > ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10**
@@ -245,9 +249,18 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 CREATE VIEW public.public_profiles AS
  SELECT id,
     full_name,
-    avatar_url
+    avatar_url,
+    bio,
+    year_of_study,
+    faculty
    FROM "Profile";
 ```
+
+> 📌 `bio`/`year_of_study`/`faculty` (D-55, เพิ่ม 2026-08-22) — ต่อท้ายคอลัมน์เดิม
+> ของ `public_profiles` ไม่ใช่ view ใหม่ อยู่ใน exposure tier เดียวกับ
+> `full_name`/`avatar_url` ที่เปิดเผยแบบนี้อยู่แล้ว (`security_invoker` ไม่มี
+> ตั้งแต่ D-01 — ดูเหตุผลเต็มที่นั่น) `email`/`phone`/`student_id`/`role`/ban
+> columns ยังไม่อยู่ใน view นี้เหมือนเดิม
 
 > 🔴 **ห้ามใส่ `security_invoker` ให้ `public_profiles`** — ใส่แล้ว `seller_name` / `member_names` เป็น NULL ทั้งระบบทันที
 > advisor จะฟ้อง `security_definer_view` ตรงนี้ตลอดไป **นั่นคือของที่ตั้งใจ ไม่ใช่บั๊ก** เหตุผลเต็มอยู่ `DECISIONS.md` **D-01**

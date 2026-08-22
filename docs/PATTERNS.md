@@ -533,6 +533,33 @@ validator บอก `Use ff.AppState.banTargetUserName instead of AppState("banT
 
 **1. `flutterflow ai refresh-context` ไม่ทำให้ table/view ใหม่กลายเป็น `ff.Tables.*` handle อัตโนมัติ** — สร้าง `public_directory_view` ตรงใน Supabase (Supabase MCP) แล้วรัน `refresh-context` แล้ว `lib/flutterflow_project/schemas.dart` **ไม่มี** `publicDirectoryView` โผล่มาเลย ต้อง register ผ่าน `app.raw((project) { postgres_helpers.addTable(...) })` แบบเดียวกับที่ `admin_dashboard_stats` เคยต้องทำมาก่อน (ดูตัวอย่างจริงใน `dsl/edit.dart` ค้นคำว่า "Register the view with the project's known-tables list") — ใช้ได้กับ **view/table ใหม่ที่ยังไม่เคยมี consumer ใน FlutterFlow เลย** เท่านั้น (`public_profiles` ที่มี consumer อยู่แล้วจาก D-01 ไม่ต้องทำแบบนี้ เพราะ registered ไปนานแล้ว) **ต้อง register คนละพุชจากพุชที่ page/component อ้างถึงมัน** (PT-17 compile order — registration ต้อง compile ก่อนเสมอ) เพิ่ม field ทีหลัง (เช่น `year_label` ที่เพิ่มหลัง table มีอยู่แล้ว) ต้องใช้ `findTableField`/`addTableField` แยก guard เหมือนที่ `admin_dashboard_stats.banned_users` เคยทำ (PT-15)
 
+> 🔴 **อัปเดต (D-57): กระทบตารางเก่าที่มีอยู่แล้วด้วย ไม่ใช่แค่ table/view ใหม่**
+> `ff.Tables.profile` (`"Profile"`) เอง — ตารางที่เก่าแก่ที่สุดในโปรเจกต์ —
+> **ไม่มี** `year_of_study`/`faculty_id` (และ `student_id`/`ban_reason`/
+> `banned_at`/`banned_by`) ในชุด typed field เลย ทั้งที่คอลัมน์มีจริงมานาน
+> (D-52/D-55/D-56) เพราะไม่เคยมีใครยิง `PostgresQuery`/`PostgresUpdate` ตรงบน
+> `ff.Tables.profile` แตะคอลัมน์พวกนี้มาก่อนสักครั้ง (ทุกที่ที่แตะ ban/ผ่าน
+> custom action หรือผ่าน view แยกทั้งนั้น) — error ที่ได้คือ `Bad state: Table
+> field "Profile.year_of_study" was not compiled` **เช็คก่อนทุกครั้งที่จะยิง
+> query/update ตรงบนตารางเก่าด้วยคอลัมน์ที่ "เพิ่งมี" (แม้ตารางเองมีมานานแล้ว)**
+> ว่า field นั้นถูก register ใน typed SDK จริงหรือยัง ไม่ใช่แค่เช็คว่าตารางมีอยู่
+
 **2. outputAs ที่ unique ตามกฎ D-39 (ตั้งชื่อไม่ซ้ำกันในทุก widget) ก็ยัง collide ได้ — ต้องเปลี่ยนรูปแบบการตั้งชื่อทั้งชุด ไม่ใช่แค่เติมตัวแปรให้ไม่ซ้ำ** — สร้าง filter chip แบบ D-39 (`directoryFaculty${facultyIndex}_${variantTag}`) ทุกตัวมี outputAs ไม่ซ้ำกันจริงตามตัวอักษร แต่ validate ยัง fail ที่ index เดียวซ้ำ ๆ (`"output variable with the same name as that of another widget"`) ทดสอบแยกทีละสมมติฐานจนหมด: ไม่ใช่ปัญหา closure/loop-variable-capture (unroll เป็น literal call แยกทีละตัวก็ยังพัง), ไม่ใช่ server state ค้างจาก push ที่ fail ก่อนหน้า (validate fail ไม่เคย push อะไรจริง ยืนยันด้วย `inspect --outline`) — **แก้ได้ด้วยการเปลี่ยนรูปแบบการตั้งชื่อทั้งชุดให้ไม่มี pattern ตัวเลข/prefix ที่ทับซ้อนกับ widget แกนอื่นบนหน้าเดียวกัน** (เปลี่ยนจาก `directoryFaculty{i}_{tag}` เป็น `facQry{letterTag}_{tag}` ที่ไม่ใช้ตัวเลขเลย) root cause ไม่ทราบแน่ชัด (เข้าข่าย SDK/validator quirk แบบเดียวกับที่ PT-19 เจอ ไม่ใช่บั๊กจากสคริปต์)
 
 **ใช้แล้วที่:** L8 `UserDirectory` (`public_directory_view` registration, filter chip ปี/คณะ) — เช็คทุกครั้งที่สร้าง view/table ใหม่ผ่าน Supabase MCP ตรง ๆ แล้วต้องให้ DSL อ้างถึง, และถ้า D-39's "ให้แต่ละ widget มี outputAs ไม่ซ้ำ" ทำแล้วยัง error อยู่ ให้ลองเปลี่ยนรูปแบบชื่อทั้งชุดก่อนไล่หาสาเหตุอื่น
+
+> 🔴 **อัปเดต (D-57, 2026-08-22): root cause ของข้อ 2 น่าจะคือ PT-31 (limit 5 output variable) ไม่ใช่ปัญหาการตั้งชื่อจริง ๆ** — ตอนนั้นแก้ปัญหาได้ด้วยการเปลี่ยนชื่อเพราะบังเอิญลดจำนวน action ที่ต้องนับรวมไปด้วย ไม่ใช่เพราะชื่อใหม่ "ไม่ชน" — ถ้าเจออาการนี้อีกให้ **นับจำนวน action ที่ผลิต output variable ทั้งหมดในบริบทที่เกี่ยวข้องก่อน** แทนที่จะลองเปลี่ยนชื่อไปเรื่อย ๆ
+
+---
+
+## PT-31 — 🔴 widget เดียวมี action ที่ผลิต "output variable" ได้สูงสุด **5** ตัว เกินแล้ว collide เสมอไม่ว่าจะตั้งชื่อ unique แค่ไหน (D-57, 2026-08-22)
+
+**ยืนยันเชิงประจักษ์แล้ว ไม่ใช่การเดา** — ปุ่มเดียวที่ต้อง conditional-update 3 field (ชื่อ + ชั้นปี + คณะ) ด้วยแพทเทิร์น "1 branch ต่อค่าที่เป็นไปได้" (ชั้นปี 4 ค่า + คณะ 4 ค่า) รวมกับ refetch ท้ายสุด ได้ทั้งหมด 10 action ที่มี `outputAs`/`ActionOutputProducer` (`PostgresUpdate`/`PostgresQuery`) — validate fail ซ้ำ ๆ ด้วย `"output variable ... same name as another widget"` ทั้งที่ทุก `outputAs` เป็นสตริงไม่ซ้ำกันจริงตามตัวอักษร (ลองเปลี่ยนรูปแบบชื่อ 3 รอบ ไม่ช่วยเลยสักรอบ)
+
+**วิธียืนยันแบบเด็ดขาด:** สลับลำดับ 2 chain (เอา faculty มาก่อน year) แล้ว error ที่เคยอยู่ที่ faculty **ย้ายไปอยู่ที่ year แทน** ทั้งที่ชื่อ/เนื้อหาไม่เปลี่ยนเลย — พิสูจน์ว่าเป็นเรื่อง **ตำแหน่ง/จำนวน** ไม่ใช่เนื้อหาของชื่อ ลดทั้งหมดเหลือ action เดียว (ไม่มี branch เลย ยิง `profileSaveChain('save')` ตรง ๆ ครั้งเดียว) ก็ยังพังที่ action ตัวที่ 6 เป็นต้นไปเหมือนเดิม (name(1)+year1-4(4)=5 ตัวแรกผ่านเสมอ, faculty0-3(4)+refresh(1)=5 ตัวถัดมา ตัวที่ 6-10 พังเสมอ ไม่ว่าเนื้อหาจะเป็น field ไหน)
+
+**`SetState` ไม่ติด limit นี้เลย** — `SetState` ไม่ใช่ `ActionOutputProducer` (ไม่มี `outputAs`/`outputVariableName`) เขียนเข้า state field ตรง ๆ ไม่ผ่านกลไก "output variable" เลย จึงสร้างกี่ branch ก็ได้ไม่จำกัด
+
+**ทางแก้:** ถ้าต้อง encode ค่าที่เป็นไปได้หลายค่า (เช่น string→int mapping ผ่าน `If`/`Equals` หลาย branch) ให้ทำที่ **จุดที่ค่าเกิดขึ้นจริง** (เช่น Dropdown's `onChanged`, ซึ่งมี action tree ของตัวเอง แยกจาก action tree ของปุ่ม Save) ด้วย `SetState` ล้วน ๆ แล้วเก็บผลลัพธ์ (int ที่แปลงแล้ว) ไว้ใน state field ใหม่ ให้ฝั่งที่ต้องยิง query/update จริง (เช่นปุ่ม Save) อ่านค่าที่แปลงเสร็จแล้วตรง ๆ ผ่าน `State(...)` — ไม่ต้อง branch อีกเลยที่ปุ่ม เหลือ 1 action-output ต่อ field แทนที่จะเป็น 4
+
+**ใช้แล้วที่:** L1 `ProfileUser` (`RenameProfileFields` — ชั้นปี/คณะ Dropdown แปลงค่าที่ `onChanged`, ปุ่ม Save เหลือแค่ 4 output action: name/year/faculty update + refetch) — เช็คทุกครั้งที่ widget เดียวต้องมี conditional query/update มากกว่า ~4-5 กรณี นับจำนวน `PostgresQuery`/`PostgresUpdate`/`CallCustomAction` ที่มี `outputAs` ทั้งหมดในต้นไม้ action เดียวกันก่อนเขียนเพิ่ม ถ้าเกิน ให้ย้าย branching ไปทำที่จุดอื่น (onChanged ของ widget ที่เป็นต้นตอของค่า) แทน

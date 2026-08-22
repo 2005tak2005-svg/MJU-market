@@ -1145,3 +1145,61 @@ chip, `shrinkWrap: true`, tap เรียก `openProfileChain`) + `home_widget
 หมวดหมู่สินค้าเดิม)
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+---
+
+## D-57 — `ProfileUser` เพิ่ม Dropdown ชั้นปี/คณะ ให้ผู้ใช้กรอกข้อมูลตัวเองได้จริง (2026-08-22)
+
+**ปัญหา:** D-55/D-56 สร้างช่องทางแสดงผล (`UserProfileCard`) + กรอง
+(`UserDirectory`) ของ `year_of_study`/`faculty` ไปแล้ว แต่ไม่เคยมีที่ให้ผู้ใช้
+**กรอกข้อมูลตัวเอง** เลยสักจุด — `ProfileUser`'s `RenameProfileSection` มีแค่ช่อง
+แก้ชื่อ (`NewFullNameField`+`SaveFullNameButton`)
+
+**ตัดสินใจหลัก:**
+
+1. **`Dropdown` (ไม่ใช่ chip) สำหรับฟอร์มแก้โปรไฟล์ตัวเอง** — ต่างจาก `UserDirectory`
+   (D-56) ที่เลือก chip เพราะเป็น browse/filter UI, ที่นี่เป็น single-select form
+   field ธรรมดา `Dropdown` เหมาะกว่า — `WidgetValue()` (references.dart: "intended
+   for widgets like Dropdown, Checkbox, and Toggle") คือทางอ่านค่าที่เพิ่งเลือกใน
+   `onChanged` ของมันเอง
+2. **แต่ละฟิลด์ (ชื่อ/ชั้นปี/คณะ) เซฟแบบ optional อิสระ ("เว้นว่างไว้เท่าเดิม" ตามที่
+   pete สั่ง)** — ปุ่ม "บันทึกข้อมูลโปรไฟล์" ยิง `PostgresUpdate` แยกต่อฟิลด์ ครอบด้วย
+   `If(field ไม่ว่าง/ไม่ใช่ sentinel, then: [update], orElse: [])` — ไม่ใช่ update
+   ก้อนเดียวรวมทุก field เพราะจะเผลอเขียน NULL ทับค่าที่เคยตั้งไว้ก่อนหน้าทุกครั้งที่
+   แก้แค่ชื่ออย่างเดียว
+3. **แปลงค่า Dropdown (string) เป็น int (`year_of_study`/`faculty_id`) ที่
+   `onChanged` ของ Dropdown เอง ไม่ใช่ตอนกดบันทึก** — เหตุผลเต็มอยู่กับดักข้อ 5-6
+   ด้านล่าง (ข้อจำกัดใหม่ที่เพิ่งเจอ)
+4. **โปรไฟล์ที่เพิ่งบันทึกไหลไปโชว์ใน `UserProfileCard` (D-55) อัตโนมัติทันที
+   ไม่ต้องต่อสายอะไรเพิ่ม** — chain สำเร็จรูปอยู่แล้ว: `ProfileUser` เขียน
+   `Profile.year_of_study`/`faculty_id` → `public_profiles` (D-56) join
+   `faculties` → `loadViewedProfile` (D-55) อ่านคอลัมน์ชื่อเดิม `faculty`/
+   `year_of_study` เป๊ะ ไม่มีจุดไหนต้องแก้เพิ่มเลย
+
+**กับดักใหม่ที่เจอระหว่างทำ (สำคัญมาก จดไว้ละเอียดใน `PATTERNS.md` PT-31):**
+
+5. **`ff.Tables.profile`'s typed field ค้างมาตั้งแต่ก่อน D-52 — ไม่มี
+   `year_of_study`/`faculty_id` (และ `student_id`/`ban_reason`/`banned_at`/
+   `banned_by`) เลย** ทั้งที่คอลัมน์เหล่านี้มีจริงใน DB มานานแล้ว เพราะทุกที่ที่เคย
+   เขียน/อ่านคอลัมน์พวกนี้ผ่าน custom action (`Supabase.instance.client` ตรง ๆ)
+   หรือผ่าน view ที่ลงทะเบียนแยก (`admin_users_view`) ไม่เคยผ่าน
+   `PostgresQuery`/`PostgresUpdate` ทับ `ff.Tables.profile` ตรง ๆ มาก่อนเลยสักครั้ง
+   จนกระทั่งงานนี้ — ต้อง `postgres_helpers.addTableField` เพิ่ม 2 field ที่ใช้จริง
+   (ไม่ได้ไล่แก้ครบทุกคอลัมน์ที่ขาด นอก scope งานนี้)
+6. **🔴 [สำคัญ] widget หนึ่งตัวมี action ที่ผลิต "output variable" ได้สูงสุด 5 ตัว
+   เท่านั้น — เกินแล้ว collide ไม่ว่าจะตั้งชื่อ unique แค่ไหนก็ตาม** — ค้นพบใหม่
+   ระหว่างพยายามทำปุ่มเดียวอัปเดต 3 field (ชื่อ+ชั้นปี×4 branch+คณะ×4 branch+
+   refetch = 10 action) validate fail ซ้ำ ๆ ด้วย "output variable ... same name"
+   ลองเปลี่ยนชื่อ 3 รอบ (ไม่ช่วย) จนสลับลำดับ branch แล้วเห็นว่า**ตัวที่ 6 เป็นต้นไป
+   fail เสมอไม่ว่าจะเป็น field ไหน** — สรุปว่าเป็น limit จริงของ SDK ไม่ใช่ปัญหาการ
+   ตั้งชื่อ ทางแก้: ย้าย string→int conversion (4 branch ต่อ field) ไปทำที่
+   Dropdown's `onChanged` ด้วย `SetState` ล้วน (ไม่มี outputAs เกี่ยวข้องเลย ไม่โดน
+   limit นี้) เหลือแค่ 4 action ที่ปุ่ม (name/year/faculty update + refetch)
+
+**ยืนยันจาก `generated_code/lib/profile_user/profile_user_widget.dart`**
+(Dropdown จริงทั้งคู่, `selectedYearValue`/`selectedFacultyValue` int แปลงจริงใน
+onChanged, ปุ่ม conditional update 3 field + refetch) — diff กับไฟล์ backup
+ยืนยันว่ามีแค่ `RenameProfileSection` ที่เปลี่ยน ส่วนอื่นของหน้า (avatar/Active
+toggle/Edit Profile/Account Settings/Log Out) ไม่กระทบเลย
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

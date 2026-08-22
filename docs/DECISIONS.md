@@ -998,3 +998,64 @@ pete เปิด Dashboard → Authentication → URL Configuration แล้�
 **ยืนยันจาก `generated_code/lib/banned_users/banned_users_widget.dart`** (conditional `if (bannedUserItem.canUnban ?? true)` จริง, ปุ่มเรียก `actions.adminUnbanUser()`) + `generated_code/lib/home_admin/home_admin_widget.dart` (การ์ดสถิติ `onTap` ยิง `context.pushNamed(BannedUsersWidget.routeName)` จริง)
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+---
+
+## D-55 — ป๊อปอัพโปรไฟล์ผู้ใช้ (avatar/ชื่อ/bio/ชั้นปี/คณะ) จาก ProductDetails + BannedUsers (2026-08-22)
+
+**ปัญหา:** pete อยากให้แตะชื่อผู้ใช้แล้วเห็นข้อมูลโปรไฟล์พื้นฐานของคนอื่น จาก 2 จุด
+(ชื่อผู้ขายบน `ProductDetails`, แถวผู้ใช้บน `BannedUsers`) — `year_of_study`/
+`faculty` ไม่เคยมีคอลัมน์เก็บเลย ("likes rate" งดไว้ก่อน ยังไม่มีฟีเจอร์นั้นจริง)
+
+**ตัดสินใจหลัก:**
+
+1. **เพิ่ม `"Profile".year_of_study`/`faculty` (nullable ทั้งคู่) แล้วขยาย
+   `public_profiles` (D-01) แทนสร้าง view ใหม่** — view นี้ไม่มี `security_invoker`
+   มาตั้งแต่ D-01 (รันด้วยสิทธิ์ owner ข้าม RLS ของ `"Profile"`) และ grant SELECT
+   ให้ `anon`/`authenticated` อยู่แล้ว การเพิ่มคอลัมน์ต่อท้ายจึงอยู่ใน exposure tier
+   เดียวกับ `full_name`/`avatar_url` ที่เปิดเผยอยู่แล้วทุกหน้าจอ — ไม่ใช่การตัดสินใจ
+   เปิดเผยข้อมูลใหม่ ยืนยันด้วย `get_advisors(security)` ว่าไม่มี lint ใหม่
+2. **Paramless component (`UserProfileCard`) + custom action คั่นกลาง แทน
+   `params:` ตรง ๆ แบบ `FullImageViewer`** — ข้อมูลโปรไฟล์ต้อง**ดึงจาก DB ก่อน**
+   ไม่ใช่พร้อมอยู่แล้วแบบ URL รูป จึงต้องมี custom action (`loadViewedProfile`)
+   คั่นระหว่างแตะกับเปิดการ์ด เหมือนแพทเทิร์น `BanUserSheet` (D-52) — เป็นจุดใช้ที่ 3
+   ของแพทเทิร์น "paramless component + App State + custom action fetch"
+3. **Reset ทุก field ที่โชว์ผลก่อนตั้ง target ใหม่และก่อน query เสมอ (pete สั่ง)** —
+   กัน state leakage ข้ามโปรไฟล์ (สลับดูคนที่ 2 ติด ๆ กันแล้วเห็นข้อมูลคนแรกค้าง)
+   และเปิดการ์ดเฉพาะตอน query สำเร็จเท่านั้น (`loadProfileResult == ''`) ล้มเหลว
+   โชว์ SnackBar แทนไม่เปิดการ์ดเปล่า
+4. **ชั้นปี/คณะคงพื้นที่แสดงผลไว้เสมอ ไม่ซ่อนทั้ง Row (pete สั่ง)** — label คงที่ +
+   value สลับข้อความจริง/"ยังไม่ระบุ..." ด้วย `Equals`/`Not` (เหมือนแพทเทิร์น bio)
+   กันเค้าโครงการ์ดขยับเมื่อข้อมูลว่าง (แทบทุกคนตอนนี้ เพราะยังไม่มีฟีเจอร์กรอกข้อมูล)
+5. **Re-author itemBuilder ทั้งก้อนแบบ verbatim ทั้ง 2 จุด (ไม่ใช่แค่แปะปุ่ม)** —
+   `item['seller_id']`/`item['id']` เป็น itemBuilder-scoped ทั้งคู่ (PT-23 §1: item[]
+   ใช้ได้เฉพาะตอน author fresh ในสเตทเมนต์เดียวกัน) จึงต้อง `ensureReplaced`
+   คัดลอกทุก field เดิมเป๊ะ (สำรองไฟล์ `generated_code/` ไปไว้ scratchpad ก่อนเขียน
+   ทับ แล้ว diff ยืนยันหลัง push ทุกครั้งตามที่ pete สั่ง) เพิ่มแค่ Container(onTap:)
+   ห่อชื่อ + ไอคอน `info_outline`
+
+🔴 **กับดักที่เจอระหว่างทำ:**
+- **`ensureReplaced` ไม่ปลอดภัยที่จะรันซ้ำแม้เนื้อหาถูกต้อง** (PT-16) — retry ครั้ง
+  ที่สองด้วย key เดิมที่เพิ่ง landed ไปแล้วจากพุชก่อนหน้า ทำให้เกิด
+  `Field "viewedProfileUserId" has an update value that is not properly set` +
+  `Generator variable does not exist` ลามไปยัง itemBuilder อื่นที่ไม่เกี่ยวข้องเลย
+  (`ChatListItems`/`SalesBySellerList`/`PendingProductsList`) แก้ด้วยการ
+  `inspect --outline` ใหม่ดึง key สดก่อน retry ทุกครั้ง — คอนเฟิร์มอีกครั้งว่า
+  "เช็ค outline สดก่อนเขียนโค้ดทุกครั้ง" ไม่ใช่ขั้นตอนที่ข้ามได้จริง ๆ
+- **ห้ามห่อ ListView (เป้าหมายของ `ensureReplaced`) ด้วย `Expanded(...)`** — ทำให้
+  เกิด error ชุดเดียวกันข้างบน (item-scope/generator-variable resolution พังทั้ง
+  โปรเจกต์) ใช้ `shrinkWrap: true` บน `ListView` เอง (แพทเทิร์นเดียวกับ D-40
+  `chatList`) แทน ได้ผลลัพธ์ปลอดภัยเดียวกัน (กัน unbounded-height crash) โดยไม่แตะ
+  โครงสร้าง parent
+- `ensureReplaced` ของ root ใหม่ต้องมี `name:` เสมอ ไม่งั้น validate fail ทันที
+  ("requires an inserted or replacement root widget with a non-empty name")
+- `SetState(...)` เขียน app state ไม่ได้ ต้อง `UpdateAppState.set(...)` (PT-23 ข้อ 4,
+  ยืนยันซ้ำอีกครั้งเหมือน D-53)
+
+**ยืนยันจาก `generated_code/`:** `load_viewed_profile.dart` (reset ไม่ทำในนี้ ทำที่
+chain ก่อนเรียก, ไม่เซ็ต field ถ้าไม่เจอแถว), `user_profile_card_widget.dart`
+(fallback ทุก field เป็น conditional จริง), `product_details_widget.dart` +
+`banned_users_widget.dart` (diff กับไฟล์ backup ยืนยันว่า field เดิมทั้งหมดรอด
+ครบ มีแค่ tap-wrapper ใหม่กับ shrinkWrap ที่เปลี่ยน)
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

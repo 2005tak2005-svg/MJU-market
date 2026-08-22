@@ -257,6 +257,43 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - ไม่เปิด Realtime
 
+### `public.advertisement_posts` (L3/L8, เพิ่ม 2026-08-22, D-58)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| 2 | `image_url` | text | **NOT NULL** | – |
+| 3 | `title` | varchar | nullable | – |
+| 4 | `body` | text | nullable | – |
+| 5 | `is_active` | boolean | **NOT NULL** | `true` |
+| 6 | `created_by` | uuid | **NOT NULL** | `auth.uid()` |
+| 7 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (id)
+FOREIGN KEY (created_by) REFERENCES "Profile"(id)
+```
+
+- แอดมินโพสต์รูปประกาศ/แบนเนอร์ให้ขึ้นใน `ListView_6etuspo6` ของ `Home` — รูปเดียวต่อโพสต์ (ไม่ใช่ grid หลายรูปแบบ `products`)
+- ลบแบบ soft (`is_active = false`) ไม่ hard delete
+- ไม่มีคอลัมน์ผู้เขียน/ชื่อผู้โพสต์เปิดเผยใน UI — การ์ดไม่โชว์ attribution
+
+### `public.advertisement_likes` (junction table, เพิ่ม 2026-08-22, D-58)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `post_id` | uuid | **NOT NULL** | – |
+| 2 | `user_id` | uuid | **NOT NULL** | `auth.uid()` |
+| 3 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (post_id, user_id)
+FOREIGN KEY (post_id) REFERENCES advertisement_posts(id) ON DELETE CASCADE
+FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
+```
+
+- composite PK กันกดไลก์ซ้ำในตัว ไม่ต้อง UNIQUE เพิ่ม · insert/delete เท่านั้น ไม่มี UPDATE policy (ไลก์เป็น toggle)
+
 ### ตารางที่ยังไม่มี
 
 `transactions` (L5) · `reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
@@ -510,9 +547,32 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 
 ---
 
+```sql
+-- security_invoker = true (ปกติ ไม่มี author name/avatar ให้ต้อง owner-run)
+CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
+ SELECT p.id,
+    p.image_url,
+    COALESCE(p.title, ''::character varying) AS title,
+    COALESCE(p.body, ''::text) AS body,
+    p.created_at,
+    p.is_active,
+    COALESCE(l.like_count, 0::bigint)::integer AS like_count,
+    (EXISTS ( SELECT 1
+           FROM advertisement_likes al
+          WHERE al.post_id = p.id AND al.user_id = auth.uid())) AS liked_by_me
+   FROM advertisement_posts p
+     LEFT JOIN ( SELECT advertisement_likes.post_id,
+            count(*) AS like_count
+           FROM advertisement_likes
+          GROUP BY advertisement_likes.post_id) l ON l.post_id = p.id
+  WHERE p.is_active = true;
+```
+
+> เพิ่ม 2026-08-22 (D-58) — `title`/`body` ผ่าน `COALESCE` กัน force-unwrap crash บน FF `Text` widget ตามธรรมเนียมเดิม (D-38) `WHERE is_active = true` กรองโพสต์ที่ถูกซ่อนออกให้ทุก caller (รวม `Home`) `liked_by_me` ใช้ `auth.uid()` ตรงในตัว view เอง
+
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต่อตาราง:
+RLS `ENABLE` ครบทั้ง 10 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58):
 
 | ตาราง | policy | สรุป |
 |---|---|---|
@@ -524,6 +584,8 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | `"CAT"` | 1 | allow-all — เป็นแค่ lookup |
 | `reports` | **4** | admin อ่านทั้งหมด, reporter อ่าน/insert ของตัวเอง (D-24, 2026-08-15) + **RESTRICTIVE กันผู้ถูกแบน** (D-52) |
 | `notifications` | **4** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert **และอ่านทั้งหมด** (D-24 เพิ่ม admin-read แก้ root cause select-back RLS) |
+| `advertisement_posts` | 4 | select: active หรือ admin · insert/update/delete: admin เท่านั้น (D-58) |
+| `advertisement_likes` | 3 | select: ทุกคน (ให้ view's `EXISTS` ทำงาน) · insert/delete: เฉพาะแถวของตัวเอง (D-58) |
 
 **ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
@@ -546,6 +608,13 @@ RLS `ENABLE` ครบทั้ง 8 ตาราง จำนวน policy ต�
 | `notifications` | admin can read all notifications | SELECT | `{authenticated}` | `private.is_admin()` | – |
 | `notifications` | users can mark own notifications read | UPDATE | `{authenticated}` | `(user_id = auth.uid())` | `(user_id = auth.uid())` |
 | `notifications` | admin can insert notifications | INSERT | `{authenticated}` | – | `private.is_admin()` |
+| `advertisement_posts` | Public can view active ads, admins view all | SELECT | `{authenticated}` | `is_active = true OR private.is_admin()` | – |
+| `advertisement_posts` | Admins can insert ad posts | INSERT | `{authenticated}` | – | `private.is_admin()` |
+| `advertisement_posts` | Admins can update ad posts | UPDATE | `{authenticated}` | `private.is_admin()` | `private.is_admin()` |
+| `advertisement_posts` | Admins can delete ad posts | DELETE | `{authenticated}` | `private.is_admin()` | – |
+| `advertisement_likes` | Anyone can view ad likes | SELECT | `{authenticated}` | `true` | – |
+| `advertisement_likes` | Users can like as themselves | INSERT | `{authenticated}` | – | `user_id = auth.uid()` |
+| `advertisement_likes` | Users can remove their own like | DELETE | `{authenticated}` | `user_id = auth.uid()` | – |
 
 **RESTRICTIVE — กันผู้ถูกแบน (D-52, 2026-08-21) ทุกตัว `TO authenticated`**
 
@@ -1006,6 +1075,25 @@ END; $function$;
 ```
 
 > ⚠️ **ยังไม่มีฝั่ง FlutterFlow อัปโหลดเข้า bucket นี้เลย** — schema/policy พร้อมแล้ว รอ Action Flow ส่งรูป (ดู `layers/L4-chat.md`)
+
+### bucket `ad-post-images` (L8, เพิ่ม 2026-08-22, D-58)
+
+| ค่า | |
+|---|---|
+| `public` | **true** — เหตุผลเดียวกับ bucket อื่น (D-12) |
+| `file_size_limit` | `5242880` (5 MB) |
+| `allowed_mime_types` | `{image/jpeg, image/png, image/webp}` |
+
+**ไม่มี owner-folder check แบบ bucket อื่น** — เขียนได้เฉพาะแอดมิน ไม่ใช่ owner ของตัวเอง:
+
+| policyname | cmd | roles | qual / with_check |
+|---|---|---|---|
+| `Public can view ad post images` | SELECT | `{public}` | qual: `bucket_id = 'ad-post-images'` |
+| `Admins can upload ad post images` | INSERT | `{authenticated}` | with_check: `bucket_id = 'ad-post-images' AND private.is_admin()` |
+| `Admins can update ad post images` | UPDATE | `{authenticated}` | qual **และ** with_check เหมือนกัน |
+| `Admins can delete ad post images` | DELETE | `{authenticated}` | qual: `bucket_id = 'ad-post-images' AND private.is_admin()` |
+
+folder path อัปโหลดใช้ `<auth.uid() ของแอดมิน>/<ชื่อไฟล์>` เพื่อจัดระเบียบ (ไม่ใช่ RLS requirement — policy เช็คแค่ `is_admin()`)
 
 ### bucket `static-pages`
 

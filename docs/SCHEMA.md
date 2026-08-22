@@ -14,7 +14,7 @@
 
 ## ตาราง
 
-8 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
+9 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
 
 ### `auth.users` (Supabase Auth built-in — ห้ามแก้ตรง ๆ)
 
@@ -36,13 +36,14 @@
 | 12 | `banned_at` | timestamptz | nullable | – |
 | 13 | `banned_by` | uuid | nullable | – |
 | 14 | `year_of_study` | smallint | nullable | – |
-| 15 | `faculty` | text | nullable | – |
+| 15 | `faculty_id` | bigint | nullable | – |
 
 ```sql
 -- constraint ทั้งหมด (pg_get_constraintdef คำต่อคำ)
 PRIMARY KEY (id)
 FOREIGN KEY (id) REFERENCES auth.users(id)          -- Profile_id_fkey (ไม่มี CASCADE)
 FOREIGN KEY (banned_by) REFERENCES "Profile"(id)    -- Profile_banned_by_fkey (D-52)
+FOREIGN KEY (faculty_id) REFERENCES faculties(id)   -- D-56
 UNIQUE (email)                                       -- Profile_email_key
 UNIQUE (student_id)                                  -- profile_student_id_unique
 
@@ -59,7 +60,7 @@ CHECK (((student_id IS NULL)
 CHECK (((email IS NULL)
         OR (lower((email)::text) ~ '^[^@]+@mju\.ac\.th$'::text)))            -- profile_email_domain
 
-CHECK ((year_of_study IS NULL) OR (year_of_study BETWEEN 1 AND 8))          -- profile_year_of_study_range
+CHECK ((year_of_study IS NULL) OR (year_of_study BETWEEN 1 AND 4))          -- profile_year_of_study_range (D-56: 4 ระดับชั้นปีจริง)
 ```
 
 > ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10**
@@ -71,6 +72,28 @@ CHECK ((year_of_study IS NULL) OR (year_of_study BETWEEN 1 AND 8))          -- p
 > ✅ **มี enforcement จริงแล้วตั้งแต่ 2026-08-21 (D-52)** — soft ban: login/browse ได้ แต่ลงประกาศ/แก้/ลบ · ส่งรายงาน · แชท (ยกเว้นห้องที่มีแอดมิน) ไม่ได้ บังคับด้วย RESTRICTIVE policy 5 ตัว + guard ใน `find_or_create_chat` · เขียนค่าได้ทางเดียวคือ RPC `admin_set_user_ban` (trigger `enforce_ban_admin_only` กันคนแก้เอง)
 >
 > `ban_reason`/`banned_at`/`banned_by` (D-52) — เซ็ตพร้อมกันทั้งชุดโดย `admin_set_user_ban` เท่านั้น ตอนปลดแบนถูกล้างเป็น NULL ทั้ง 3 · `banned_by` FK ชี้กลับ `"Profile"(id)` = แอดมินคนที่กดแบน
+>
+> 📌 `faculty_id` (D-56, เพิ่ม 2026-08-22) — แทนที่คอลัมน์ `faculty` (text) เดิมจาก
+> D-55 ที่ใช้ไปแค่ 1 วัน ย้ายไปเป็น FK ชี้ตาราง `faculties` แยกแทนเก็บ text อิสระ
+> `public_profiles`/`public_directory_view` ยัง resolve เป็นชื่อคณะ (text) ให้เหมือนเดิมผ่าน join ไม่กระทบฝั่ง FlutterFlow ที่ผูกไว้แล้ว (D-55's `UserProfileCard`)
+
+### `public.faculties` (D-56, เพิ่ม 2026-08-22)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | bigint | NOT NULL | identity **ALWAYS** |
+| 2 | `name` | text | NOT NULL | – |
+
+```sql
+PRIMARY KEY (id)
+UNIQUE (name)
+```
+
+RLS: `ALL` / `authenticated` / `USING (true)` — เหมือน `"CAT"` เป๊ะ (reference data ไม่ใช่ข้อมูลส่วนตัว) ตอนนี้มี 4 แถว placeholder (`คณะ A`/`คณะ B`/`คณะ C`/`คณะ D`) รอ pete แก้เป็นชื่อจริงผ่าน `UPDATE faculties SET name='...' WHERE id=...`
+
+> 🔴 chip label บนหน้า `UserDirectory` (FlutterFlow) เป็นค่าฮาร์ดโค้ดในสคริปต์
+> (`facultyChipLabels` ใน `dsl/edit.dart`) ไม่ได้ query ตารางนี้ตรง ๆ — แก้ชื่อคณะ
+> ในตารางนี้อย่างเดียว **ไม่ทำให้ chip label เปลี่ยนตาม** ต้องแก้สคริปต์ + push ด้วย
 
 ### `public.products`
 
@@ -242,18 +265,19 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 
 ## Views
 
-8 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+9 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
 CREATE VIEW public.public_profiles AS
- SELECT id,
-    full_name,
-    avatar_url,
-    bio,
-    year_of_study,
-    faculty
-   FROM "Profile";
+ SELECT p.id,
+    p.full_name,
+    p.avatar_url,
+    p.bio,
+    p.year_of_study,
+    f.name AS faculty
+   FROM "Profile" p
+     LEFT JOIN faculties f ON f.id = p.faculty_id;
 ```
 
 > 📌 `bio`/`year_of_study`/`faculty` (D-55, เพิ่ม 2026-08-22) — ต่อท้ายคอลัมน์เดิม
@@ -261,9 +285,46 @@ CREATE VIEW public.public_profiles AS
 > `full_name`/`avatar_url` ที่เปิดเผยแบบนี้อยู่แล้ว (`security_invoker` ไม่มี
 > ตั้งแต่ D-01 — ดูเหตุผลเต็มที่นั่น) `email`/`phone`/`student_id`/`role`/ban
 > columns ยังไม่อยู่ใน view นี้เหมือนเดิม
+>
+> 📌 `faculty` (D-56, เพิ่ม 2026-08-22) — ผลลัพธ์ของคอลัมน์นี้**เหมือนเดิมทุก
+> ประการ** (ชื่อ `faculty`, type text) แม้ต้นทางเปลี่ยนจากคอลัมน์ text ตรง ๆ เป็น
+> join `faculties` ผ่าน `faculty_id` แล้ว — ตั้งใจให้ `UserProfileCard`/
+> `loadViewedProfile` (D-55) ไม่ต้องแก้อะไรเลย
 
 > 🔴 **ห้ามใส่ `security_invoker` ให้ `public_profiles`** — ใส่แล้ว `seller_name` / `member_names` เป็น NULL ทั้งระบบทันที
 > advisor จะฟ้อง `security_definer_view` ตรงนี้ตลอดไป **นั่นคือของที่ตั้งใจ ไม่ใช่บั๊ก** เหตุผลเต็มอยู่ `DECISIONS.md` **D-01**
+
+```sql
+-- ⭐ ไม่มี security_invoker เหมือน public_profiles (D-01) — ต้องรันด้วยสิทธิ์ owner
+-- ถึงจะข้าม RLS ของ "Profile" ได้
+CREATE VIEW public.public_directory_view AS
+ SELECT p.id,
+    COALESCE(p.full_name, 'ผู้ใช้ MJU Market'::character varying) AS full_name,
+    COALESCE(p.avatar_url, ''::text) AS avatar_url,
+    COALESCE(p.bio, ''::text) AS bio,
+    p.year_of_study,
+    COALESCE(f.name, 'ยังไม่ระบุคณะ'::text) AS faculty,
+    COALESCE(p.year_of_study::text, 'ยังไม่ระบุชั้นปี'::text) AS year_label
+   FROM "Profile" p
+     LEFT JOIN faculties f ON f.id = p.faculty_id
+  WHERE (NOT p.is_banned);
+```
+
+> 📌 `public_directory_view` (D-56, เพิ่ม 2026-08-22) — แหล่งข้อมูลของหน้า
+> `UserDirectory` (browse ผู้ใช้ทั้งหมด, กรองชั้นปี/คณะ, ค้นหาชื่อ) แยกจาก
+> `public_profiles` โดยตั้งใจ **เหตุผลคู่**:
+> 1. `WHERE NOT is_banned` ซ่อนผู้ใช้ที่ถูกแบนจากไดเรกทอรีสาธารณะ — ทำใน view
+>    ใหม่แยกแทนแก้ `public_profiles` ตรง ๆ เพราะ `public_profiles` ถูก
+>    `UserProfileCard`/`loadViewedProfile` (D-55) ใช้เปิดดูโปรไฟล์คนที่ถูกแบนจาก
+>    หน้า admin `BannedUsers` ด้วย — ถ้ากรองใน `public_profiles` เอง admin จะเปิด
+>    ดูโปรไฟล์คนที่เพิ่งแบนไม่ได้อีกต่อไป
+> 2. คอลัมน์ที่จะ bind ตรงกับ `item[]`/`Text` widget ใน FlutterFlow (ไม่ผ่าน
+>    custom action คั่นแบบ `loadViewedProfile`) ต้อง **COALESCE ทุกตัวที่ nullable**
+>    ก่อนส่งออก — ผูก field ที่เป็น NULL ตรง ๆ กับ `Text` widget compile เป็น
+>    force-unwrap (`item.field!`) ที่ crash จริงตอนรัน (ยืนยันจากโค้ดจริงของ
+>    `BannedUserRow`, D-52/D-55) `year_of_study` (raw, nullable) ยังคงอยู่ไว้
+>    สำหรับ filter เท่านั้น — ไม่เคย bind ตรงกับ widget แสดงผล ใช้
+>    `year_label` (text, COALESCE แล้ว) สำหรับแสดงผลแทน
 
 ```sql
 -- reloptions: security_invoker=true

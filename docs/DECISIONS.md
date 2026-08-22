@@ -1059,3 +1059,89 @@ chain ก่อนเรียก, ไม่เซ็ต field ถ้าไม�
 ครบ มีแค่ tap-wrapper ใหม่กับ shrinkWrap ที่เปลี่ยน)
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+---
+
+## D-56 — หน้า "ผู้ใช้งานทั้งหมด" (UserDirectory) + ตาราง `faculties` แยก (2026-08-22)
+
+**ปัญหา:** pete อยากได้หน้ารวมโปรไฟล์ผู้ใช้ทุกคน (ไม่ใช่แค่แอดมิน) คล้าย `Home`
+กรองชั้นปี (4 ระดับจริง) + คณะ (เริ่ม 4 คณะ) + ค้นหาชื่อ — สั่งให้สร้างตาราง `faculties`
+แยกใน Supabase เอง ไม่ใช่ text อิสระแบบที่ D-55 ทำไว้ก่อน
+
+**ตัดสินใจหลัก:**
+
+1. **`faculties` (id/name) แยกจริง แทน `Profile.faculty` (text)** — เพิ่ม
+   `Profile.faculty_id` FK ชี้ `faculties`, ลบคอลัมน์ `faculty` เดิมทิ้ง (ว่างทุก
+   แถวอยู่แล้ว) `public_profiles` แก้เป็น join ผ่าน `faculty_id` แต่ผลลัพธ์
+   คอลัมน์ `faculty` (ชื่อ/type) **เหมือนเดิมทุกประการ** — `UserProfileCard`/
+   `loadViewedProfile` (D-55) ไม่ต้องแก้เลย RLS ของ `faculties` copy จาก `"CAT"`
+   เป๊ะ (`ALL`/`authenticated`/`true`) ยังไม่มีชื่อคณะจริง ใส่ placeholder
+   "คณะ A-D" ไปก่อนรอ pete แก้ผ่าน SQL
+2. **CHECK ของ `year_of_study` แคบลงจาก 1-8 (D-55 เดาไว้กว้าง) เป็น 1-4** — pete
+   ยืนยันแล้วว่ามหาลัยมี 4 ชั้นปีจริง
+3. **View ใหม่แยก `public_directory_view` แทนแก้ `public_profiles`** — ต้องกรอง
+   `WHERE NOT is_banned` สำหรับไดเรกทอรีสาธารณะ แต่แก้ `public_profiles` ตรง ๆ
+   จะพัง `UserProfileCard` ที่ admin เปิดจากหน้า `BannedUsers` (D-55 ใช้
+   `public_profiles` หา id เดียวกัน ถ้ากรองคนถูกแบนออกจาก view นั้นเลย admin จะ
+   ดูโปรไฟล์คนที่เพิ่งแบนไม่ได้อีก) — เป็น gate-in-view pattern เดียวกับ D-33/D-52
+   ข้อ 3 ที่ `products_review_view` ใช้อยู่แล้ว
+4. **`public_directory_view` COALESCE ทุกคอลัมน์ที่ nullable ก่อนส่งออก** (ต่างจาก
+   `public_profiles` ที่ปล่อย NULL ผ่านได้เพราะมี `loadViewedProfile` คอยจัดการ) —
+   คอลัมน์ของ view นี้ bind ตรงกับ `item[]`/`Text` widget ใน `ListView` โดยไม่มี
+   custom action คั่น การ bind field ที่เป็น NULL ตรง ๆ compile เป็น force-unwrap
+   (`item.field!`) ที่ **crash จริงตอนรัน** (ยืนยันจากโค้ดจริงของ `BannedUserRow`
+   ที่ทำแบบเดียวกันมาก่อน) `year_of_study` (raw int, nullable) เก็บไว้สำหรับ
+   filter เท่านั้น เพิ่ม `year_label` (text, COALESCE แล้ว) แยกไว้แสดงผล
+5. **Filter chip แบบ mutually-exclusive ไม่ใช่ AND รวมกัน** — `filters:` ของ
+   `PostgresQuerySpec` fix ตอน compile-time (ไม่มี list-literal expression —
+   PT-23 §7) ครบทุก combination ของ 3 filter ต้องใช้ `If` ซ้อน 8 กิ่ง เลือกทำแบบ
+   `Home`'s category chip แทน (D-37/D-39/D-46/D-48): แตะแกนไหนล้างอีก 2 แกน
+   ยิง query ใหม่แค่ filter เดียว — proven แล้วในโปรเจกต์ ไม่ต้องคิดกลไกใหม่
+6. **ค้นหาชื่อ exact match เท่านั้น** — สืบทอดข้อจำกัดจาก D-48 (`equalTo` เท่านั้นที่
+   null-safe เมื่อผูกกับค่า dynamic)
+7. **หน้าเป็น `ListView` แถวมีหัวตาราง ไม่ใช่ `PaginatedDataTable`/`DataTable`
+   ของจริง** — เช็ค SDK แล้วพบว่า DSL นี้ bind ได้แค่หัวคอลัมน์เท่านั้น
+   (`compiler.dart:5112-5163`, ไม่มี itemBuilder/field-mapping ต่อคอลัมน์เลย)
+   ทั้งสอง widget ไม่เคยถูกใช้ในโปรเจกต์นี้มาก่อนด้วย — ทำ `ListView` + แถวหัว
+   ตาราง static แทน (ดูเป็นตารางแต่ proven 100%)
+8. **ทางเข้า: ไอคอนใหม่บน header ของ `Home`** ต่อจาก `NotificationsBellButton`,
+   **แตะแถวผู้ใช้เปิด `UserProfileCard` เดิมจาก D-55** ผ่าน `openProfileChain`
+   ที่ยัง defined อยู่ในสคริปต์ — reuse ตรง ๆ ไม่สร้าง popup ใหม่
+
+**กับดักที่ตรวจพบ+แก้ก่อนลงมือ (pete สั่งให้ทวนก่อนเริ่ม):**
+- `PendingProductsList`'s `ensureReplaced` (PT-19) — key ดริฟต์ไปแล้วจริงจาก
+  push ของ D-55 ก่อนหน้า (`ListView_qglcpyh5` → `ListView_l1lk6db9`) แก้ก่อนพุช
+  แรกของงานนี้ ไม่งั้นพุชแรกจะ fail ด้วยเหตุผลที่ไม่เกี่ยวกับหน้าใหม่เลย
+- SQL: ต้อง `CREATE OR REPLACE VIEW` ให้เลิกอ้างคอลัมน์ `faculty` ก่อน
+  `DROP COLUMN` เสมอ (สลับลำดับชน dependency error ของ Postgres ทันที)
+- ไม่ต้อง `GRANT` เพิ่มให้ตาราง/view ใหม่ — โปรเจกต์นี้มี default privileges
+  ระดับ schema ที่ให้ `anon`/`authenticated` อัตโนมัติอยู่แล้ว (ยืนยันจาก
+  `notifications` ตารางเก่า)
+
+**กับดักที่เจอเพิ่มระหว่างทำ (ไม่เคยบันทึกมาก่อน):**
+- **View ใหม่ที่ยังไม่เคยมี consumer ต้อง register เป็น typed table ผ่าน
+  `postgres_helpers.addTable` ก่อน DSL อ้างถึงได้** — `flutterflow ai
+  refresh-context` เฉย ๆ **ไม่ทำให้** table/view ที่สร้างตรงใน Supabase
+  กลายเป็น `ff.Tables.*` handle อัตโนมัติ ต้อง registration guard ด้วย
+  `findTable`/`addTable` แบบเดียวกับที่ `admin_dashboard_stats` เคยต้องทำ
+  (ไม่ใช่แค่ view เก่าที่มี consumer อยู่แล้วอย่าง `public_profiles`) — ต้องอยู่
+  **คนละพุช** จากพุชที่ page/component อ้างถึงมัน (PT-17 compile order)
+- **ห้ามห่อ `ListView` เป้าหมายของ `ensureReplaced` ด้วย `Expanded`** — ยืนยันซ้ำ
+  จาก D-55 อีกครั้ง ใช้ `shrinkWrap: true` แทนตั้งแต่แรก ไม่ต้องเจอ error ซ้ำ
+- 🔴 **outputAs ที่ unique ตามกฎ D-39 แล้วก็ยัง collide ได้** — ให้แต่ละ chip
+  widget's query action มี outputAs ไม่ซ้ำกัน (`directoryFaculty1_Selected` ฯลฯ)
+  แล้วก็ยัง validate fail ด้วย "output variable with the same name as that of
+  another widget" อยู่ดี เฉพาะ chip index 1 (ทดสอบแล้วว่าไม่ใช่บั๊ก closure/loop —
+  unroll เป็น literal ตรง ๆ ก็ยังพัง) แก้ได้ด้วยการเปลี่ยน**รูปแบบการตั้งชื่อ**
+  ทั้งชุดให้ไม่มี pattern ตัวเลข/prefix ร่วมกับ chip แกนอื่น (เช่นเปลี่ยนจาก
+  `directoryFaculty{i}_{tag}` เป็น `facQry{letterTag}_{tag}`) — root cause ไม่
+  ทราบแน่ชัด (คาดว่า internal identifier collision/normalization บางอย่าง) ถ้า
+  เจอ outputAs collision ที่ "unique แล้วแต่ก็ยัง error" ให้ลองเปลี่ยนรูปแบบชื่อ
+  ทั้งชุดก่อนคิดว่าสคริปต์ยังผิด
+
+**ยืนยันจาก `generated_code/`:** `user_directory_widget.dart` (filters จริงทุก
+chip, `shrinkWrap: true`, tap เรียก `openProfileChain`) + `home_widget.dart`
+(diff กับไฟล์ backup ยืนยันว่ามีแค่ปุ่มไอคอนใหม่เพิ่มเข้ามา ไม่กระทบช่องค้นหา/chip
+หมวดหมู่สินค้าเดิม)
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

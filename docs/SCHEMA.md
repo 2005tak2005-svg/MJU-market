@@ -14,7 +14,7 @@
 
 ## ตาราง
 
-9 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
+12 ตารางใน `public` — RLS **เปิดครบทุกตัว**, `FORCE ROW LEVEL SECURITY` ไม่เปิดที่ไหนเลย
 
 ### `auth.users` (Supabase Auth built-in — ห้ามแก้ตรง ๆ)
 
@@ -105,13 +105,14 @@ RLS: `ALL` / `authenticated` / `USING (true)` — เหมือน `"CAT"` เ
 | 4 | `title` | varchar | nullable | – |
 | 5 | `description` | text | nullable | – |
 | 6 | `price` | numeric | nullable | – |
-| 8 | `status` | varchar | nullable | – |
+| 8 | `status` | varchar | **NOT NULL** | `'available'::character varying` |
 | 9 | `image_urls` | text[] | nullable | – |
 | 10 | `condition` | varchar | nullable | – |
 | 11 | `contact_phone` | varchar | nullable | – |
 | 12 | `moderation_status` | varchar | **NOT NULL** | `'pending'::character varying` |
 | 13 | `category_id` | bigint | nullable | – |
 | 14 | `rejection_reason` | text | nullable | – |
+| 15 | `buyer_id` | uuid | nullable | – (D-59, เขียนได้ทาง `mark_product_sold()` เท่านั้น) |
 
 > 📌 `ordinal_position` **ข้าม 7** — มีคอลัมน์ที่ถูก DROP ไปแล้ว ไม่ใช่เอกสารตกหล่น
 
@@ -119,19 +120,24 @@ RLS: `ALL` / `authenticated` / `USING (true)` — เหมือน `"CAT"` เ
 PRIMARY KEY (id)
 FOREIGN KEY (category_id) REFERENCES "CAT"(id)
 FOREIGN KEY (seller_id) REFERENCES "Profile"(id) ON UPDATE CASCADE ON DELETE CASCADE
+FOREIGN KEY (buyer_id) REFERENCES "Profile"(id) ON DELETE SET NULL   -- D-59
 
 CHECK (((condition)::text = ANY ((ARRAY['new'::character varying,
                                         'used'::character varying])::text[])))
 CHECK (((moderation_status)::text = ANY ((ARRAY['pending'::character varying,
                                                 'approved'::character varying,
                                                 'rejected'::character varying])::text[])))
+CHECK (((status)::text = ANY ((ARRAY['available'::character varying,
+                                     'reserved'::character varying,
+                                     'sold'::character varying])::text[])))   -- products_status_check (D-59)
 
 CHECK (((image_urls IS NULL) OR (array_length(image_urls, 1) <= 3)))   -- products_image_urls_max_3
 ```
 
 - `image_urls` เก็บได้ **สูงสุด 3 รูป** บังคับที่ระดับ DB — ยิง API ตรงก็เกินไม่ได้ (ดู `DECISIONS.md` D-12)
-- `status` = สถานะการขาย (available/reserved/sold) — **ไม่มี CHECK** ยังไม่บังคับค่า, Layer 5 จะมาใช้
+- `status` = สถานะการขาย (available/reserved/sold) — `NOT NULL` + `CHECK` แล้ว (D-59) เขียนได้ **ทาง `mark_product_sold()` เท่านั้น** — trigger `enforce_sale_via_rpc_only` บล็อกทุกทางอื่นแม้เจ้าของ/แอดมิน (ดู Function/Trigger ด้านล่าง)
 - `moderation_status` = สถานะตรวจสอบ — คนละเรื่องกับ `status` โดยตั้งใจ ดู `DECISIONS.md` D-04
+- `buyer_id` (D-59) = ผู้ซื้อหลังขายแล้ว เขียนพร้อม `status='sold'` ในฟังก์ชันเดียวกัน — `products_review_view.can_see_buyer` คุมว่าใครเห็นชื่อ (เจ้าของ/แอดมินเท่านั้น)
 - `image_urls` เป็น array เดียว ไม่มีตาราง `product_images` แยก
 - `contact_phone` = เบอร์ต่อประกาศ คนละตัวกับ `"Profile".phone`
 
@@ -294,15 +300,42 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 
 - composite PK กันกดไลก์ซ้ำในตัว ไม่ต้อง UNIQUE เพิ่ม · insert/delete เท่านั้น ไม่มี UPDATE policy (ไลก์เป็น toggle)
 
+### `public.transactions` (L5, เพิ่ม 2026-08-23, D-59)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| 2 | `product_id` | uuid | nullable | – |
+| 3 | `buyer_id` | uuid | nullable | – |
+| 4 | `seller_id` | uuid | nullable | – |
+| 5 | `price` | numeric | **NOT NULL** | – (snapshot ราคาตอนขาย) |
+| 6 | `status` | varchar | **NOT NULL** | `'completed'::character varying` |
+| 7 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+| 8 | `chat_id` | bigint | nullable | – (แชทที่เกิดการขาย) |
+
+```sql
+PRIMARY KEY (id)
+FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+FOREIGN KEY (buyer_id)   REFERENCES "Profile"(id) ON DELETE SET NULL
+FOREIGN KEY (seller_id)  REFERENCES "Profile"(id) ON DELETE SET NULL
+FOREIGN KEY (chat_id)    REFERENCES chat(id)      ON DELETE SET NULL
+
+CHECK (((status)::text = 'completed'::text))   -- transactions_status_check — ค่าเดียวตอนนี้ (flow นี้ไม่มี pending/cancelled)
+```
+
+- แถวเกิดจาก `mark_product_sold()` เท่านั้น — ไม่มี INSERT/UPDATE/DELETE policy ให้ `authenticated` เลย (ดู RLS ด้านล่าง)
+- FK ทั้ง 4 ตัวเป็น `ON DELETE SET NULL` (ตาม precedent `reports.reported_product_id`, D-24) — ลบสินค้า/โปรไฟล์/แชททีหลังไม่ลบประวัติธุรกรรม
+- `admin_sales_by_seller` (ดู Views) อ่านจากตารางนี้แทน `products.status='sold'` ตรง ๆ แล้ว
+
 ### ตารางที่ยังไม่มี
 
-`transactions` (L5) · `reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
+`reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
 
 ---
 
 ## Views
 
-9 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+11 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
@@ -422,10 +455,14 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     (p.image_urls[2] IS NOT NULL) AS has_second_image,
     p.image_urls[3] AS third_image_url,
     (p.image_urls[3] IS NOT NULL) AS has_third_image,
-    random() AS shuffle_key
+    random() AS shuffle_key,
+    p.buyer_id,
+    buyer.full_name AS buyer_name,
+    COALESCE((p.status::text = 'sold'::text) AND (p.seller_id = auth.uid() OR private.is_admin()), false) AS can_see_buyer
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
+     LEFT JOIN public_profiles buyer ON buyer.id = p.buyer_id   -- D-59, PT-01: join public_profiles ไม่ใช่ "Profile" ตรง ๆ
   -- ↓ D-52: ซ่อนประกาศของผู้ถูกแบนจากคนอื่น (gate-in-view แบบ D-33)
   WHERE NOT private.is_user_banned(p.seller_id)   -- ผู้ขายไม่ถูกแบน
      OR p.seller_id = auth.uid()                  -- เจ้าของยังเห็นของตัวเองใน Mypost
@@ -452,18 +489,29 @@ CREATE VIEW public.admin_dashboard_stats WITH (security_invoker = true) AS
    FROM "Profile" p
   WHERE id = auth.uid();
 
--- reloptions: security_invoker=true
+-- reloptions: security_invoker=true — repoint ไปอ้าง transactions แล้ว (D-59, 2026-08-23)
 CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
- SELECT p.seller_id,
+ SELECT t.seller_id,
     pr.full_name AS seller_name,
     count(*) AS items_sold,
-    sum(p.price) AS total_sales
-   FROM products p
-     LEFT JOIN public_profiles pr ON pr.id = p.seller_id
-  WHERE p.status::text = 'sold'::text
-    AND private.is_admin()
-  GROUP BY p.seller_id, pr.full_name
-  ORDER BY (sum(p.price)) DESC;
+    sum(t.price) AS total_sales
+   FROM transactions t
+     LEFT JOIN public_profiles pr ON pr.id = t.seller_id
+  WHERE private.is_admin()
+  GROUP BY t.seller_id, pr.full_name
+  ORDER BY (sum(t.price)) DESC;
+
+-- reloptions: security_invoker=true   (L5, เพิ่ม 2026-08-23, D-59)
+CREATE VIEW public.chat_sale_status_view WITH (security_invoker = true) AS
+ SELECT c.id AS chat_id,
+    (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id)) AS chat_already_sold,
+    (NOT (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id))
+     AND NOT private.is_banned()
+     AND (EXISTS (SELECT 1 FROM products p
+            WHERE p.seller_id = auth.uid()
+              AND p.moderation_status::text = 'approved'::text
+              AND p.status::text <> 'sold'::text))) AS can_show_picker
+   FROM chat c;
 
 -- reloptions: security_invoker=true   (L8, เพิ่ม 2026-08-21, D-52)
 CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
@@ -500,9 +548,11 @@ CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
 >
 > `banned_by` join ผ่าน `public_profiles` ไม่ใช่ `"Profile"` ตรง ๆ ตามกฎ PT-01/D-01
 
-> 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" จาก `products.status = 'sold'` — **ไม่มีตาราง `transactions`/`orders` จริง** (L5 ยังไม่เริ่ม) นี่คือ view ชั่วคราวที่ใช้คอลัมน์ที่มีอยู่แล้ว (`products.status`/`price`/`seller_id`) แทน · `status` **ไม่มี CHECK** (ดูหัวข้อ `products` ด้านบน) ตอนนี้ทุกแถวเป็น `NULL` จริง (ยังไม่มีใครขายของสำเร็จ) → view นี้คืน **0 แถว** ในสภาพปัจจุบัน ซึ่งเป็นค่าจริงของระบบ ไม่ใช่บั๊ก ถ้า L5 เปลี่ยนไปใช้ตาราง `transactions` แยกในอนาคต ต้องพิจารณาว่า view นี้ยังจำเป็นไหมหรือย้ายไปอ้างอิง `transactions` แทน
+> 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" — **repoint ไปอ้างตาราง `transactions` แล้ว (D-59, 2026-08-23)**, เดิมอ้าง `products.status = 'sold'` ตรง ๆ ชั่วคราวเพราะ L5 ยังไม่เริ่ม คอลัมน์ output เหมือนเดิมทุกตัว (`seller_id`/`seller_name`/`items_sold`/`total_sales`) — `HomeAdmin`'s `SalesBySellerList` ไม่ต้องแก้ DSL เลย
 >
-> 🔴 **`AND private.is_admin()` (เพิ่ม 2026-08-17, D-33)** — view นี้เคยพึ่ง RLS ของ `products` เพียงอย่างเดียว (allow-all, D-03 ยังไม่ปิด) ทำให้ authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ (D-32) ตอนนี้ gate ที่ตัว view เองแล้ว ไม่พึ่ง `products` RLS อีกต่อไป ยืนยันด้วย impersonation test จริง (user ธรรมดา → 0 แถว, admin → เห็นแถวถูกต้อง แม้มีแถว `sold` อยู่จริง)
+> 🔴 **`AND private.is_admin()` (เพิ่ม 2026-08-17, D-33)** — view นี้เคยพึ่ง RLS ของ `products` เพียงอย่างเดียว (allow-all, D-03) ทำให้ authenticated ธรรมดาอ่านยอดขายข้าม seller ได้ (D-32) ตอนนี้ gate ที่ตัว view เองแล้ว ยืนยันด้วย impersonation test จริง (user ธรรมดา → 0 แถว, admin → เห็นแถวถูกต้อง)
+>
+> 📌 `chat_sale_status_view` (L5, เพิ่ม 2026-08-23, D-59) — คอมพิวต์เงื่อนไขซ่อนปุ่ม "ปิดการขาย" บน `chatMessages` ทั้ง 3 ข้อ (มีของขายอยู่ + แชทนี้ยังไม่เคยขาย + ไม่ถูกแบน) เป็น boolean เดียว (`can_show_picker`) แทนที่จะให้ FlutterFlow เดาความยาว list เอง (`listLength()`/custom-function boolean ถูก backend ปฏิเสธมาแล้วที่ D-46) — 1 แถวต่อ `chat_id`, `EXISTS`/`auth.uid()` ทำให้ผลลัพธ์ต่างกันไปตามว่าใครเป็นคน query (ฝั่งขาย vs ฝั่งซื้อเห็นค่าต่างกันสำหรับแชทเดียวกัน)
 
 ```sql
 -- reloptions: security_invoker=true
@@ -527,6 +577,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `reports_admin_view` (L7, เพิ่ม 2026-08-15, D-24) — mailbox สำหรับหน้า `Reports`/`ReportDetail` (admin) `security_invoker = true` พึ่ง RLS ของ `reports` เอง (`admin can read reports`) ในการกรองแถว ส่วน `public_profiles` 2 รอบ (reporter/seller) join แบบ D-01 ปกติ · `LEFT JOIN products` รองรับกรณี `reported_product_id` เป็น NULL หลังสินค้าโดนลบ (`ON DELETE SET NULL`)
 
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
+>
+> 📌 `buyer_id`/`buyer_name`/`can_see_buyer` (D-59, เพิ่ม 2026-08-23) — `buyer_name` join `public_profiles` ตามกฎ PT-01 (ไม่ join `"Profile"` ตรง ๆ) `can_see_buyer` คอมพิวต์ owner-or-admin ที่ SQL ครั้งเดียว (`COALESCE(..., false)` ตามแม่แบบ `admin_users_view`/D-52) — ฝั่ง FlutterFlow ผูก `visible: can_see_buyer` ตรง ๆ ไม่ต้องแต่ง AND/OR เอง
 >
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
 >
@@ -572,12 +624,13 @@ CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
 
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 10 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58):
+RLS `ENABLE` ครบทั้ง 11 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59):
 
 | ตาราง | policy | สรุป |
 |---|---|---|
 | `"Profile"` | 4 | ดูตารางค่าจริงด้านล่าง |
-| `products` | **4** | allow-all + **RESTRICTIVE กันผู้ถูกแบน 3 ตัว** (D-52) (+ trigger กัน moderation_status/rejection_reason — ดู Function/Trigger) |
+| `products` | **7** | 4 PERMISSIVE ตาม cmd จริง (owner-or-admin, D-59 — ปิดหนี้ D-03 แล้ว) + **RESTRICTIVE กันผู้ถูกแบน 3 ตัว** (D-52) (+ trigger กัน moderation_status/rejection_reason และ status/buyer_id — ดู Function/Trigger) |
+| `transactions` | 1 | อ่านได้เฉพาะคู่ค้า/แอดมิน (`buyer_id=auth.uid() OR seller_id=auth.uid() OR is_admin()`) เขียนได้ทาง `mark_product_sold()` เท่านั้น ไม่มี INSERT/UPDATE/DELETE policy เลย (D-59) |
 | `chat` | 1 | membership-based ผ่าน `is_chat_member()` (D-29, 2026-08-16 — เดิม allow-all) |
 | `chat_user` | 1 | membership-based ผ่าน `is_chat_member()` (D-29) |
 | `chat_message` | **3** | membership-based select + insert เฉพาะของตัวเอง (D-29) + **RESTRICTIVE กันผู้ถูกแบน** (D-52) |
@@ -592,7 +645,11 @@ RLS `ENABLE` ครบทั้ง 10 ตาราง จำนวน policy ต
 | ตาราง | policyname | cmd | roles | qual | with_check |
 |---|---|---|---|---|---|
 | `"CAT"` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
-| `products` | Allow all for authenticated users | ALL | `{authenticated}` | `true` | `true` |
+| `products` | products_select_all | SELECT | `{authenticated}` | `true` | – |
+| `products` | products_insert_own | INSERT | `{authenticated}` | – | `seller_id = auth.uid()` |
+| `products` | products_update_own_or_admin | UPDATE | `{authenticated}` | `seller_id = auth.uid() OR private.is_admin()` | เหมือน qual |
+| `products` | products_delete_own_or_admin | DELETE | `{authenticated}` | `seller_id = auth.uid() OR private.is_admin()` | – |
+| `transactions` | transactions_select_involved | SELECT | `{authenticated}` | `buyer_id = auth.uid() OR seller_id = auth.uid() OR private.is_admin()` | – |
 | `chat` | chat_select_if_member | SELECT | `{authenticated}` | `is_chat_member(id)` | – |
 | `chat_user` | chat_user_select_if_member | SELECT | `{authenticated}` | `is_chat_member(chat_id)` | – |
 | `chat_message` | chat_message_select_if_member | SELECT | `{authenticated}` | `is_chat_member(chat_id)` | – |
@@ -636,13 +693,13 @@ RLS `ENABLE` ครบทั้ง 10 ตาราง จำนวน policy ต
 
 > 🔴 **`with_check` นี้ไม่ได้ล็อก `is_banned`** — ของเดิมล็อกแค่ `role`/`student_id` ผู้ถูกแบนยิง API ตรงปลดแบนตัวเองได้ **ปิดด้วย trigger `enforce_ban_admin_only` แทน** (D-52) ไม่ใช่แก้ policy นี้ เพราะ trigger คุมครบทั้ง 4 คอลัมน์ ban ในที่เดียว
 >
-> 🔴 **ทำไมต้อง `RESTRICTIVE`** — `products` เป็น allow-all อยู่ การเพิ่ม PERMISSIVE policy จะ **OR** กับ allow-all แล้วไม่มีผลอะไรเลย (บทเรียนเดียวกับ D-23) `RESTRICTIVE` **AND** ทับผลรวมจึงบังคับได้จริง · ทั้ง 5 ตัวจงใจไม่แตะ `SELECT` เพราะเป็น **soft ban** (ผู้ถูกแบนยังท่องแอปได้)
+> 🔴 **ทำไมต้อง `RESTRICTIVE`** — ตอนสร้าง (D-52) `products` ยังเป็น allow-all อยู่ การเพิ่ม PERMISSIVE policy จะ **OR** กับ allow-all แล้วไม่มีผลอะไรเลย (บทเรียนเดียวกับ D-23) `RESTRICTIVE` **AND** ทับผลรวมจึงบังคับได้จริง — ปิดหนี้ D-03 แล้ว (D-59, `products` ไม่ allow-all อีกต่อไป) แต่ 5 ตัวนี้ยังทำงานถูกต้องเหมือนเดิมเพราะ RESTRICTIVE แคบกว่า PERMISSIVE เสมอไม่ว่าฐานจะกว้างแค่ไหน ไม่ต้องแก้อะไร · ทั้ง 5 ตัวจงใจไม่แตะ `SELECT` เพราะเป็น **soft ban** (ผู้ถูกแบนยังท่องแอปได้)
 >
 > ⚠️ **RESTRICTIVE `USING` บล็อกแบบเงียบ ไม่ raise** — `UPDATE`/`DELETE` ของผู้ถูกแบนคืน **0 แถว** ไม่ใช่ error (ต่างจาก `WITH_CHECK` ที่ raise `42501`) ยืนยันด้วย `GET DIAGNOSTICS ROW_COUNT` แล้ว — ฝั่ง FlutterFlow จะไม่เห็น error ต้องปิด affordance ที่ UI ด้วย
 
 > ⚠️ 3 policy ที่ `roles = {public}` (ไม่ใช่ `authenticated`) ครอบคลุม `anon` ด้วย — ปลอดภัยอยู่เพราะ `auth.uid()` / `is_admin()` เป็น NULL/false สำหรับ anon แต่ควรเปลี่ยนเป็น `authenticated` ให้ชัดเจน
 
-> ⚠️ **TODO ก่อน production:** `products` ยัง allow-all (ดู `DECISIONS.md` D-03) — `chat`/`chat_user`/`chat_message` ปิดหนี้นี้แล้ว เปลี่ยนเป็น membership-based ตาม `is_chat_member()` (D-29, 2026-08-16) ทดสอบแล้วว่า non-member เห็น 0 แถวจริง
+> ✅ **D-03 ปิดแล้ว (D-59, 2026-08-23):** `products` ไม่ allow-all อีกต่อไป — 4 policy ตาม cmd จริง (owner-or-admin) เหมือน `chat`/`chat_user`/`chat_message` ที่ปิดหนี้เดียวกันนี้ตั้งแต่ D-29 (`is_chat_member()`) — ทดสอบแล้วว่า non-owner เห็น 0 แถวตอนแก้ (impersonation test)
 
 **วิธีดู RLS จริง** — `list_tables` ไม่คืน policy ต้องรัน:
 
@@ -669,7 +726,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป�
 
 ## Function / Trigger ที่ apply แล้ว
 
-17 function (`public` 9 + `private` 8) · 4 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
+19 function (`public` 10 + `private` 9) · 5 trigger — ทั้งหมดคือผล `pg_get_functiondef()` / `pg_get_triggerdef()` ของจริง
 
 ### `public.handle_new_user()` + trigger `on_auth_user_created`
 
@@ -994,6 +1051,78 @@ END; $function$;
 - **`update_chat_last_message`** — trigger-only ไม่มี EXECUTE grant ให้ role ไหนเลย (เรียกผ่าน trigger ไม่ต้องมี grant)
 - **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น
 - ทั้ง 3 ฟังก์ชันที่เป็น `SECURITY DEFINER`/มี query ภายใน (`is_chat_member`, `find_or_create_chat`, `update_chat_last_message`) pin `search_path = public` กันโจมตีแบบ search_path hijack
+
+### L5 sale — `mark_product_sold()` + trigger `enforce_sale_via_rpc_only` (เพิ่ม 2026-08-23, D-59)
+
+```sql
+CREATE OR REPLACE FUNCTION public.mark_product_sold(target_chat_id bigint, target_product_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  the_buyer_id uuid;
+  the_price numeric;
+BEGIN
+  IF private.is_banned() THEN
+    RAISE EXCEPTION 'บัญชีถูกระงับ ไม่สามารถทำรายการนี้ได้';
+  END IF;
+
+  IF NOT is_chat_member(target_chat_id) THEN
+    RAISE EXCEPTION 'คุณไม่ใช่สมาชิกของแชทนี้';
+  END IF;
+
+  SELECT user_id INTO the_buyer_id
+  FROM chat_user
+  WHERE chat_id = target_chat_id AND user_id IS DISTINCT FROM auth.uid()
+  LIMIT 1;
+
+  IF the_buyer_id IS NULL THEN
+    RAISE EXCEPTION 'ไม่พบคู่สนทนาในแชทนี้';
+  END IF;
+
+  PERFORM set_config('app.via_mark_sold_rpc', 'true', true);
+
+  UPDATE products
+     SET status = 'sold', buyer_id = the_buyer_id
+   WHERE id = target_product_id
+     AND seller_id = auth.uid()
+     AND status IS DISTINCT FROM 'sold'
+   RETURNING price INTO the_price;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ไม่พบประกาศนี้ ไม่ใช่ของคุณ หรือถูกขายไปแล้ว';
+  END IF;
+
+  INSERT INTO transactions (product_id, buyer_id, seller_id, price, chat_id)
+  VALUES (target_product_id, the_buyer_id, auth.uid(), the_price, target_chat_id);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.enforce_sale_via_rpc_only()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF current_setting('app.via_mark_sold_rpc', true) IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'status/buyer_id เปลี่ยนได้เฉพาะผ่าน mark_product_sold() เท่านั้น';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER enforce_sale_via_rpc_only
+  BEFORE UPDATE ON public.products
+  FOR EACH ROW
+  WHEN (((old.status)::text IS DISTINCT FROM (new.status)::text)
+        OR (old.buyer_id IS DISTINCT FROM new.buyer_id))
+  EXECUTE FUNCTION private.enforce_sale_via_rpc_only();   -- tgenabled = 'O' (เปิดอยู่)
+```
+
+- **`mark_product_sold`** — SECURITY DEFINER เหมือน `admin_set_user_ban` (D-52): เช็ค `is_banned()`/`is_chat_member()` เอง เพราะ SECURITY DEFINER bypass RLS ของ `products`/`chat_user` ไปแล้ว ไม่ได้แปลว่า bypass การเช็คสิทธิ์เชิงตรรกะไปด้วย ผู้ซื้อหาจาก `chat_user` (สมาชิกอีกคนของแชท ไม่ใช่พารามิเตอร์จาก caller — `chatMessages` ไม่มี concept ผู้ซื้อให้เลือก) `UPDATE ... WHERE status IS DISTINCT FROM 'sold'` กัน race condition (PT-05) `INSERT INTO transactions` อยู่ในฟังก์ชันเดียวกันเลี่ยง select-back (D-24) EXECUTE grant `authenticated` เท่านั้น (revoke `anon` ออกแล้ว ตามกฎเดียวกับ `is_chat_member`)
+- **`enforce_sale_via_rpc_only`** — ไม่ใช่ SECURITY DEFINER (ต่างจาก `enforce_moderation_admin_only`/D-23 ที่เรียก `private.is_admin()`) เพราะแค่เช็ค session-local GUC ไม่ต้อง privilege เพิ่ม บล็อกการแก้ `status`/`buyer_id` ตรง ๆ **ทุกทาง ไม่มีข้อยกเว้น แม้เจ้าของ/แอดมิน** — `mark_product_sold()` ตั้ง `app.via_mark_sold_rpc = 'true'` (transaction-scoped, `is_local=true`) ก่อน `UPDATE` ของตัวเองเท่านั้น `WHEN` เทียบ OLD/NEW ก่อนเรียกฟังก์ชัน (แก้ field อื่นของ `products` ปกติไม่โดน trigger นี้)
 
 ---
 

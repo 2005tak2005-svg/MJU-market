@@ -15,11 +15,13 @@
 >
 > 📌 **P-03 / P-04 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`find_or_create_chat`/`update_chat_last_message`/`is_chat_member`/`get_my_chats` + trigger + RLS membership-based) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (เพิ่ม impersonation guard, `is_chat_member` helper, ค่า default `last_message`, COALESCE รูปภาพ)
 > เลข P-03/P-04 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-29**
+>
+> 📌 **P-06 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `transactions` + RLS + RPC `mark_product_sold` + trigger `enforce_sale_via_rpc_only`) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (`status` เหลือค่าเดียว `'completed'` ไม่ใช่ pending/completed/cancelled, เพิ่ม `chat_id`, FK ทุกตัวเป็น `ON DELETE SET NULL`)
+> เลข P-06 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-59**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
 | P-05 | `search_products(...)` | L3 | รอทดสอบว่า FF filter พอไหม |
-| P-06 | ตาราง `transactions` | L5 | รอ confirm ค่า status |
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
@@ -43,22 +45,6 @@ $$ LANGUAGE sql STABLE;
 
 > ถ้าจะใช้จริง แนะนำเปลี่ยน `FROM products` → `FROM products_review_view` จะได้ `category_name`/`seller_name` ติดมาด้วย
 > ทดสอบก่อนว่า FlutterFlow built-in filter พอไหม ถ้าพอก็ไม่ต้องสร้างอันนี้เลย
-
-## P-06 — ตาราง `transactions` (L5)
-
-```sql
-CREATE TABLE public.transactions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id uuid REFERENCES public.products(id),
-  buyer_id uuid REFERENCES public."Profile"(id),
-  seller_id uuid REFERENCES public."Profile"(id),
-  status varchar DEFAULT 'pending',   -- pending / completed / cancelled
-  created_at timestamptz DEFAULT now(),
-  completed_at timestamptz
-);
-```
-
-*รอ confirm ว่าต้องการ status กี่แบบจริง ๆ และต้องเก็บประวัติแยกไหม หรือใช้แค่ `products.status` พอ*
 
 ## P-08 — ตาราง `reviews` (L7)
 

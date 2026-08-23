@@ -1257,3 +1257,113 @@ item ใหม่ navigate ไปหน้านี้จริง
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete** — RLS ยืนยันด้วย impersonation test จริง
 แล้ว (non-admin insert/update/delete โพสต์ถูกบล็อก, ไลก์แทนคนอื่นถูกบล็อก, admin
 insert สำเร็จ) ผ่าน SQL โดยตรง แต่ยังไม่เคยกดผ่านแอปจริง
+
+---
+
+## D-59 — Layer 5 (Transaction & Listing Status) เริ่มและปิดครบ + ปิดหนี้ D-03 (2026-08-23)
+
+**บริบท:** pete สั่งสเปค "ปิดการขาย" — เจ้าของประกาศเลือกผู้ซื้อจาก
+`chatMessages` แล้วกดขาย มีป๊อปอัพยืนยัน ของหายจาก grid สาธารณะ ยอดขายรวมโชว์
+ใน `HomeAdmin`, `Mypost` ยังเห็นของตัวเองที่ขายแล้ว, ผู้ซื้อโชว์เฉพาะเจ้าของ/แอดมิน
++ ขอ **ตาราง `transactions` แบบ query ได้จริง** ไม่ใช่แค่ flag บน `products`
+
+**ตัดสินใจหลัก (ยืนยันกับ pete ตรง ๆ ก่อนเริ่ม):**
+
+1. **flow อยู่ที่ `chatMessages` (`Scaffold_o6ieoidd`) ไม่ใช่ `ProductDetails`**
+   — chat เป็น thread คู่ 1-1 ไม่ผูก `product_id` เลย (`ChatMessagesParams` มีแค่
+   `chatId`/`memberNames`/`userIds`) ผู้ซื้อคือคู่สนทนาอีกฝั่งอยู่แล้ว สิ่งที่ต้อง
+   เลือกจริงคือ "ประกาศไหนของฉัน" ไม่ใช่ "ใครคือผู้ซื้อ"
+2. **ผู้ซื้อโชว์เฉพาะเจ้าของ + แอดมิน** ไม่ใช่ผู้ซื้อเองหรือสาธารณะ
+3. **ปุ่ม "ปิดการขาย" ต้องซ่อนเมื่อ:** ไม่มีประกาศให้ขาย (ไม่มี listing
+   `available`/`approved` ของตัวเอง), แชทนี้เคยขายไปแล้ว, บัญชีถูกแบน
+4. **ปิดหนี้ D-03 (`products` allow-all) ไปพร้อมกัน** — ไม่ใช่แค่ทำ L5 แล้วปล่อย
+   ช่องโหว่เดิมไว้ต่อ pete เลือกตัวเลือก "ปิดให้ครบ" เมื่อถามตรง ๆ
+
+**สถาปัตยกรรม (Supabase, ทุกจุด impersonation-test แล้วจริงก่อนแตะ FlutterFlow):**
+
+- `products.status` เดิม nullable ไม่มี `CHECK` → backfill NULL→`'available'`,
+  เพิ่ม `CHECK IN ('available','reserved','sold')`, `DEFAULT 'available' NOT NULL`
+  (NOT NULL ทำให้ filter ฝั่ง DSL ใช้ `notEqualTo` ตรง ๆ ได้ ไม่ต้องเลี่ยง null
+  แบบ D-48) + คอลัมน์ใหม่ `buyer_id uuid REFERENCES "Profile"(id) ON DELETE SET NULL`
+- ตาราง `transactions` ใหม่ (`product_id`/`buyer_id`/`seller_id` ทุกตัว
+  `ON DELETE SET NULL` ตาม precedent `reports.reported_product_id`/D-24 — ไม่ลบ
+  ประวัติทิ้งเพราะสินค้า/บัญชีถูกลบทีหลัง, `price` snapshot ตอนขาย, `status`
+  `NOT NULL DEFAULT 'completed' CHECK (status='completed')` เพราะ flow นี้ไม่มี
+  pending/cancelled, `chat_id` เก็บว่าขายจากแชทไหน) RLS แบบ PERMISSIVE ธรรมดา
+  (`buyer_id=auth.uid() OR seller_id=auth.uid() OR is_admin()`) — ไม่มี
+  INSERT/UPDATE/DELETE policy ให้ authenticated เลย เขียนได้ทางเดียวผ่าน RPC
+- RPC `mark_product_sold(target_chat_id, target_product_id)` (`SECURITY DEFINER`,
+  แบบเดียวกับ `admin_set_user_ban`/D-52): เช็ค `is_banned()`/`is_chat_member()`
+  เอง (bypass RLS ของ SECURITY DEFINER ไม่ครอบคลุมเรื่องนี้), หาผู้ซื้อจาก
+  `chat_user` ตัดตัวเอง, conditional `UPDATE ... WHERE status IS DISTINCT FROM
+  'sold'` (PT-05, กัน race), `INSERT INTO transactions` ในฟังก์ชันเดียวกัน (เลี่ยง
+  select-back ตาม D-24) — impersonation-test ครบ: ขายสำเร็จ, ขายซ้ำถูกบล็อก,
+  non-member ถูกบล็อก
+- `products_review_view` เพิ่ม `buyer_id`/`buyer_name` (join `public_profiles`
+  ตาม PT-01) + `can_see_buyer` (`COALESCE(status='sold' AND (seller_id=auth.uid()
+  OR is_admin()), false)`) — คอมพิวต์เงื่อนไข owner-or-admin ที่ SQL ครั้งเดียว
+  ฝั่ง DSL ผูก raw variable ตัวเดียว ไม่ต้องแต่ง AND/OR เองที่ raw-proto (ไม่มี
+  combinator นี้ใน SDK — เช็คแล้วจาก actions.dart)
+- `admin_sales_by_seller` (ของเดิมอ้าง `products.status='sold'` ตรง ๆ เป็น
+  stand-in ชั่วคราวตามที่ `SCHEMA.md` เตือนไว้ตั้งแต่แรก) **repoint ไปอ้าง
+  `transactions` แทน** คอลัมน์ชื่อ/type เดิมทุกตัว → **`HomeAdmin`'s
+  `SalesBySellerList` ไม่ต้องแก้ DSL เลย** ได้ข้อมูลจริงทันทีที่มีคนขายของ
+- **ตาราง/view ใหม่เพื่อเลี่ยง `listLength()`:** `chat_sale_status_view`
+  (`chat_id`, `chat_already_sold`, `can_show_picker`) คอมพิวต์เงื่อนไขซ่อนปุ่ม
+  ทั้ง 3 ข้อ (มีของขาย + ยังไม่เคยขายในแชทนี้ + ไม่ถูกแบน) เป็น boolean เดียวใน
+  SQL — **D-46 เคยพิสูจน์แล้วว่า `listLength()`/boolean จาก custom function ถูก
+  backend ปฏิเสธทั้งคู่** เลี่ยงโดยให้ SQL ตอบ boolean ตรง ๆ แล้วผูกผ่าน
+  `item['field']` ใน itemBuilder (proven pattern, ไม่ใช่ raw-proto ใหม่)
+- **ปิดหนี้ D-03:** ถอด policy `"Allow all for authenticated users"` บน
+  `products` แทนด้วย 4 policy ตาม cmd จริง (`SELECT` เปิดกว้างเหมือนเดิมเพื่อให้
+  browse ได้ปกติ, `INSERT` ต้อง `seller_id=auth.uid()`, `UPDATE`/`DELETE` ต้อง
+  `seller_id=auth.uid() OR is_admin()`) RESTRICTIVE เดิม 3 ตัว (D-52) + trigger
+  moderation (D-23) ยังทำงานถูกทับได้ตามปกติเพราะ RESTRICTIVE แคบกว่า PERMISSIVE
+  เสมอไม่ว่าฐานจะกว้างแค่ไหน — เพิ่ม trigger ใหม่
+  `enforce_sale_via_rpc_only` บล็อกการเปลี่ยน `status`/`buyer_id` ตรง ๆ
+  ไม่ว่าใคร (แม้เจ้าของ/แอดมิน) ให้ผ่านได้ทาง `mark_product_sold` เท่านั้น (เช็ค
+  session-local flag `app.via_mark_sold_rpc` ที่ RPC ตั้งก่อน `UPDATE` ของตัวเอง)
+  — impersonation-test ครบ: non-owner แก้ราคาคนอื่นไม่ได้, owner แก้ราคาตัวเองได้
+  แต่แก้ `status` ตรงไม่ได้แม้เป็นเจ้าของ, admin ก็แก้ `status` ตรงไม่ได้เหมือนกัน
+  (ตั้งใจ ไม่มีข้อยกเว้น), flow เดิม (moderation approve/reject) ไม่กระทบ
+
+**FlutterFlow (5 พุช, เรียงตามลำดับ compile — PT-17):**
+
+R1/R2 register field/table ใหม่ (`products.buyer_id`,
+`products_review_view.buyer_id/buyer_name/can_see_buyer`, `transactions`,
+`chat_sale_status_view`) → P2 `chatMessages` (custom action 0-arg
+`markProductSold` อ่าน `FFAppState()` ตาม PT-09, panel แบบฝังในหน้าไม่ใช้
+`ShowBottomSheet` — เลี่ยงความเสี่ยง 2 อย่าง: ส่ง List เป็น component param
+(ไม่เคยมี precedent ในโปรเจกต์นี้) และเพิ่ม page-level `databaseRequest` ให้หน้า
+ที่ทดสอบผ่านแล้ว (D-40/D-41) ซึ่งจะห่อทั้งหน้าด้วย `FutureBuilder` ใหม่โดยไม่จำเป็น)
+→ P3 `Home` เพิ่ม filter `status != 'sold'` ใน 3 จุด (onLoad,
+`buildSearchRefreshChain`, `homeCategoryTapActions` — ไม่ใช่ 33 จุดแยกกันตามที่
+กังวลตอนแรก เป็น 3 ฟังก์ชันต้นทางที่ compile ออกมาเป็น ~31 call site) พร้อมบั๊ก
+outputAs เดิม (PT-27 §2) → P4 `Mypost` เพิ่ม `SoldBadge` ในแถวเดิม (ไม่ต้องแก้
+query เลยเพราะ D-35 filter แค่ `seller_id`/`moderation_status` อยู่แล้ว) → P5
+`ProductDetails` เพิ่ม `BuyerInfoSection` ผ่าน `productField()`/nodeKeyRef เดิม
+จาก D-44/D-51 (คนละ closure ต้อง redeclare helper ใหม่เพราะตัวเดิมปิด scope
+ไปแล้ว)
+
+**กับดักใหม่ที่เจอระหว่างทำ:**
+
+- **`ff.AppState.*` typed accessor อ้างฟิลด์ที่ประกาศในพุชเดียวกันไม่ได้** (เหมือน
+  PT-17 §1 ของตาราง แต่เป็น app state) — ใช้ string literal (`AppState('x')`,
+  `UpdateAppState.set('x', ...)`) แทนได้ในพุชแรกที่ประกาศ
+- **`page.findByKey(...)` ในสคริปต์เก่าอ้าง key ที่ตายไปแล้วจริง** — คีย์ของ
+  `Mypost`'s `ListView` ในสคริปต์ยังเป็น `ListView_7h86cihf` แต่ของจริงคือ
+  `ListView_z48phx0c` แล้ว (`ensureReplaced` "preserve key" คือ preserve ของ
+  รอบที่รันเอง ไม่ใช่ค้ำประกันตลอดไปข้ามเวลาที่ไม่ได้รันสคริปต์เดิมซ้ำ) แก้ด้วย
+  `flutterflow ai inspect --outline` สดก่อนแก้จริงตามที่ควรทำตั้งแต่แรก — บทเรียน
+  ตรงกับกฎข้อ 9 ของ `CLAUDE.md` (ต้อง inspect ก่อนแตะเสมอ)
+- **`Colors.hex(...)` รับ `int` ARGB ไม่ใช่ string `'#RRGGBB'`** — เขียนผิดรอบแรก
+  (`Colors.hex('#9CA3AF')`) จับได้จาก `compileDslApp` fail ทันที ไม่ต้องรอ push จริง
+
+**ยืนยันจาก Supabase (impersonation ตรง, ROLLBACK ทุกเทส) + `generated_code/`:**
+ครบทั้ง RPC (สำเร็จ/ขายซ้ำ/non-member), RLS overhaul (owner/non-owner/admin),
+`chat_sale_status_view` ตอบถูกทั้งฝั่งขาย/ฝั่งซื้อ, DSL คอมไพล์ตรงตามตั้งใจทุกพุช
+(เช็คโค้ด generate จริงทีละไฟล์ ไม่ใช่แค่ push ผ่าน) `dart analyze` รันไม่ได้ใน
+environment นี้ (`flutter` ไม่อยู่บน PATH ทำให้ import ทุกไฟล์ error ทั้งโปรเจกต์
+ไม่ใช่เฉพาะจุดที่แก้ — ไม่ใช่สัญญาณจริง)
+
+**ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

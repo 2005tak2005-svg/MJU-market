@@ -1462,4 +1462,25 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **ยังไม่ทำรอบนี้ (ตามคำตอบ pete):** P-09 (รีพอร์ตผู้ใช้) · edit/delete รีวิว · แสดงคะแนนเฉลี่ยที่หน้าโปรไฟล์ผู้ขาย (ทำแค่บน `ProductDetails` ที่ผูกกับ `products_review_view` อยู่แล้ว) · **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
 
+---
+
+## D-65 — P-09: รองรับรีพอร์ต "ผู้ใช้" เริ่มและปิดครบ (2026-08-24)
+
+**บริบท:** pete สั่ง "ลุย P-09/L1 ตามลำดับ" — P-09 เป็นข้อเสนอที่ค้างมาตั้งแต่ D-24 (`reports` มีแค่ `reported_product_id`) และตั้งใจแยกออกจากรอบ `reviews`/D-64 ไว้แล้ว
+
+**Schema:** `reports.reported_user_id uuid REFERENCES "Profile"(id) ON DELETE SET NULL` (pattern เดียวกับ `reported_product_id`) + 2 CHECK ใหม่: `reports_target_required` (ต้องมีอย่างน้อย 1 ใน `reported_product_id`/`reported_user_id`) และ `reports_no_self_report` (`reported_user_id <> reporter_id`, กันรีพอร์ตตัวเองที่ระดับ DB — draft เดิมไม่มี CHECK นี้ เพิ่มเองเพราะเป็นช่องโหว่ตรรกะที่ชัดเจน) + unique partial index `reports_unique_pending_per_reporter_user` (mirror ของเดิม, ปลอดภัยกับแถว product-report เพราะ Postgres ไม่ถือ NULL ชนกันเอง) `reports_admin_view` เพิ่ม 4 คอลัมน์: `reported_user_id`/`reported_user_name` (join `public_profiles` ตาม PT-01) + `is_product_report`/`is_user_report` (boolean คอมพิวต์ครั้งเดียว, pattern เดียวกับ `can_see_buyer`/`can_show_picker`)
+
+**พบและปิดช่องโหว่ crash แฝงไปพร้อมกัน:** `ReportDetailContent` (เดิมจาก D-24) force-unwrap `item['product_title']!`/`item['seller_name']!` แบบไม่มีเงื่อนไขมาตลอด — NULL ได้จริงทุกครั้งที่สินค้าที่ถูกรายงานโดนลบทีหลัง (`reported_product_id` เป็น `ON DELETE SET NULL`) เป็นบั๊กที่ไม่เคยถูกจับเพราะไม่มีใครเทสเคส "รายงานสินค้าที่ถูกลบไปแล้ว" ยังไม่นับว่า P-09 เองก็จะชนบั๊กเดิมทันทีเพราะ user-only report ก็มี `reported_product_id = NULL` เหมือนกัน — ปิดพร้อมกันด้วยการครอบทั้ง 2 บล็อกด้วย `if (isProductReport == true)`/`if (isUserReport == true)`
+
+**FlutterFlow (2 พุช):**
+
+- Push 1: register field ใหม่ทั้งหมด (PT-15 §6/D-57 pattern — `reports.reported_user_id` + `reports_admin_view` 4 คอลัมน์) ไม่แตะ page/component ใด (PT-17 §1)
+- Push 2: component `ReportUserSheet` (mirror `ReportProductSheet` เป๊ะ, param `userId` โดยตรงไม่ผ่าน App State เพราะ `ShowBottomSheet` มีค่าอยู่ในมือแล้ว) · ปุ่ม "รายงานผู้ใช้" แทรกเข้า `UserProfileCard` (D-55's paramless profile popup — ครอบคลุมทุกจุดเข้าถึงโปรไฟล์อัตโนมัติ: `ProductDetails` ชื่อผู้ขาย, `BannedUsers` แถว, `UserDirectory` แถว) · re-author `ReportDetailContent` ทั้งก้อน (PT-23 §1 บังคับ) เพิ่มบล็อก "ผู้ใช้ที่ถูกรายงาน" + ปุ่ม "ระงับผู้ใช้รายนี้" (reuse `banUserSheetRef` เดิมจาก D-52 Phase D เป๊ะ — component เดียวกับปุ่ม "ระงับผู้ขายรายนี้")
+
+**กับดักที่คาดไว้แต่ไม่เจอ (คุ้มบันทึกไว้):** ปุ่ม "รายงานผู้ใช้" ต้องซ่อนตอนดูโปรไฟล์ตัวเอง (กัน error เงียบจาก `reports_no_self_report` CHECK เพราะ Postgres action ไม่มี onFailure hook, PT-18) ตอนแรกกังวลว่าจะต้องใช้ raw-proto เหมือนที่ `ProductDetails`'s owner-hiding (D-51) เคยต้องทำ — **ไม่จริง**: D-51 ต้อง raw-proto เพราะ `seller_id` ตอนนั้นเป็น raw page-scoped `FFVariable` (จาก `nodeKeyRef`) ไม่ใช่ typed expression แต่ที่นี่ทั้งสองฝั่งเป็น typed `DslExpression` อยู่แล้ว (`AppState('viewedProfileUserId')` กับ `AuthUser(AuthUserField.userId)`) เลยใช้ `visible: Not(Equals(...))` ตรงบน widget ที่เพิ่ง insert ได้เลย — pattern เดียวกับ D-39 เป๊ะ ไม่ต้องแตะ raw proto เลยทั้งพุช
+
+**Confirmed จาก `generated_code/`:** `ReportUserSheetWidget` insert `reports` ด้วย `reported_user_id: widget!.userId` ตรงตามดีไซน์ · `UserProfileCardWidget` ปุ่มห่อด้วย `if (!(viewedProfileUserId == currentUserUid))` จริง (ไม่ใช่ static) · `ReportDetailWidget` ทั้ง 2 conditional block (`isProductReport`/`isUserReport`) ครอบ force-unwrap ถูกจุดครบ
+
+**ยังไม่ทำ:** UI แสดง `reports` ทั้งสองประเภทแยก tab/filter บนหน้า `ReportsFeedback` (list ยังโชว์รวมกันเหมือนเดิม แค่ `ReportDetail` แยกเนื้อหาตามประเภท) · **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
+
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

@@ -24,23 +24,16 @@
 >
 > 📌 **P-08 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `reviews` + RLS 3 policy) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (ผูก `transaction_id` REFERENCES `transactions` แทน `product_id` ตรง ๆ, `UNIQUE(transaction_id, reviewer_id)` แทน `UNIQUE(reviewer_id, product_id)`, ไม่มี UPDATE/DELETE policy เลย)
 > เลข P-08 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-64**
+>
+> 📌 **P-09 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`reports.reported_user_id` + 2 CHECK constraints + unique partial index + `reports_admin_view` 4 คอลัมน์ใหม่) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (เพิ่ม `reports_no_self_report` CHECK ที่ draft ไม่มี, `ON DELETE SET NULL` แทนไม่ระบุ)
+> เลข P-09 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-65**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
-| P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
 | P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 
 ---
-
-## P-09 — รองรับรีพอร์ตผู้ใช้ (L7)
-
-```sql
-ALTER TABLE public.reports ADD COLUMN reported_user_id uuid REFERENCES public."Profile"(id);
--- ควรมี CHECK: ต้องมีอย่างน้อย 1 ใน (reported_product_id, reported_user_id) ที่ไม่ null
-```
-
-*รอตัดสินใจว่าจะรองรับรีพอร์ต "ผู้ใช้" ด้วยไหม หรือรีพอร์ตแค่สินค้าพอ*
 
 ## P-11 — unique index บน `lower("Profile".email)` (L1)
 

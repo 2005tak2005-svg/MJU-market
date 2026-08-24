@@ -1125,6 +1125,37 @@ CREATE TRIGGER enforce_sale_via_rpc_only
 - **`mark_product_sold`** — SECURITY DEFINER เหมือน `admin_set_user_ban` (D-52): เช็ค `is_banned()`/`is_chat_member()` เอง เพราะ SECURITY DEFINER bypass RLS ของ `products`/`chat_user` ไปแล้ว ไม่ได้แปลว่า bypass การเช็คสิทธิ์เชิงตรรกะไปด้วย ผู้ซื้อหาจาก `chat_user` (สมาชิกอีกคนของแชท ไม่ใช่พารามิเตอร์จาก caller — `chatMessages` ไม่มี concept ผู้ซื้อให้เลือก) `UPDATE ... WHERE status IS DISTINCT FROM 'sold'` กัน race condition (PT-05) `INSERT INTO transactions` อยู่ในฟังก์ชันเดียวกันเลี่ยง select-back (D-24) EXECUTE grant `authenticated` เท่านั้น (revoke `anon` ออกแล้ว ตามกฎเดียวกับ `is_chat_member`)
 - **`enforce_sale_via_rpc_only`** — ไม่ใช่ SECURITY DEFINER (ต่างจาก `enforce_moderation_admin_only`/D-23 ที่เรียก `private.is_admin()`) เพราะแค่เช็ค session-local GUC ไม่ต้อง privilege เพิ่ม บล็อกการแก้ `status`/`buyer_id` ตรง ๆ **ทุกทาง ไม่มีข้อยกเว้น แม้เจ้าของ/แอดมิน** — `mark_product_sold()` ตั้ง `app.via_mark_sold_rpc = 'true'` (transaction-scoped, `is_local=true`) ก่อน `UPDATE` ของตัวเองเท่านั้น `WHEN` เทียบ OLD/NEW ก่อนเรียกฟังก์ชัน (แก้ field อื่นของ `products` ปกติไม่โดน trigger นี้)
 
+### L3 search — `search_products()` (เพิ่ม 2026-08-24, D-62, ปิดข้อเสนอ P-05)
+
+```sql
+CREATE OR REPLACE FUNCTION public.search_products(
+  keyword text DEFAULT NULL,
+  p_category_id bigint DEFAULT NULL,
+  min_price numeric DEFAULT NULL,
+  max_price numeric DEFAULT NULL
+)
+RETURNS SETOF public.products_review_view
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT *
+  FROM public.products_review_view
+  WHERE moderation_status = 'approved'
+    AND status <> 'sold'
+    AND (keyword IS NULL OR keyword = '' OR title ILIKE '%'||keyword||'%' OR description ILIKE '%'||keyword||'%')
+    AND (p_category_id IS NULL OR category_id = p_category_id)
+    AND (min_price IS NULL OR price >= min_price)
+    AND (max_price IS NULL OR price <= max_price)
+  ORDER BY random()
+  LIMIT 50;
+$$;
+
+REVOKE ALL ON FUNCTION public.search_products(text, bigint, numeric, numeric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.search_products(text, bigint, numeric, numeric) TO authenticated;
+```
+
+- **`search_products`** — `LANGUAGE sql` ธรรมดา ไม่ใช่ SECURITY DEFINER (ไม่ต้อง bypass อะไร — `products_review_view` เป็น `security_invoker=true` อยู่แล้ว กรอง banned-seller/RLS ให้ตามปกติ) `RETURNS SETOF products_review_view` แทน `products` ตรง ๆ (ตาม P-05 note เดิม) เพื่อให้ได้ `category_name`/`seller_name`/`first_image_url`/`can_see_buyer` ฯลฯ ติดมาครบ ไม่ต้อง query ซ้ำฝั่ง FlutterFlow แทนที่ built-in typed-filter ของ D-45–D-48 ทั้งชุด (exact-match only เพราะ `iLike`/`like` ไม่มี null-safe codegen ในระบบ FlutterFlow AI SDK นี้) ทุกพารามิเตอร์ optional (`NULL` = ไม่กรองแกนนั้น) ANDed กันหมด — คำค้นค้นทั้ง `title`/`description` (กว้างกว่า P-05 draft เดิมที่มีแค่ title) `title` มี GIN trigram index อยู่แล้ว (D-46) EXECUTE grant `authenticated` เท่านั้น (revoke `anon`/PUBLIC ออกแล้ว — สอดคล้องกับคำตอบ pete ว่าไม่เปิด browse ก่อน login)
+
 ---
 
 ## Storage

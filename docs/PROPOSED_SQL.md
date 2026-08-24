@@ -18,33 +18,18 @@
 >
 > 📌 **P-06 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `transactions` + RLS + RPC `mark_product_sold` + trigger `enforce_sale_via_rpc_only`) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (`status` เหลือค่าเดียว `'completed'` ไม่ใช่ pending/completed/cancelled, เพิ่ม `chat_id`, FK ทุกตัวเป็น `ON DELETE SET NULL`)
 > เลข P-06 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-59**
+>
+> 📌 **P-05 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`search_products()`) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (`FROM products_review_view` ไม่ใช่ `products` ตรง ๆ ตามที่ draft แนะนำไว้, เพิ่ม `status <> 'sold'`, revoke `anon`/PUBLIC)
+> เลข P-05 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-62**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
-| P-05 | `search_products(...)` | L3 | รอทดสอบว่า FF filter พอไหม |
 | P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
 | P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 
 ---
-
-## P-05 — full-text search (L3)
-
-```sql
-CREATE OR REPLACE FUNCTION search_products(keyword text, cat_id bigint, min_price numeric, max_price numeric)
-RETURNS SETOF products AS $$
-  SELECT * FROM products
-  WHERE (keyword IS NULL OR title ILIKE '%'||keyword||'%' OR description ILIKE '%'||keyword||'%')
-    AND (cat_id IS NULL OR category_id = cat_id)
-    AND (min_price IS NULL OR price >= min_price)
-    AND (max_price IS NULL OR price <= max_price)
-    AND moderation_status = 'approved';
-$$ LANGUAGE sql STABLE;
-```
-
-> ถ้าจะใช้จริง แนะนำเปลี่ยน `FROM products` → `FROM products_review_view` จะได้ `category_name`/`seller_name` ติดมาด้วย
-> ทดสอบก่อนว่า FlutterFlow built-in filter พอไหม ถ้าพอก็ไม่ต้องสร้างอันนี้เลย
 
 ## P-08 — ตาราง `reviews` (L7)
 

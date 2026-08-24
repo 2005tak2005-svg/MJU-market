@@ -1424,4 +1424,42 @@ query เลยเพราะ D-35 filter แค่ `seller_id`/`moderation_sta
 environment นี้ (`flutter` ไม่อยู่บน PATH ทำให้ import ทุกไฟล์ error ทั้งโปรเจกต์
 ไม่ใช่เฉพาะจุดที่แก้ — ไม่ใช่สัญญาณจริง)
 
+---
+
+## D-64 — Layer 7 `reviews` (ให้คะแนนผู้ขาย) เริ่มและปิดครบ ปิดข้อเสนอ P-08 (2026-08-24)
+
+**บริบท:** pete สั่ง "ลงมือได้เลย ดู codebase SQL เดิมด้วย ออกแบบให้เข้ากันได้ง่ายที่สุดจากสถาปัตยกรรมตอนนี้" หลังตอบคำถามยืนยัน 4 ข้อ (ทั้งหมดเลือก Recommended): รีวิว public ให้ authenticated ทุกคนเห็น, จุดเข้าอยู่บน `ProductDetail` เดิม (ไม่สร้างหน้า MyPurchases ใหม่), immutable ตลอดไป (ไม่มี UPDATE/DELETE policy เลย), P-09 (รีพอร์ตผู้ใช้) แยกไปทำทีหลัง
+
+**ตัดสินใจสำคัญ — เปลี่ยนจาก draft P-08 เดิม:** draft เดิมผูก unique key แค่ `(reviewer_id, product_id)` (ร่างไว้ก่อน L5/`transactions` จะมีอยู่จริง) เปลี่ยนมาผูกกับ `transactions` โดยตรงแทน (`transaction_id` FK, `UNIQUE(transaction_id, reviewer_id)`) เพราะ `transactions` (D-59) เป็นแหล่งความจริงเรื่องใครซื้อ-ใครขาย-สินค้าไหนอยู่แล้ว — RLS insert เช็คว่า `reviewer_id = auth.uid()` ตรงกับ `buyer_id` ของ `transaction_id` นั้นจริง และ `reviewee_id` ตรงกับ `seller_id` ของธุรกรรมเดียวกันจริง กันคนที่ไม่เคยซื้อสินค้านั้นจริง insert ไม่ได้เลยที่ระดับ DB
+
+**Schema (Supabase, apply ตรงผ่าน MCP — ตารางว่าง+ปลอดภัย ตาม CLAUDE.md ข้อ 5):**
+
+```sql
+CREATE TABLE public.reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id uuid NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+  reviewer_id uuid NOT NULL REFERENCES public."Profile"(id) ON DELETE CASCADE,
+  reviewee_id uuid NOT NULL REFERENCES public."Profile"(id) ON DELETE CASCADE,
+  rating int NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT reviews_one_per_transaction_reviewer UNIQUE (transaction_id, reviewer_id)
+);
+```
+
+RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public read ตามคำตอบ pete) · `reviews_insert_buyer_only` (INSERT, `WITH CHECK reviewer_id = auth.uid() AND EXISTS(...transactions ที่ buyer_id/seller_id ตรงกัน...)`) · `reviews_block_banned_insert` (RESTRICTIVE INSERT, `NOT private.is_banned()` — ตาม pattern เดิมของ D-52) **ไม่มี UPDATE/DELETE policy เลย = immutable ตลอดไป**
+
+`products_review_view` เพิ่ม 4 คอลัมน์คอมพิวต์ (แทนที่จะสร้าง view ใหม่ — "ง่ายที่สุดจากสถาปัตยกรรมตอนนี้" ตามที่ pete สั่ง เพราะ `ProductDetails` ผูกกับ view นี้อยู่แล้ว): `seller_avg_rating`/`seller_review_count` (LEFT JOIN subquery `GROUP BY reviewee_id` — pattern เดียวกับ `advertisement_posts_view.like_count`, D-58) · `my_transaction_id` (LEFT JOIN `transactions WHERE buyer_id = auth.uid()`) · `can_rate_seller` (`COALESCE(status='sold' AND my_transaction_id ไม่ null AND ยังไม่เคยรีวิว transaction นี้, false)` — pattern เดียวกับ `can_see_buyer`/`can_show_picker`, D-52/D-59: คอมพิวต์บูลีนที่ SQL ครั้งเดียว ผูก `visible:` ตรง ๆ ไม่ต้องคิด AND/OR ที่ FlutterFlow)
+
+**FlutterFlow (2 พุช, `dsl/edit.dart`):**
+
+- Push 1: register 4 field ใหม่ของ `products_review_view` (PT-15 §6/D-57) + `app.state` 3 ตัว (`pendingReviewProductId`/`Rating`/`Comment`) + custom action `submitSellerReview` (0-arg, อ่าน app state, query `transactions` หา `id`/`seller_id` ของธุรกรรมนี้ตรง ๆ แล้ว insert `reviews` — **ไม่ผ่าน RPC เลย**, เขียน Dart ตรงเหมือน `findOrCreateChatWithSeller`, ไม่จำเป็นต้องมี SECURITY DEFINER เพราะ RLS ที่เขียนไว้อนุญาต insert รูปแบบนี้อยู่แล้ว) + component `RateSellerSheet` (`Slider` 1-5 แทน star rating จริง — DSL ไม่มี `RatingBar` ที่ construct ได้ มีแค่ระดับ proto — + `TextField` คอมเมนต์ + ปุ่มยกเลิก/ส่ง) + แทรกปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` ต่อจาก `ContactAdminButton` พร้อม `onTap` (inline ปลอดภัย ไม่ใช่ find-by-key) แต่ยังไม่ผูก visibility
+- Push 2: ผูก visibility ปุ่มเข้ากับ `can_rate_seller` ผ่าน `productField()`/`nodeKeyRef` เดิม (จาก D-44/D-59) — ต้องแยกพุชเพราะ PT-22 (widget ที่เพิ่ง insert ในพุชเดียวกัน ยังไม่รู้ key จริง จน typed SDK regenerate หลังพุชแรกลง)
+
+**กับดักใหม่ที่เจอ:** `UpdateAppState.set(target, value)` — `target` ต้องเป็น **string ธรรมดาหรือ typed field handle** (`resolveProjectFieldName`) **ห้ามห่อด้วย `AppState(...)`** (คลาส `DslExpression` สำหรับ*อ่าน*ค่าเป็น value ในนิพจน์อื่น ไม่ใช่ตัวระบุ target ของ mutation) — ผสมกันแล้วได้ error `Expected a generated FlutterFlow field handle.` ทันทีตอน build DSL (ก่อนถึงขั้น validate/push) จุดสับสน: `AppState('x')` (อ่าน) กับ raw string `'x'` (target ของ `UpdateAppState.set`) หน้าตาคล้ายกันมาก — D-59 เคยโน้ตกำกวมเรื่องนี้ไว้แล้วที่ "กับดักใหม่ที่เจอระหว่างทำ" แต่ยังไม่ชัดพอ บันทึกซ้ำให้ชัดตรงนี้
+
+**Confirmed จาก `generated_code/`:** ทั้ง 2 พุชคอมไพล์ตรงตามตั้งใจ — `submitSellerReview` เรียก `transactions`/`reviews` ตรงตามดีไซน์, `RateSellerSheetWidget` มี `Slider`/`TextFormField`/ปุ่มครบ, ปุ่มบน `ProductDetails` ห่อด้วย `if (...canRateSeller ?? true)` (fallback `?? true` เป็น pattern เดิมของหน้านี้ทั้งหน้า เหมือน `hasSecondImage`/`canSeeBuyer` ไม่ใช่บั๊กใหม่)
+
+**ยังไม่ทำรอบนี้ (ตามคำตอบ pete):** P-09 (รีพอร์ตผู้ใช้) · edit/delete รีวิว · แสดงคะแนนเฉลี่ยที่หน้าโปรไฟล์ผู้ขาย (ทำแค่บน `ProductDetails` ที่ผูกกับ `products_review_view` อยู่แล้ว) · **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
+
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**

@@ -21,30 +21,17 @@
 >
 > 📌 **P-05 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (`search_products()`) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (`FROM products_review_view` ไม่ใช่ `products` ตรง ๆ ตามที่ draft แนะนำไว้, เพิ่ม `status <> 'sold'`, revoke `anon`/PUBLIC)
 > เลข P-05 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-62**
+>
+> 📌 **P-08 ถูกลบออกจากไฟล์นี้แล้ว** — apply อยู่ใน DB จริง (ตาราง `reviews` + RLS 3 policy) อ่านที่ `SCHEMA.md` แทน โค้ดจริงต่างจากดราฟต์เดิม (ผูก `transaction_id` REFERENCES `transactions` แทน `product_id` ตรง ๆ, `UNIQUE(transaction_id, reviewer_id)` แทน `UNIQUE(reviewer_id, product_id)`, ไม่มี UPDATE/DELETE policy เลย)
+> เลข P-08 **เลิกใช้ ห้ามเอากลับมาใช้ซ้ำ** · เหตุผลออกแบบเต็มอยู่ `DECISIONS.md` **D-64**
 
 | # | ของ | Layer | สถานะ |
 |---|---|---|---|
-| P-08 | ตาราง `reviews` | L7 | ยังไม่เริ่ม |
 | P-09 | `reports.reported_user_id` | L7 | รอตัดสินใจว่าจะรีพอร์ตผู้ใช้ไหม |
 | P-11 | unique index บน `lower("Profile".email)` | L1 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** |
 | P-12 | เก็บกวาดไฟล์กำพร้าใน Storage | L1/L2/L5 | **ข้อเสนอของ Claude pete ยังไม่ตอบรับ** — แนวทางยังไม่เลือก |
 
 ---
-
-## P-08 — ตาราง `reviews` (L7)
-
-```sql
-CREATE TABLE public.reviews (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  reviewer_id uuid REFERENCES public."Profile"(id),
-  reviewee_id uuid REFERENCES public."Profile"(id),
-  product_id uuid REFERENCES public.products(id),
-  rating int CHECK (rating BETWEEN 1 AND 5),
-  comment text,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE (reviewer_id, product_id)   -- รีวิวได้ครั้งเดียวต่อสินค้า
-);
-```
 
 ## P-09 — รองรับรีพอร์ตผู้ใช้ (L7)
 

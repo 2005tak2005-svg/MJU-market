@@ -563,3 +563,46 @@ validator บอก `Use ff.AppState.banTargetUserName instead of AppState("banT
 **ทางแก้:** ถ้าต้อง encode ค่าที่เป็นไปได้หลายค่า (เช่น string→int mapping ผ่าน `If`/`Equals` หลาย branch) ให้ทำที่ **จุดที่ค่าเกิดขึ้นจริง** (เช่น Dropdown's `onChanged`, ซึ่งมี action tree ของตัวเอง แยกจาก action tree ของปุ่ม Save) ด้วย `SetState` ล้วน ๆ แล้วเก็บผลลัพธ์ (int ที่แปลงแล้ว) ไว้ใน state field ใหม่ ให้ฝั่งที่ต้องยิง query/update จริง (เช่นปุ่ม Save) อ่านค่าที่แปลงเสร็จแล้วตรง ๆ ผ่าน `State(...)` — ไม่ต้อง branch อีกเลยที่ปุ่ม เหลือ 1 action-output ต่อ field แทนที่จะเป็น 4
 
 **ใช้แล้วที่:** L1 `ProfileUser` (`RenameProfileFields` — ชั้นปี/คณะ Dropdown แปลงค่าที่ `onChanged`, ปุ่ม Save เหลือแค่ 4 output action: name/year/faculty update + refetch) — เช็คทุกครั้งที่ widget เดียวต้องมี conditional query/update มากกว่า ~4-5 กรณี นับจำนวน `PostgresQuery`/`PostgresUpdate`/`CallCustomAction` ที่มี `outputAs` ทั้งหมดในต้นไม้ action เดียวกันก่อนเขียนเพิ่ม ถ้าเกิน ให้ย้าย branching ไปทำที่จุดอื่น (onChanged ของ widget ที่เป็นต้นตอของค่า) แทน
+
+---
+
+## PT-32 — Realtime ที่ใช้ได้จริง: page-level `databaseRequest` + `isStreamingSupabaseQuery` + `ON_DATA_CHANGE` (D-60, 2026-08-24)
+
+**เติมเต็ม PT-04** — PT-04 เป็นแค่ recipe ที่ไม่เคยลงมือทำจริงในโปรเจกต์นี้เลย (grep `dsl/edit.dart` หา `onDataChange`/`ON_DATA_CHANGE` ก่อนหน้านี้เจอ 0 จุด) นี่คือ implementation จริงตัวแรก ยืนยันจาก `generated_code/` ว่า compile เป็น `StreamBuilder` + `SupaFlow.client.from(table).stream(...)` จริง ไม่ใช่แค่ push ผ่าน
+
+**สิ่งที่ใช้ไม่ได้ (เจอก่อน อย่าลองซ้ำ):** `isStreamingSupabaseQuery` (bool บน `PostgresQuerySpec`) ใส่บน action-based `PostgresQuery` ใน onLoad chain — **inert** compile เป็น one-shot `.queryRows()` เหมือนเดิมทุกประการ flag ทำงานเฉพาะบน `FFPostgresQuery` ที่อยู่ใต้ page-level `databaseRequest` เท่านั้น
+
+**สิ่งที่ใช้ได้ (ยืนยันแล้ว 3 หน้า — `Notifications`/`chatList`/`chatMessages`):**
+
+```dart
+app.raw((project) {
+  final page = findPage(project, name: 'PageName');
+  page.node.databaseRequest = FFDatabaseRequest(
+    returnParameter: FFParameter(
+      dataType: FFDataTypeV2(
+        scalarType: FFBaseDataType.PostgresRow,
+        subType: FFSubType(tableIdentifier: FFIdentifier(name: 'base_table')), // table เสมอ ไม่ใช่ view (D-29)
+      ),
+    ),
+    postgres: FFPostgresQuery(
+      filters: [...],               // raw FFPostgresFilter ถ้ามี — ดู varFromPageParam ด้านล่าง
+      isSingleRow: false,
+      isStreamingSupabaseQuery: true,
+    ),
+  );
+});
+
+app.editPage(ff.Pages.pageName, (page) {
+  page.ensureActions(
+    page.root,                      // EditWidgetEditor.root — ไม่ต้องรู้ key จริงของ Scaffold เลย
+    triggerType: FFActionTriggerType.ON_DATA_CHANGE, // ไม่มี widget-type gate ใน compiler.dart (ต่างจาก ON_TEXTFIELD_CHANGE ฯลฯ)
+    actions: [ /* onLoad query+SetState เดิมทุกตัวอักษร แค่เปลี่ยน outputAs กันชน */ ],
+  );
+});
+```
+
+**databaseRequest นี้ไม่ต้องผูกกับ widget ไหนเลย** — มีไว้ถือ subscription เฉย ๆ ให้ trigger `ON_DATA_CHANGE` ยิง onLoad query+SetState เดิมซ้ำ ของเดิม (ListView/ItemRef/filter/pagination) ไม่ต้องแตะเลย เพิ่มแค่ 2 บล็อกต่อหน้า — ความเสี่ยงต่ำกว่าการ rebind UI ให้อ่านจาก stream ตรง ๆ มาก
+
+**อ้างอิงหน้าอื่นในหน้าเดียวกันภายใน `app.raw` (fully-compiled proto level, ใช้ typed DSL อย่าง `Param()`/`AppState()`/`PageParam()` ไม่ได้):** ใช้ `variable_helpers.varFromPageParam(FFIdentifier(name:, key:))` — ต้อง `import 'package:flutterflow_ai/src/helpers/variable_helpers.dart' as variable_helpers;` ตรง (ไม่ export จาก barrel หลัก เหมือน `postgres_helpers`/`custom_code_helpers`) ดึง `name`/`key` จาก typed handle จริง (`ff.Pages.x.params.y.name/.key`) ไม่ hardcode key string
+
+**กับดักอื่นที่เจอระหว่างทำ:** `app.state('x', listOf(T).withDefault([...]))` throw ที่ compile time เสมอ (ต่างจาก page param ที่รับเงียบ ๆ แต่ไม่ถึง constructor, PT-23) — ต้องประกาศ list-typed app state โดยไม่มี default · SDK บังคับ `ff.AppState.x` แทนชื่อ string ดิบเมื่อ field มี typed handle แล้ว (`UpdateAppState.set`) — error message บอกตรง ๆ ไม่ต้องเดา

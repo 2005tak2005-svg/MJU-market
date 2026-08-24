@@ -1,8 +1,8 @@
 # Layer 4 — Chat & Messaging (Supabase Realtime)
 
 > schema/view/RLS → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L4.sql`
-> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList`+`chatMessages` ใช้งานได้จริง ทดสอบผ่านแอปจริงแล้ว (D-40/D-41, 2026-08-18) — ส่งข้อความ+รูปได้, bubble UI สองฝั่ง, ดูรูปเต็มได้, ปุ่ม "แชทกับผู้ขาย"/"รายงาน" ซ่อนจากเจ้าของประกาศเองแล้ว (D-51) — เหลือ Realtime; จุดแดง unread stale-state แก้แล้วทั้ง 3 หน้า (D-49); D-51 ยังไม่ทดสอบผ่านแอปจริง**
-> ปิดได้เมื่อ: (1) Realtime ทำงาน (2) ปุ่ม "แชทกับผู้ขาย" ส่งชื่อคู่สนทนาไปด้วยได้ (ไม่ใช่แค่ chat_id)
+> **สถานะ: Supabase ✅ RLS membership-based + RPC harden + ทดสอบสิทธิ์จริงผ่านแล้ว (D-29, 2026-08-16) | FlutterFlow 🟨 `chatList`+`chatMessages` ใช้งานได้จริง ทดสอบผ่านแอปจริงแล้ว (D-40/D-41, 2026-08-18) — ส่งข้อความ+รูปได้, bubble UI สองฝั่ง, ดูรูปเต็มได้, ปุ่ม "แชทกับผู้ขาย"/"รายงาน" ซ่อนจากเจ้าของประกาศเองแล้ว (D-51) — **Realtime ทำแล้วทั้ง `chatList`/`chatMessages` (D-60, 2026-08-24)**, ปุ่ม "แชทกับผู้ขาย" ส่ง `memberNames`/`userIds` แล้ว (D-60); จุดแดง unread stale-state แก้แล้วทั้ง 3 หน้า (D-49); D-51/D-60 ยังไม่ทดสอบผ่านแอปจริง**
+> ปิดได้เมื่อ: ทดสอบ D-60 (Realtime + memberNames/userIds) ผ่านแอปจริงด้วยบัญชี user ธรรมดา 2 บัญชี
 
 ## 🎯 เป้าหมาย
 
@@ -36,16 +36,16 @@
 
 ## 🚧 ยังไม่ทำ (คิวถัดไป)
 
-1. **Realtime บน `chat_message`** — ยืนยันแล้วว่าไม่มีเลย ไม่ใช่แค่ "ยังไม่ยืนยัน" (`ui-checker` grep `generated_code/lib/` ทั้งต้นไม้หา `.stream(`/`StreamBuilder`/`SupabaseStreamBuilder` เจอ 0 จุด, D-32) Supabase publication เปิดไว้แล้ว แต่ฝั่ง FF DSL ไม่มี subscribe เลย ตอนนี้ใช้ manual refetch หลังส่งข้อความแทน
+1. ~~**Realtime บน `chat_message`**~~ — **ทำแล้ว (D-60, 2026-08-24)** page-level `databaseRequest` (raw proto) filter ตาม chat + `isStreamingSupabaseQuery: true` บน `chat_message` (base table, ไม่ใช่ view) ต่อ `ON_DATA_CHANGE` trigger รัน onLoad query+SetState เดิมซ้ำ ยืนยันจาก `generated_code/`: compile เป็น `StreamBuilder`+`SupaFlow.client...stream(...)` จริงทั้ง `chatList`/`chatMessages` — รายละเอียด `PATTERNS.md` PT-32 — **ยังไม่ทดสอบผ่านแอปจริง**
 2. ~~🔴 จุดแดง unread (D-31) ไม่หายทันทีตอนกลับมาหน้าเดิม~~ — **แก้ครบ 3 หน้าแล้ว (D-49, 2026-08-20)** ทั้ง `chatList`/`Notifications`/`ReportsFeedback` ต่อ refetch+SetState ท้าย ON_TAP chain เดิมแล้ว (raw proto ต่อท้าย Navigate node) ยืนยันจาก `generated_code/` ครบ 3 ไฟล์ — **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
-3. **ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`** — ทางเข้าห้องแชทจาก `ProductDetails` ตอนนี้หัวข้อ/ชื่อผู้ส่งจะว่างเปล่าจนกว่าจะเปิดห้องเดิมซ้ำผ่าน `chatList` (ที่มี array จริงจาก `chat_summary`) — สาเหตุคือ PT-23 ข้อ 1 (ItemRef นอก scope) รวมกับไม่มี list literal (PT-23 ข้อ 7) ทางแก้ที่เป็นไปได้: ให้ `chatMessages` โหลด `chat_summary` เพิ่มเองตอน onLoad ด้วย `chatId` แทนพึ่ง param (ยังไม่ได้ลองเพราะ PT-10 เคยเจอปัญหา index list-state นอก ListView)
+3. ~~**ปุ่ม "แชทกับผู้ขาย" ไม่ส่ง `memberNames`/`userIds`**~~ — **แก้แล้ว (D-60, 2026-08-24)** `findOrCreateChatWithSeller` query `chat_summary` เอง (ตัวเดียวกับที่ `chatList` ใช้) ทันทีหลัง `find_or_create_chat` คืน `chatId` แล้ว relay ผ่าน app state ใหม่ (`pendingChatMemberNames`/`pendingChatUserIds`) — ไม่ใช่ list literal ตรง ๆ (ยังใช้ไม่ได้ทั่วทั้ง SDK ไม่ใช่แค่ในนอก itemBuilder) ยืนยันจาก `generated_code/` — **ยังไม่ทดสอบผ่านแอปจริง**
 4. ~~ปุ่ม "แชทกับผู้ขาย" ซ่อนไม่ได้ตอนดูประกาศตัวเอง~~ — **แก้แล้ว (D-51, 2026-08-20)** ต่อยอด D-44's page-scoped `seller_id` query ผูก `visible:` ให้ทั้งปุ่มแชทและปุ่มรายงาน (`IconButton_k689spgx`) ยืนยันจาก `generated_code/` ว่าคอมไพล์เป็น conditional จริง — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 5. **การส่งข้อความยังไม่มี error feedback จริง** — ใช้ `PostgresCreate` ตรง ๆ (ไม่มี `onSuccess`/`onFailure`, PT-18) ส่งไม่สำเร็จ (เช่น เน็ตหลุด) จะเงียบ ไม่มี snackbar เตือน
 
 ## 🧪 Definition of Done
 
 - [x] แชทระหว่าง 2+ บัญชีจริงแบบข้อความล้วน+รูป — ทดสอบผ่านแอปจริงโดย pete แล้ว (D-40/D-41)
-- [ ] ข้อความขึ้นโดยไม่ต้อง refresh (Realtime) — ยืนยันแล้วว่าไม่มีเลย (ข้อ 1 ด้านบน, D-32)
+- [x] ข้อความขึ้นโดยไม่ต้อง refresh (Realtime) — ทำแล้ว (D-60), ยืนยันจาก `generated_code/` — **ยังไม่ทดสอบผ่านแอปจริง**
 - [x] Chat List แสดงเฉพาะห้องที่ตัวเองอยู่ — ยืนยันด้วย non-member account เห็น 0 แถวจริง
 - [x] ชื่อห้องถูกต้องผ่าน `getOtherUsers` — ไม่เป็น NULL ด้วยบัญชี user ธรรมดา (ยืนยันจาก `chat_summary` query จริง)
 - [x] ห้องแชท: ข้อความ + `sender_name`/`senderLabel` ถูกต้อง เรียงเวลาถูก (ascending, ยืนยันจาก generated code)

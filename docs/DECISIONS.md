@@ -1260,6 +1260,26 @@ insert สำเร็จ) ผ่าน SQL โดยตรง แต่ยั�
 
 ---
 
+## D-60 — Realtime (chat + Notifications) เปิดจริงครั้งแรก, ปิดหนี้ D-32 บางส่วน (2026-08-24)
+
+**บริบท:** pete สั่งเคลียร์ Realtime (chat+notification) ก่อนงานอื่น — ยืนยันไปแล้วว่าไม่มีเลยจริง ๆ ใน FlutterFlow (D-32) ทั้งที่ Supabase publication เปิดไว้ก่อนแล้วสำหรับ `chat`/`chat_message`/`products`
+
+**ตัดออกจากสโคปนี้ตามที่ pete สั่งตรง ๆ ก่อนเริ่ม:** unread badge ตัวเลข (จุดแดงเดิม D-49 พอ) · P-04 (สร้าง notification จากข้อความแชทใหม่ ยังไม่ตัดสินใจ) · dedicated test account (ใช้บัญชีเพื่อน pete จริงแทน แล้วลบทิ้ง)
+
+**กลไกที่ใช้ได้จริง (ยืนยันจาก `generated_code/`, ไม่ใช่แค่ push ผ่าน):**
+- `isStreamingSupabaseQuery` (bool บน `FFPostgresQuery`) ต่อกับ **page-level `databaseRequest`** (raw proto, เทคนิคเดียวกับ `ProfileUser`) เท่านั้นที่ compile เป็น `StreamBuilder` + `SupaFlow.client.from(...).stream(...)` จริง — 🔴 **ลองใส่ flag เดียวกันบน action-based `PostgresQuery` (ใน onLoad chain) ก่อน ไม่ทำงาน** ยัง compile เป็น one-shot `.queryRows()` เหมือนเดิม (ยืนยันด้วยพุชจริง 1 ครั้งแล้วอ่าน `generated_code/`) — จำไว้อย่าลองซ้ำ
+- `databaseRequest` ที่ตั้งไว้ไม่ผูกกับ widget ไหนเลย (ไม่มี UI แสดงผลตรง ๆ) มีไว้ถือ subscription เฉยๆ แล้วต่อ trigger `ON_DATA_CHANGE` (`page.ensureActions(page.root, triggerType: ON_DATA_CHANGE, ...)`) ให้รัน onLoad query+SetState เดิมซ้ำ — ของเดิมไม่ต้องแก้เลย เพิ่มแค่ 2 บล็อกต่อหน้า
+- Realtime target เป็น **base table เท่านั้น** (`chat_message`, `notifications`) ไม่ใช่ view (D-29) — `chatList`/`chatMessages` ฟังที่ `chat_message` แล้ว refetch view (`chat_summary`/`chat_messages_view`) ตามเดิม, `Notifications` ฟัง `notifications` ตรง ๆ (ไม่ใช่ view อยู่แล้ว)
+- ทำสำเร็จ 3 หน้า: `Notifications` (validation spike ตัวแรก) → `chatList` (ฟัง `chat_message` ไม่มี filter เหมือน onLoad เดิม) → `chatMessages` (ฟัง `chat_message` filter `chat_id`)
+
+**ปิดหนี้พ่วง — `findOrCreateChatWithSeller` (L4-chat.md ข้อ 3):** เดิมปุ่ม "แชทกับผู้ขาย" ส่งแค่ `chatId` ทำให้ `memberNames`/`userIds` เป็น null ตอนเข้าห้องแชทใหม่ทางนี้ แก้ด้วยให้ custom action query `chat_summary` (ตัวเดียวกับที่ `chatList` ใช้อยู่แล้ว — `member_names`/`user_ids` เป็น `array_agg` พร้อมใช้) ทันทีหลัง `find_or_create_chat` คืน `chatId` แล้ว relay ผ่าน app state ใหม่ 2 ตัว (`pendingChatMemberNames`/`pendingChatUserIds`) — pattern เดียวกับ `pendingChatProductId` เดิม
+
+**กับดักใหม่ที่เจอ:** `app.state('x', listOf(string).withDefault([]))` throw ที่ compile time ("Default values are not supported for type ListType...") — ต่างจาก page param ที่รับ default เงียบๆ แต่ไม่ถึง constructor จริง (PT-23) · SDK บังคับใช้ `ff.AppState.x` แทนชื่อ string ดิบเมื่อ field มี typed handle อยู่แล้ว (validation error ชัดเจน ไม่ใช่เดา) · `varFromPageParam`/`variable_helpers.dart` ไม่ได้ export จาก barrel หลัก ต้อง import ตรงจาก `src/helpers/` เหมือน `postgres_helpers`/`custom_code_helpers`
+
+**ยังไม่ทำ (ตัดสโคปไว้แล้ว ไม่ใช่ค้าง):** unread badge, P-04, notification/push จริงตอนปิดแอป — รายละเอียด `layers/L4-chat.md`/`layers/L6-notifications.md`, pattern ใหม่ `PATTERNS.md` PT-32 — **ยังไม่ทดสอบผ่านแอปจริง** (รอ pete + บัญชีเพื่อน)
+
+---
+
 ## D-59 — Layer 5 (Transaction & Listing Status) เริ่มและปิดครบ + ปิดหนี้ D-03 (2026-08-23)
 
 **บริบท:** pete สั่งสเปค "ปิดการขาย" — เจ้าของประกาศเลือกผู้ซื้อจาก

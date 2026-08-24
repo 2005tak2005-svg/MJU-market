@@ -606,3 +606,27 @@ app.editPage(ff.Pages.pageName, (page) {
 **อ้างอิงหน้าอื่นในหน้าเดียวกันภายใน `app.raw` (fully-compiled proto level, ใช้ typed DSL อย่าง `Param()`/`AppState()`/`PageParam()` ไม่ได้):** ใช้ `variable_helpers.varFromPageParam(FFIdentifier(name:, key:))` — ต้อง `import 'package:flutterflow_ai/src/helpers/variable_helpers.dart' as variable_helpers;` ตรง (ไม่ export จาก barrel หลัก เหมือน `postgres_helpers`/`custom_code_helpers`) ดึง `name`/`key` จาก typed handle จริง (`ff.Pages.x.params.y.name/.key`) ไม่ hardcode key string
 
 **กับดักอื่นที่เจอระหว่างทำ:** `app.state('x', listOf(T).withDefault([...]))` throw ที่ compile time เสมอ (ต่างจาก page param ที่รับเงียบ ๆ แต่ไม่ถึง constructor, PT-23) — ต้องประกาศ list-typed app state โดยไม่มี default · SDK บังคับ `ff.AppState.x` แทนชื่อ string ดิบเมื่อ field มี typed handle แล้ว (`UpdateAppState.set`) — error message บอกตรง ๆ ไม่ต้องเดา
+
+---
+
+## PT-33 — Custom ACTION (0-arg) → RPC → `SetState` บน `List<PostgresRow>` **ใช้ได้จริง** (D-62/D-63, 2026-08-24)
+
+**ปิดคำถามค้างของ D-45:** ตอนนั้นพบว่า `SetState` บนฟิลด์ `List<PostgresRow>`-typed ปฏิเสธค่าจาก custom **FUNCTION** (`app.customFunction`, `CustomFunction(...)` เป็น value-expression ฝังในอีก action) เสมอ ("update value is not properly set") แล้วสรุปไว้ (ผิด) ว่า field ประเภทนี้รับได้แค่ `PostgresQuery`-sourced value เท่านั้น
+
+**ข้อเท็จจริงที่ถูกต้อง (ยืนยันจาก `generated_code/`):** custom **ACTION** (`app.customAction`/`addCustomAction`, เรียกผ่าน `CallCustomAction(...)` เป็น action node แยกที่ผลิต `ActionOutput` เหมือน `PostgresQuery`) **ใช้ได้** — เป็นคนละ node kind กับ custom FUNCTION ในตัว compiler เปิดทางให้ list-returning custom action (เช่น RPC wrapper) ป้อนเข้า `List<PostgresRow>` state field ได้ตรง ๆ โดยไม่ต้องแตะ ListView/itemBuilder เดิมเลย
+
+**Recipe เต็ม (ใช้แล้วที่ `Home` search, D-62/D-63):**
+
+1. **ประกาศ return type แบบ list ผ่าน raw helper** — `custom_code_helpers.addCustomAction(..., returnParameter: FFParameter(dataType: data_type_helpers.listOf(FFDataTypeV2(scalarType: PostgresRow, subType: FFSubType(tableIdentifier: FFIdentifier(name: '<table_or_view_name>'))))))` — `data_type_helpers.listOf` ไม่ export จาก barrel หลัก ต้อง `import 'package:flutterflow_ai/src/helpers/data_type_helpers.dart' as data_type_helpers;` ตรง (เหมือน `postgres_helpers`/`variable_helpers`) — **อย่าใช้ `FFDataTypeV2(..., isList: true)`** ไม่มี field ชื่อนี้ (`isList` ไม่ใช่ proto field จริง เดาผิดรอบแรก) ตัวจริงคือ nested `listType:` (ดู `flutterflow.pb.dart` `FFDataTypeV2` tag 2)
+2. **โค้ด Dart ของ action:** `final response = await Supabase.instance.client.rpc(name, params: {...}); return (response as List).map((row) => <TableRow>(row as Map<String, dynamic>)).toList();` — table/view's `<TableRow>` constructor รับ `Map<String, dynamic>` ตรง ๆ เสมอ (เช็คได้จาก `generated_code/lib/backend/supabase/database/tables/<table>.dart`)
+3. **0-argument เท่านั้น (PT-09)** — อ่าน input จาก App State ที่ตั้งไว้ก่อนเรียก (ดูข้อ 4)
+4. **ก่อนเรียก action:** `UpdateAppState.set(ff.AppState.x, <value>)` ทีละฟิลด์ input — ถ้า value มาจาก `WidgetState(...).text` (TextField เสมอเป็น `String`) แล้วปลายทางไม่ใช่ String field ให้เปลี่ยนปลายทางเป็น **String app state + parse เองในโค้ด action** (`double.tryParse`/`int.tryParse`) แทนที่จะหวังให้ DSL coerce — ไม่มีเส้นทาง type-coercion ไหนในโปรเจกต์นี้ที่เคยพิสูจน์ว่าปลอดภัย
+5. **เรียก:** `CallCustomAction(fn, outputAs: 'tag') → SetState('listField', ActionOutput('tag'))` — compile ถูกจริง ยืนยันจาก `generated_code/`: `_model.listField = _model.tag!.toList().cast<TableRow>();`
+
+**กับดักที่เจอระหว่างทาง (เจอเรียงตามลำดับจริง อย่าข้าม):**
+- เปลี่ยน type ของ app state ที่มีอยู่แล้ว → ใช้ `data_schema_helpers.updateAppStateField(project, name:, type:)` (import ตรงจาก `src/helpers/`) ไม่ใช่เรียก `app.state(...)` ซ้ำ — throw ทันที ("`ensure*` helpers are create-if-missing only")
+- field ที่มี typed handle แล้ว (`ff.AppState.x`) ต้องอ้างผ่าน handle ไม่ใช่ string ดิบ ไม่ว่าจะเป็น `UpdateAppState.set` หรือจุดอื่น — error message ระบุชื่อ handle ที่ถูกต้องให้ตรง ๆ
+- widget ที่มี typed handle แล้วก็เหมือนกัน — `WidgetState(...)` ต้องอ้างผ่าน `ff.Pages.x.widgets.byKey(key).single` ไม่ใช่ชื่อ string ดิบ
+- widget ที่เพิ่ง insert ใน**พุชเดียวกัน**อ้างชื่อ/key ตัวเองไม่ได้ (PT-22) — ต้องแยกพุช: insert ก่อน (ไม่ผูก action) → พุชถัดไปค่อยผูกด้วย key จริงที่ยืนยันจาก typed SDK ที่ refresh แล้ว
+
+**ทดลองแล้วไม่เกี่ยว (บันทึกกันลองซ้ำ):** `isStreamingSupabaseQuery: true` บน action-based `PostgresQuery` (ไม่ใช่ page-level `databaseRequest`) — inert เหมือนที่ PT-32 บันทึกไว้ ไม่ได้ช่วยอะไรกับ pipeline นี้

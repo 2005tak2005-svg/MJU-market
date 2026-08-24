@@ -16,6 +16,9 @@
 
 **เหลืออย่างเดียว:** ยืนยันการอัปไฟล์จริงผ่านแอป — `file_size_limit` / `allowed_mime_types` บังคับที่ **Storage API** ทดสอบจาก DB แทนไม่ได้ (ดู `../VERIFICATION.md` V-08)
 
+> ✅ **`products.category_id` เป็น `NOT NULL` แล้ว (D-61, 2026-08-24)** — 0 แถว null ตอน apply ไม่ต้อง backfill
+> ❓ ที่เคยค้าง — ตอบแล้วทั้งคู่ (pete, 2026-08-24): **ไม่เปิด browse ก่อน login** (คงต้อง login เหมือนเดิม) · **`"CAT"` ไม่ทำ admin CRUD UI** ยังใช้ SQL manual seed ต่อไป
+
 **ทำแล้ว:** schema ครบ · RLS allow-all · `products_review_view` · Realtime บน `products` · **seed `"CAT"` 12 หมวดหมู่แล้ว (id 1–12 ดู `../SCHEMA.md`)** · CHECK จำกัด `image_urls` ที่ 3 รูป
 
 > ⚠️ dropdown หมวดหมู่ต้องอ่านตอน**ล็อกอินแล้ว**เท่านั้น — `anon` เห็น `"CAT"` เป็น 0 แถว (policy เป็น `TO authenticated`)

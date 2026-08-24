@@ -1,7 +1,7 @@
 # Layer 3 — Browse / Search / Filter
 
 > schema → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L3.sql`
-> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · ค้นหา (title, **exact match** — substring D-46 ใช้จริงไม่ได้ ถอนแล้ว D-48) + ปุ่ม "ค้นหา" ให้กด submit ได้จริงแล้ว (D-50, เดิมมีแค่ IME submit) + สุ่มลำดับสินค้า (`shuffle_key`) + pull-to-refresh เพิ่มแล้ว (D-45/D-48) ยังไม่มีช่วงราคา, ยังไม่มี empty-state UI (ลองแล้วไม่สำเร็จ D-46), ยังไม่ทดสอบผ่านแอปจริง — ดู `STATUS.md` คิวถัดไป
+> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · **ค้นหาเป็น substring จริงแล้ว + ช่วงราคาแล้ว (D-62/D-63, 2026-08-24) — ผ่าน RPC `search_products` ไม่ใช่ typed filter อีกต่อไป** สุ่มลำดับ (`ORDER BY random()` ใน RPC) + pull-to-refresh ยังทำงานผ่าน chain เดียวกัน ยังไม่มี empty-state UI (ลองแล้วไม่สำเร็จ D-46), ยังไม่ทดสอบผ่านแอปจริงหลัง D-62/D-63 — ดู `STATUS.md` คิวถัดไป
 
 ## 🎯 เป้าหมาย
 
@@ -15,23 +15,23 @@
 
 ## 🧩 ขั้นตอน Supabase
 
-**ตัดสินใจแล้ว (D-45):** built-in filter พอ ไม่สร้าง RPC `search_products` (P-05 ยังคงเป็นข้อเสนอค้าง ไม่ build) — เพิ่ม `products_review_view.shuffle_key` (`random()`) สำหรับสุ่มลำดับ + `products.title` มี GIN trigram index (`pg_trgm`, D-46) — **ยังไม่ได้ใช้จริง** เพราะค้นหาถอยกลับเป็น exact match (D-48) ไม่ได้ใช้ `ILIKE '%...%'` แล้ว index ยังอยู่เผื่ออนาคตถ้าจะทำ RPC
+**D-45 (built-in filter พอ, ไม่สร้าง RPC) กลับคำแล้ว — D-62 (2026-08-24, pete สั่งทำ):** สร้าง RPC `search_products(keyword, p_category_id, min_price, max_price)` จริง ปิดข้อเสนอ P-05 — `RETURNS SETOF products_review_view` (คอลัมน์ครบเหมือน view เดิมทุกตัว) ค้นหาทั้ง `title`/`description` ด้วย `ILIKE` (ใช้ trigram index เดิมของ `title`, D-46) + `category_id`/`price` range ในตัวเดียว ทุกพารามิเตอร์ optional — รายละเอียดเต็ม `../SCHEMA.md`
 
 ## 🎨 ขั้นตอน FlutterFlow
 
-**`Home` — ทำแล้ว (D-45/D-48):**
+**`Home` — เขียนใหม่ทั้งหมดผ่าน RPC (D-62/D-63, 2026-08-24):**
 
-- Search bar (`SearchField`) → Page State `searchQuery`, query ตอน submit เท่านั้น (ไม่ query ทุก keystroke) — submit ได้ 2 ทาง: กด IME "search"/"done" บนคีย์บอร์ด (เดิม) **หรือปุ่ม "ค้นหา" ที่เพิ่ม (D-50, 2026-08-20)** ต่อจาก `SearchField` ใช้ query chain เดียวกันเป๊ะ (`buildSearchRefreshChain`)
-- 🔴 **ค้นหาเป็น exact match เท่านั้น (D-48, ถอยจาก D-46's substring)** — `equalTo` เป็น relation เดียวที่ null-safe จริง (`iLike`/`like`/`contains` ไม่มี `...OrNull` variant เลย ผูกกับค่าไดนามิกแล้วได้ `dart analyze` error จริงตอน Live Test Mode) ดู D-48/PT-27 ข้อ 6
-- "ค้นหาว่าง = โชว์ทุกอย่าง" ทำผ่าน `If(Equals(searchQuery, ''), then: [query ไม่มี title filter], orElse: [มี filter])` แทน trick `iLike('')` เดิมที่ใช้ไม่ได้แล้ว (D-48/PT-27 ข้อ 7)
-- Category chip (เดิม, D-37/D-38/D-39) กับ search เป็นคนละแกน กดอันหนึ่งล้างอีกอันทิ้ง
-- สุ่มลำดับ: `ORDER BY shuffle_key` แทน `created_at` ทุก query (onLoad/search/chip) — สุ่มฝั่ง Dart (custom function) ทำไม่ได้จริง ดู D-45/PT-27
-- Pull-to-refresh บน grid → เรียก chain เดียวกับ search submit (เคารพคำค้น/หมวดหมู่ปัจจุบันแล้วสุ่มใหม่)
-- 🔴 **empty-state UI ลองแล้วไม่สำเร็จ ถอนออกแล้ว** (D-46) — ทั้ง raw-proto `listLength()` condition และ custom-function-derived boolean state ถูก backend ปฏิเสธทั้งคู่ ดู D-46/PT-27
+- 🔴 **`iLike`/`like`/`contains` ไม่มี null-safe codegen เลยในระบบนี้ (D-46/D-48 confirmed)** — ทางแก้จริงคือออกจาก typed-filter ทั้งหมด ไปเรียก `search_products` RPC ผ่าน custom action **0-argument** (`searchProducts`) แทน เพราะ **`CallCustomAction` ส่ง argument ไม่ได้เลยใน SDK เวอร์ชันนี้ (PT-09)** — action อ่าน `keyword`/`categoryId`/`minPrice`(string)/`maxPrice`(string) จาก App State ก่อนเรียก แล้ว parse เอง (`double.tryParse`) ไม่พึ่ง DSL coerce
+- **ยืนยันใหม่ (D-62):** `SetState` บนฟิลด์ `List<PostgresRow>` (`productsList`) **รับค่าจาก `CallCustomAction`'s `ActionOutput` ได้จริง** — ต่างจาก D-45 ที่พบว่ารับจาก custom **FUNCTION** ไม่ได้ (`CustomFunction(...)`, value-expression) การันตีจาก `generated_code/`: `_model.productsList = _model.xRpcV1!.toList().cast<ProductsReviewViewRow>();` compile ถูกทุกจุด — ดู `PATTERNS.md` PT-33 สำหรับ recipe เต็ม
+- Search bar (`SearchField`) → Page State `searchQuery` (แสดงผลเฉยๆ) → submit (IME หรือปุ่ม "ค้นหา", D-50) เขียน `searchQuery` เข้า App State `searchKeyword` แล้วเรียก RPC — ล้าง `selectedCategoryId`/`searchCategoryId` เป็น 0
+- Category chip (D-37/D-38/D-39) กับ search ยังเป็นคนละแกน กดอันหนึ่งล้างอีกอันทิ้ง (เหมือนเดิม) — ทุก chip (13 หมวด × 2 selected/unselected) เรียก RPC ผ่าน `homeCategoryTapActions` เดียวกัน
+- **ช่วงราคาทำแล้ว (D-63)** — 2 `TextField` (`minPriceField`/`maxPriceField`, keyboard number) + ปุ่ม "กรอง" (`PriceFilterButton`) ต่อจากปุ่ม "ค้นหา" เขียนเข้า App State `searchPriceMin`/`searchPriceMax` (type **String** ไม่ใช่ Double — ดู PT-33) เป็น**แกนอิสระ**ไม่ล้างค่า keyword/category และไม่ถูกล้างโดยการค้นหา/กดหมวดหมู่ — คงอยู่จนกว่าจะกด "กรอง" ใหม่
+- สุ่มลำดับย้ายจาก `shuffle_key` column ไปเป็น `ORDER BY random()` ใน RPC ตรง ๆ (เอฟเฟกต์เดียวกัน)
+- Pull-to-refresh บน grid → เรียก chain เดียวกับ search submit (`buildSearchRefreshChain`) เหมือนเดิม เคารพ keyword/category ปัจจุบัน (price แยกแกนอยู่แล้วไม่ต้อง reset)
+- 🔴 **empty-state UI ลองแล้วไม่สำเร็จ ถอนออกแล้ว** (D-46) — ทั้ง raw-proto `listLength()` condition และ custom-function-derived boolean state ถูก backend ปฏิเสธทั้งคู่ ดู D-46/PT-27 — **ยังไม่ลองรอบ 3**
 
 **หน้า Browse อื่น (ยังไม่ทำ):**
 
-- Price range slider → `priceMin` / `priceMax`
 - กดการ์ด → Navigate To `ProductDetail` ส่ง Row จาก `products_review_view` เป็น Page Parameter (**PT-03**)
 
 **หน้า `ProductDetail`** *(ยืนยันชื่อหน้าแล้ว — ยังไม่ได้สร้างจริง)*
@@ -42,15 +42,13 @@
 
 ## 🧪 Definition of Done
 
-- [ ] ค้นหา/กรองแล้วผลตรงกับข้อมูลจริงทุกกรณี (คำค้น / หมวดหมู่ / ช่วงราคา)
-- [ ] สินค้าที่ยังไม่ approved **ไม่โผล่**ในผลค้นหาเด็ดขาด
+- [x] ค้นหา/กรองแล้วผลตรงกับข้อมูลจริงทุกกรณี (คำค้น / หมวดหมู่ / ช่วงราคา) — ทำแล้ว (D-62/D-63) ยืนยันจาก `generated_code/` **ยังไม่ทดสอบผ่านแอปจริง**
+- [x] สินค้าที่ยังไม่ approved **ไม่โผล่**ในผลค้นหาเด็ดขาด — RPC filter `moderation_status='approved'` เสมอ (SCHEMA.md)
 - [ ] กดการ์ด → `ProductDetail` ข้อมูลครบถูกต้อง
 - [ ] ปุ่ม "แชทกับผู้ขาย" เข้าห้องถูก ไม่สร้างห้องซ้ำ
 - [ ] + DoD ร่วมใน `CLAUDE.md`
-- [ ] 🆕 (D-45/D-48) ทดสอบผ่าน Live Test Mode + แอปจริงด้วย user ธรรมดา: **ไม่มี Analyzer Errors แล้ว** (ประเด็นที่ pete รายงาน), ค้นหาด้วยชื่อเป๊ะเจอจริง, pull-to-refresh ตอนไม่ได้ค้นหาโชว์ของครบ (ไม่ว่างเปล่า), สุ่มลำดับเปลี่ยนทุกครั้งที่โหลด/pull-to-refresh, กด chip ล้างคำค้น, ไม่มีสินค้า pending/rejected หลุดมาในผลค้นหา
+- [ ] 🆕 (D-62/D-63) ทดสอบผ่านแอปจริงด้วย user ธรรมดา: ค้นหาแบบ substring จริงเจอ (ไม่ต้องพิมพ์เป๊ะ), ค้นหาจาก description ด้วยได้, กรองหมวดหมู่+ช่วงราคาพร้อมกันได้ (สองแกนไม่ล้างกัน), กดปุ่ม "กรอง" ราคาแล้วคงอยู่ตอนสลับหมวดหมู่/ค้นหาใหม่, ค่าราคาว่าง/ใส่ตัวอักษรไม่ crash (parse ล้มเหลว = ไม่กรอง), pull-to-refresh เคารพคำค้น/หมวดหมู่ปัจจุบัน, ไม่มีสินค้า pending/rejected/sold หลุดมาในผลค้นหา
 
 ## ❓ ค้างอยู่
 
-- 🆕 (D-48) ค้นหาเป็น exact match เท่านั้น ไม่ใช่ substring — `iLike`/`like`/`contains` ผูกกับค่าไดนามิกไม่ได้เลยในระบบนี้ (ไม่มี null-safe codegen) ถ้าจะทำ substring จริงต้องออกนอก typed-filter ไปทำ RPC `search_products` (P-05) ผ่าน custom action แทน — ยังไม่ทำ รอ pete ตัดสินใจว่าคุ้มจะลงทุนไหม
-- 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ
-- ช่วงราคา (`priceMin`/`priceMax`) ยังไม่ทำ
+- 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — ยังไม่ลองรอบ 3 หลัง D-62 เปิดทางใหม่ (RPC คืน list เปล่าได้ตรงๆ อาจลอง `listLength()`/`ActionOutput` บน RPC output แทน custom function ได้ ยังไม่ได้ลอง)

@@ -1260,6 +1260,44 @@ insert สำเร็จ) ผ่าน SQL โดยตรง แต่ยั�
 
 ---
 
+## D-61 — `products.category_id` เป็น `NOT NULL` (2026-08-24)
+
+**บริบท:** pete สั่งทำ L2/L3 ต่อจาก Realtime — คำถามค้างเดิมเรื่อง `category_id` nullable
+
+**ตัดสินใจ:** บังคับ `NOT NULL` — เช็คก่อนว่า 0 แถว null จาก 10 แถวทั้งหมด ไม่ต้อง backfill apply ตรงตามกฎข้อ 5 (ปลอดภัย + ไม่มีข้อมูลชนกัน)
+
+**คำถามอื่นของ L2 ที่ถามพร้อมกัน — ตอบแล้วทั้งคู่:** ไม่เปิด browse ก่อน login (คงต้อง auth เหมือนเดิม) · ไม่ทำ `"CAT"` admin CRUD UI (manual SQL seed พอ) — ไม่มีอะไรต้องทำเพิ่มสำหรับสองข้อนี้
+
+## D-62 — RPC `search_products()` — substring search จริงครั้งแรก ปิดข้อเสนอ P-05 (2026-08-24)
+
+**บริบท:** D-45–D-48 สรุปไว้ว่า `iLike`/`like`/`contains` ไม่มี null-safe codegen เลยในระบบนี้ ค้นหาเลยถอยเป็น exact match มาตลอด pete สั่งให้ทำ substring จริงรอบนี้แทนที่จะปล่อยไว้
+
+**สถาปัตยกรรมที่ใช้ได้จริง (ยืนยันจาก `generated_code/` ทุกจุด ไม่ใช่แค่ push ผ่าน):**
+
+1. RPC `search_products(keyword, p_category_id, min_price, max_price)` — `RETURNS SETOF products_review_view`, ทุกพารามิเตอร์ optional, ANDed กัน (`SCHEMA.md`)
+2. เรียกผ่าน custom action **0-argument** `searchProducts` — ไม่ใช่ `Actions.callSupabaseRpc` (typed DSL) เพราะต้อง sync RPC schema จาก Supabase เข้า FlutterFlow ก่อน (`Settings → Supabase → Get Schema`) ซึ่งเป็น manual GUI action ที่ CLI/MCP ไม่มีทางเรียกได้ — ลอง `flutterflow ai refresh-context`/`resources` แล้วไม่เจอ `search_products` ใน registry เลย ยืนยันว่าทางนี้ตันจริง ไม่ใช่แค่ยังไม่ได้ลอง
+3. 0-argument เพราะ **`CallCustomAction` ส่ง argument ไม่ได้เลยในเวอร์ชัน SDK นี้ (PT-09, บั๊กเก่าตั้งแต่ L1)** — action อ่าน `keyword`/`categoryId`/`minPrice`/`maxPrice` จาก App State เอง (relay pattern เดียวกับ `pendingChatProductId`/`pendingSoldChatId`)
+4. **ค้นพบใหม่ที่สำคัญที่สุด:** `SetState` บนฟิลด์ `List<PostgresRow>` (`Home.productsList`) **รับค่าจาก `CallCustomAction`'s `ActionOutput` ได้จริง** — ไม่ใช่ข้อจำกัดเดียวกับที่ D-45 เจอ (ตอนนั้น custom **FUNCTION** ถูกปฏิเสธ เพราะเป็น value-expression คนละ node kind กับ custom **ACTION** ที่ผลิต `ActionOutput` แบบเดียวกับ `PostgresQuery`) เปิดทางให้ RPC-backed list มาแทน typed-filter ได้เต็มรูปแบบ โดยไม่ต้องแก้ ListView/itemBuilder ที่มีอยู่แล้วเลยสักจุด — รายละเอียด `PATTERNS.md` PT-33
+5. Realtime ทดลองก่อน (D-60's spirit): ลอง `isStreamingSupabaseQuery: true` บน action-based `PostgresQuery` ก่อนไปทาง RPC — **ไม่เกี่ยวกับเรื่องนี้โดยตรง แต่ยืนยันซ้ำว่า flag นั้น inert นอก page-level `databaseRequest`** (ตรงกับที่บันทึกไว้ใน PT-32)
+
+**ผล:** onLoad + search submit + ปุ่ม "ค้นหา" + pull-to-refresh + category chip ทั้ง 13 หมวด (26 variant) เปลี่ยนมาเรียก RPC เดียวกันหมด ลด duplicated `PostgresQuery` block ลงมาก ปิดข้อเสนอ P-05 ใน `PROPOSED_SQL.md` — **ยังไม่ทดสอบผ่านแอปจริง**
+
+## D-63 — ช่วงราคา (price range) บน `Home` (2026-08-24)
+
+**บริบท:** ทำพร้อม D-62 เพราะใช้กลไกเดียวกัน (RPC มี `min_price`/`max_price` อยู่แล้ว) — ไม่ใช่คำถามที่ pete ตอบตรง ๆ แต่เป็นช่องว่างที่ระบุไว้ชัดใน `STATUS.md`/`L3-browse-search.md` มาตั้งแต่ D-45
+
+**ตัดสินใจ:** เป็น**แกนอิสระ** ไม่ผูกกับ/ไม่ล้างโดย keyword search หรือ category chip (ต่างจาก search↔category ที่ยังล้างกันเองเหมือนเดิม) — กด "กรอง" ราคาแล้วค่าคงอยู่จนกว่าจะเปลี่ยนเอง แม้สลับหมวดหมู่/ค้นหาใหม่
+
+**กับดักที่เจอ:**
+- App state ประกาศ `double_` ก่อน แล้วพบว่า `WidgetState(...).text` เป็น `String` เสมอ (TextField ไม่มี numeric variant ใน `WidgetStateProperty`) — ผูก String เข้า Double field ตรง ๆ เป็นเส้นทาง type-coercion ที่ไม่เคยพิสูจน์มาก่อนในโปรเจกต์นี้ (ความเสี่ยงแบบเดียวกับ D-45/D-46 ที่เจอมาแล้วหลายรอบ) เปลี่ยนเป็น **String app state + parse เองด้วย `double.tryParse` ในโค้ด custom action** แทน (ปลอดภัยกว่า ไม่พึ่ง DSL coerce เลย)
+- เปลี่ยน type ของ app state ที่มีอยู่แล้วต้องใช้ `updateAppStateField(...)` ไม่ใช่ `app.state(...)` ซ้ำ — `app.state` เป็น create-if-missing เท่านั้น throw ถ้า payload ต่างจากของเดิมบน backend
+- `WidgetState` อ้างอิง widget ที่มี typed handle แล้วต้องใช้ `ff.Pages.x.widgets.byKey(key).single` ไม่ใช่ชื่อ string ดิบ (เหมือนกฎเดียวกับ `ff.AppState.x`) — error message บอกตรง ๆ ไม่ต้องเดา
+- ปุ่ม "กรอง" อ้างอิง TextField ที่เพิ่ง insert ในพุชเดียวกันไม่ได้ (PT-22) ต้องแยก 2 พุช (insert ก่อน ไม่ผูก onTap → ผูก onTap พุชถัดไปด้วย key จริง) เหมือนที่เคยเจอกับ chatMessages' SendMessageButton
+
+**ผล:** ยืนยันจาก `generated_code/` ว่า compile ถูกทุกจุด (`FFAppState().searchPriceMin = _model.minPriceFieldTextController.text;` ฯลฯ) — **ยังไม่ทดสอบผ่านแอปจริง**
+
+---
+
 ## D-60 — Realtime (chat + Notifications) เปิดจริงครั้งแรก, ปิดหนี้ D-32 บางส่วน (2026-08-24)
 
 **บริบท:** pete สั่งเคลียร์ Realtime (chat+notification) ก่อนงานอื่น — ยืนยันไปแล้วว่าไม่มีเลยจริง ๆ ใน FlutterFlow (D-32) ทั้งที่ Supabase publication เปิดไว้ก่อนแล้วสำหรับ `chat`/`chat_message`/`products`

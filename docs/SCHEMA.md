@@ -712,12 +712,13 @@ FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename, policyname;
 
 ## Realtime ที่เปิดแล้ว
 
-`supabase_realtime` มี 3 ตาราง: `public.chat` · `public.chat_message` · `public.products`
+`supabase_realtime` มี 4 ตาราง: `public.chat` · `public.chat_message` · `public.products` · `public.notifications` (เพิ่ม 2026-08-24, กำลังต่อ FlutterFlow ฝั่ง L4/L6)
 
 ```sql
 ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_message;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.chat;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.products;  -- จำเป็นสำหรับ reject-alert flow (L2)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;  -- L6, ยังไม่มี FlutterFlow subscribe
 ```
 
 ตรวจ: `SELECT tablename FROM pg_publication_tables WHERE pubname = 'supabase_realtime';`

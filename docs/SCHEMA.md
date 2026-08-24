@@ -210,7 +210,7 @@ CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_conten
 
 ฝั่ง FlutterFlow ผูก `image_url` แล้ว (ส่งรูปได้จริง, D-41) — ดู `layers/L4-chat.md`
 
-### `public.reports` (แก้ 2026-08-15, D-24)
+### `public.reports` (แก้ 2026-08-24, D-65 — รองรับรีพอร์ตผู้ใช้, ปิดข้อเสนอ P-09)
 
 | # | คอลัมน์ | ชนิด | null? | default |
 |---|---|---|---|---|
@@ -221,18 +221,25 @@ CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_conten
 | 5 | `status` | varchar | nullable | `'pending'` |
 | 6 | `created_at` | timestamptz | **NOT NULL** | `now()` |
 | 7 | `is_read` | boolean | **NOT NULL** | `false` (เพิ่ม 2026-08-17, D-31) |
+| 8 | `reported_user_id` | uuid | nullable | – (เพิ่ม 2026-08-24, D-65) |
 
 ```sql
 PRIMARY KEY (id)
 FOREIGN KEY (reporter_id)         REFERENCES "Profile"(id) ON UPDATE CASCADE ON DELETE CASCADE
 FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON DELETE SET NULL   -- เปลี่ยนจาก CASCADE (D-24) — ลบสินค้าไม่ลบประวัติ report
+FOREIGN KEY (reported_user_id)    REFERENCES "Profile"(id) ON DELETE SET NULL   -- D-65, pattern เดียวกับ reported_product_id
 CHECK (status IN ('pending', 'resolved'))                                       -- เพิ่ม (D-24)
+CHECK (reported_product_id IS NOT NULL OR reported_user_id IS NOT NULL)         -- reports_target_required, D-65 — ต้องมีเป้าหมายอย่างน้อย 1 อย่าง
+CHECK (reported_user_id IS NULL OR reported_user_id <> reporter_id)             -- reports_no_self_report, D-65 — กันรีพอร์ตตัวเองที่ระดับ DB
 CREATE UNIQUE INDEX reports_unique_pending_per_reporter_product
   ON reports (reporter_id, reported_product_id) WHERE status = 'pending'        -- กันรายงานซ้ำ (D-24)
+CREATE UNIQUE INDEX reports_unique_pending_per_reporter_user
+  ON reports (reporter_id, reported_user_id) WHERE status = 'pending'           -- D-65, กันรายงานผู้ใช้ซ้ำตอนยัง pending — NULL ไม่ชนกันเอง ปลอดภัยกับแถว product-report เดิม
 ```
 
-- ใช้จริงแล้ว 2 ทาง: user รายงานสินค้าเอง (`status='pending'`) และ admin log ตอน reject (`status='resolved'`, เขียนที่ 3 ต่อจาก update `products` + insert `notifications` ใน `RejectProductSheet`)
+- ใช้จริงแล้ว 3 ทาง: user รายงานสินค้าเอง (`status='pending'`), user รายงานผู้ใช้ (`status='pending'`, D-65), admin log ตอน reject (`status='resolved'`, เขียนที่ 3 ต่อจาก update `products` + insert `notifications` ใน `RejectProductSheet`)
 - `reported_product_id` เป็น NULL ได้จริงหลังลบสินค้า (`ON DELETE SET NULL`) — แถว report ยังอยู่ (`reports_admin_view` ใช้ `LEFT JOIN` รองรับอยู่แล้ว)
+- `reported_user_id` เป็น NULL ได้เช่นกันหลังลบโปรไฟล์ (`ON DELETE SET NULL`) — เมื่อเป็น NULL ทั้งคู่กับ `reported_product_id`, CHECK `reports_target_required` ยังผ่านอยู่ (constraint เช็คตอน insert/update เท่านั้น ไม่ retroactive กับแถวเก่าที่ FK เพิ่งเซ็ต NULL ทีหลัง)
 
 ### `public.notifications` (L6, เพิ่ม 2026-08-14)
 
@@ -613,14 +620,21 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
     p.title AS product_title,
     p.seller_id,
     seller.full_name AS seller_name,
-    r.is_read                                          -- เพิ่ม 2026-08-17, D-31
+    r.is_read,                                         -- เพิ่ม 2026-08-17, D-31
+    r.reported_user_id,                                 -- เพิ่ม 2026-08-24, D-65
+    reported_user.full_name AS reported_user_name,      -- เพิ่ม 2026-08-24, D-65
+    (r.reported_product_id IS NOT NULL) AS is_product_report,  -- เพิ่ม 2026-08-24, D-65
+    (r.reported_user_id IS NOT NULL) AS is_user_report          -- เพิ่ม 2026-08-24, D-65
    FROM reports r
      LEFT JOIN products p ON p.id = r.reported_product_id
      LEFT JOIN public_profiles reporter ON reporter.id = r.reporter_id
-     LEFT JOIN public_profiles seller ON seller.id = p.seller_id;
+     LEFT JOIN public_profiles seller ON seller.id = p.seller_id
+     LEFT JOIN public_profiles reported_user ON reported_user.id = r.reported_user_id;  -- D-65
 ```
 
-> 📌 `reports_admin_view` (L7, เพิ่ม 2026-08-15, D-24) — mailbox สำหรับหน้า `Reports`/`ReportDetail` (admin) `security_invoker = true` พึ่ง RLS ของ `reports` เอง (`admin can read reports`) ในการกรองแถว ส่วน `public_profiles` 2 รอบ (reporter/seller) join แบบ D-01 ปกติ · `LEFT JOIN products` รองรับกรณี `reported_product_id` เป็น NULL หลังสินค้าโดนลบ (`ON DELETE SET NULL`)
+> 📌 `reports_admin_view` (L7, เพิ่ม 2026-08-15, D-24) — mailbox สำหรับหน้า `Reports`/`ReportDetail` (admin) `security_invoker = true` พึ่ง RLS ของ `reports` เอง (`admin can read reports`) ในการกรองแถว ส่วน `public_profiles` 3 รอบ (reporter/seller/reported_user) join แบบ D-01 ปกติ · `LEFT JOIN products` รองรับกรณี `reported_product_id` เป็น NULL หลังสินค้าโดนลบ (`ON DELETE SET NULL`)
+>
+> 📌 `reported_user_id`/`reported_user_name`/`is_product_report`/`is_user_report` (D-65, เพิ่ม 2026-08-24) — `is_product_report`/`is_user_report` คอมพิวต์ที่ SQL ครั้งเดียวจาก `reported_product_id`/`reported_user_id IS NOT NULL` ผูก `visible:` ตรง ๆ บน `ReportDetailContent` (pattern เดียวกับ `can_see_buyer`/`can_show_picker`, D-52/D-59) **ปิดช่องโหว่ crash เดิมไปด้วย**: ก่อนหน้านี้ `ReportDetailContent` force-unwrap `product_title!`/`seller_name!` แบบไม่มีเงื่อนไข ซึ่ง NULL ได้จริงทุกครั้งที่สินค้าที่ถูกรายงานโดนลบทีหลัง (`ON DELETE SET NULL`, ช่องโหว่แฝงมาตั้งแต่ D-24) — ตอนนี้ทั้งสองบล็อกถูกครอบด้วย `if (isProductReport == true)`/`if (isUserReport == true)` แล้ว ปลอดภัยทั้งสองทาง
 
 > 📌 `products_review_view` ใช้ **LEFT JOIN** ทั้งสองขา — ประกาศที่ไม่มี `category_id` หรือ `seller_id` ยังโผล่ในผลลัพธ์ โดย `category_name` / `seller_name` เป็น NULL
 >

@@ -110,7 +110,7 @@ RLS: `ALL` / `authenticated` / `USING (true)` — เหมือน `"CAT"` เ
 | 10 | `condition` | varchar | nullable | – |
 | 11 | `contact_phone` | varchar | nullable | – |
 | 12 | `moderation_status` | varchar | **NOT NULL** | `'pending'::character varying` |
-| 13 | `category_id` | bigint | nullable | – |
+| 13 | `category_id` | bigint | **NOT NULL** (D-61, 2026-08-24 — 0 แถว null ตอน apply) | – |
 | 14 | `rejection_reason` | text | nullable | – |
 | 15 | `buyer_id` | uuid | nullable | – (D-59, เขียนได้ทาง `mark_product_sold()` เท่านั้น) |
 

@@ -327,9 +327,30 @@ CHECK (((status)::text = 'completed'::text))   -- transactions_status_check — 
 - FK ทั้ง 4 ตัวเป็น `ON DELETE SET NULL` (ตาม precedent `reports.reported_product_id`, D-24) — ลบสินค้า/โปรไฟล์/แชททีหลังไม่ลบประวัติธุรกรรม
 - `admin_sales_by_seller` (ดู Views) อ่านจากตารางนี้แทน `products.status='sold'` ตรง ๆ แล้ว
 
-### ตารางที่ยังไม่มี
+### `public.reviews` (L7, เพิ่ม 2026-08-24, D-64, ปิดข้อเสนอ P-08)
 
-`reviews` (L7) — DDL ร่างไว้ที่ `PROPOSED_SQL.md`
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | uuid | NOT NULL | `gen_random_uuid()` |
+| 2 | `transaction_id` | uuid | **NOT NULL** | – |
+| 3 | `reviewer_id` | uuid | **NOT NULL** | – |
+| 4 | `reviewee_id` | uuid | **NOT NULL** | – |
+| 5 | `rating` | int | **NOT NULL** | – |
+| 6 | `comment` | text | nullable | – |
+| 7 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (id)
+FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+FOREIGN KEY (reviewer_id)    REFERENCES "Profile"(id)    ON DELETE CASCADE
+FOREIGN KEY (reviewee_id)    REFERENCES "Profile"(id)    ON DELETE CASCADE
+CHECK (rating BETWEEN 1 AND 5)
+CONSTRAINT reviews_one_per_transaction_reviewer UNIQUE (transaction_id, reviewer_id)
+```
+
+- ผูกกับ `transactions` โดยตรง (ต่างจาก draft P-08 เดิมที่ผูกแค่ `product_id`) — RLS insert เช็คว่า `reviewer_id`/`reviewee_id` ตรงกับ `buyer_id`/`seller_id` ของ `transaction_id` นั้นจริง กันคนที่ไม่เคยซื้อสินค้านั้นจริง insert ไม่ได้เลยที่ระดับ DB
+- **ไม่มี UPDATE/DELETE policy เลย = immutable ตลอดไป** (pete ยืนยันแล้ว)
+- ไม่มี consumer เป็นตัว table เองในฝั่ง FlutterFlow — การ insert ทำผ่าน custom action `submitSellerReview` เรียก Supabase ตรง (ไม่ผ่าน typed `PostgresCreate`) เพราะต้องหา `transaction_id`/`seller_id` เองก่อน insert — รายละเอียด D-64
 
 ---
 
@@ -458,11 +479,36 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     random() AS shuffle_key,
     p.buyer_id,
     buyer.full_name AS buyer_name,
-    COALESCE((p.status::text = 'sold'::text) AND (p.seller_id = auth.uid() OR private.is_admin()), false) AS can_see_buyer
+    COALESCE((p.status::text = 'sold'::text) AND (p.seller_id = auth.uid() OR private.is_admin()), false) AS can_see_buyer,
+    COALESCE(rv.avg_rating, 0::numeric) AS seller_avg_rating,
+    COALESCE(rv.review_count, 0)::integer AS seller_review_count,
+    my_tx.transaction_id AS my_transaction_id,
+    COALESCE(
+      p.status::text = 'sold'::text
+      AND my_tx.transaction_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM reviews rv2
+        WHERE rv2.transaction_id = my_tx.transaction_id
+          AND rv2.reviewer_id = auth.uid()
+      ),
+      false
+    ) AS can_rate_seller
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
      LEFT JOIN public_profiles buyer ON buyer.id = p.buyer_id   -- D-59, PT-01: join public_profiles ไม่ใช่ "Profile" ตรง ๆ
+     LEFT JOIN (                                                -- D-64: คะแนนเฉลี่ยผู้ขาย, pattern เดียวกับ advertisement_posts_view.like_count (D-58)
+       SELECT reviews.reviewee_id,
+              round(avg(reviews.rating), 1) AS avg_rating,
+              count(*) AS review_count
+         FROM reviews
+        GROUP BY reviews.reviewee_id
+     ) rv ON rv.reviewee_id = p.seller_id
+     LEFT JOIN (                                                -- D-64: ธุรกรรมของผู้เรียก (ถ้ามี) บนสินค้านี้ — ใช้ทั้ง my_transaction_id และ can_rate_seller
+       SELECT t.product_id, t.id AS transaction_id
+         FROM transactions t
+        WHERE t.buyer_id = auth.uid()
+     ) my_tx ON my_tx.product_id = p.id
   -- ↓ D-52: ซ่อนประกาศของผู้ถูกแบนจากคนอื่น (gate-in-view แบบ D-33)
   WHERE NOT private.is_user_banned(p.seller_id)   -- ผู้ขายไม่ถูกแบน
      OR p.seller_id = auth.uid()                  -- เจ้าของยังเห็นของตัวเองใน Mypost
@@ -580,6 +626,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 >
 > 📌 `buyer_id`/`buyer_name`/`can_see_buyer` (D-59, เพิ่ม 2026-08-23) — `buyer_name` join `public_profiles` ตามกฎ PT-01 (ไม่ join `"Profile"` ตรง ๆ) `can_see_buyer` คอมพิวต์ owner-or-admin ที่ SQL ครั้งเดียว (`COALESCE(..., false)` ตามแม่แบบ `admin_users_view`/D-52) — ฝั่ง FlutterFlow ผูก `visible: can_see_buyer` ตรง ๆ ไม่ต้องแต่ง AND/OR เอง
 >
+> 📌 `seller_avg_rating`/`seller_review_count`/`my_transaction_id`/`can_rate_seller` (L7, เพิ่ม 2026-08-24, D-64) — คะแนนเฉลี่ย+จำนวนรีวิวของผู้ขาย (LEFT JOIN subquery `GROUP BY reviewee_id`, pattern เดียวกับ `advertisement_posts_view.like_count`/D-58) และธุรกรรม+สิทธิ์ให้คะแนนของผู้เรียกเองบนสินค้านี้ (`can_rate_seller` คอมพิวต์ครั้งเดียวเหมือน `can_see_buyer`/`can_show_picker` — status ขายแล้ว + ผู้เรียกคือผู้ซื้อจริง + ยังไม่เคยรีวิวธุรกรรมนี้) ฝั่ง FlutterFlow ผูกปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` เข้ากับ `can_rate_seller` ตรง ๆ ผ่าน `productField()`/`nodeKeyRef` เดิม (D-44/D-59)
+>
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
 >
 > 📌 `has_image` (เพิ่ม 2026-08-19, D-42) — boolean คำนวณจาก `image_urls IS NOT NULL AND array_length(...) > 0` ใช้เป็น `visible:` คู่กับ `Icon`/`Image` บน `ProductDetails` (`ProductDetailsContent`) กัน crash จากสินค้าไม่มีรูป — pattern เดียวกับ `chat_messages_view.has_message`/`has_image` (D-41) **ยังไม่ได้เอาไปใช้กับ `Home` grid**
@@ -624,7 +672,7 @@ CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
 
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 11 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59):
+RLS `ENABLE` ครบทั้ง 12 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59 + `reviews` D-64):
 
 | ตาราง | policy | สรุป |
 |---|---|---|
@@ -639,6 +687,7 @@ RLS `ENABLE` ครบทั้ง 11 ตาราง จำนวน policy ต
 | `notifications` | **4** | user อ่าน/มาร์กอ่านเฉพาะของตัวเอง, admin insert **และอ่านทั้งหมด** (D-24 เพิ่ม admin-read แก้ root cause select-back RLS) |
 | `advertisement_posts` | 4 | select: active หรือ admin · insert/update/delete: admin เท่านั้น (D-58) |
 | `advertisement_likes` | 3 | select: ทุกคน (ให้ view's `EXISTS` ทำงาน) · insert/delete: เฉพาะแถวของตัวเอง (D-58) |
+| `reviews` | **3** | select: ทุกคน (public rating) · insert: เฉพาะผู้ซื้อจริงของธุรกรรมนั้น (`EXISTS` เทียบ `transactions`) + **RESTRICTIVE กันผู้ถูกแบน** · ไม่มี UPDATE/DELETE เลย = immutable (D-64) |
 
 **ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
@@ -672,6 +721,8 @@ RLS `ENABLE` ครบทั้ง 11 ตาราง จำนวน policy ต
 | `advertisement_likes` | Anyone can view ad likes | SELECT | `{authenticated}` | `true` | – |
 | `advertisement_likes` | Users can like as themselves | INSERT | `{authenticated}` | – | `user_id = auth.uid()` |
 | `advertisement_likes` | Users can remove their own like | DELETE | `{authenticated}` | `user_id = auth.uid()` | – |
+| `reviews` | reviews_select_all | SELECT | `{authenticated}` | `true` | – |
+| `reviews` | reviews_insert_buyer_only | INSERT | `{authenticated}` | – | `reviewer_id = auth.uid() AND EXISTS(SELECT 1 FROM transactions t WHERE t.id = transaction_id AND t.buyer_id = auth.uid() AND t.seller_id = reviewee_id)` |
 
 **RESTRICTIVE — กันผู้ถูกแบน (D-52, 2026-08-21) ทุกตัว `TO authenticated`**
 
@@ -682,6 +733,7 @@ RLS `ENABLE` ครบทั้ง 11 ตาราง จำนวน policy ต
 | `products` | products_block_banned_delete | DELETE | `NOT private.is_banned()` | – |
 | `reports` | reports_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
 | `chat_message` | chat_message_block_banned_insert | INSERT | – | `NOT private.is_banned() OR private.chat_has_admin(chat_id)` |
+| `reviews` | reviews_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
 
 ```sql
 -- with_check ของ "Users can update own profile" (ค่าจริง คำต่อคำ)

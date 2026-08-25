@@ -359,6 +359,47 @@ CONSTRAINT reviews_one_per_transaction_reviewer UNIQUE (transaction_id, reviewer
 - **ไม่มี UPDATE/DELETE policy เลย = immutable ตลอดไป** (pete ยืนยันแล้ว)
 - ไม่มี consumer เป็นตัว table เองในฝั่ง FlutterFlow — การ insert ทำผ่าน custom action `submitSellerReview` เรียก Supabase ตรง (ไม่ผ่าน typed `PostgresCreate`) เพราะต้องหา `transaction_id`/`seller_id` เองก่อน insert — รายละเอียด D-64
 
+### `public.storage_cleanup_config` (L1/L2, เพิ่ม 2026-08-25, D-66, ปิดข้อเสนอ P-12)
+
+singleton (บังคับ `id = 1`) — คุมพฤติกรรม Edge Function `cleanup-orphan-storage` โดยไม่ต้อง redeploy โค้ด
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | smallint | NOT NULL | `1` |
+| 2 | `dry_run` | boolean | NOT NULL | `true` |
+| 3 | `grace_period_hours` | integer | NOT NULL | `24` |
+| 4 | `updated_at` | timestamptz | NOT NULL | `now()` |
+
+```sql
+PRIMARY KEY (id)
+CHECK (id = 1)
+```
+
+- **`dry_run = true` ตอนนี้** — ยังไม่ลบไฟล์จริง แค่ log ว่า "จะลบอะไร" ลง `storage_cleanup_log` เท่านั้น
+- สลับเป็นลบจริง: `UPDATE public.storage_cleanup_config SET dry_run = false, updated_at = now() WHERE id = 1;` — ต้องให้ pete ตรวจ `storage_cleanup_log` ก่อนอย่างน้อย 1 รอบเต็มแล้วเห็นว่ารายการที่ log ถูกต้องจริง
+- `grace_period_hours = 24` — ไฟล์อัปโหลดใหม่ (ยังไม่ผูกกับ record ไหนเลย) ต้องรอ 24 ชม. ก่อนถูกนับว่า "กำพร้าจริง" กันเคสอัปรูปแล้วยังไม่กดบันทึกฟอร์ม
+
+### `public.storage_cleanup_log` (L1/L2, เพิ่ม 2026-08-25, D-66, ปิดข้อเสนอ P-12)
+
+append-only audit trail ทุกครั้งที่ Edge Function รัน (ทั้ง dry-run และลบจริง)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | bigint | NOT NULL | `bigserial` |
+| 2 | `bucket_id` | text | **NOT NULL** | – |
+| 3 | `object_path` | text | **NOT NULL** | – |
+| 4 | `object_created_at` | timestamptz | nullable | – |
+| 5 | `action` | text | **NOT NULL** | – |
+| 6 | `error_message` | text | nullable | – |
+| 7 | `run_at` | timestamptz | NOT NULL | `now()` |
+
+```sql
+PRIMARY KEY (id)
+CHECK (action IN ('would_delete', 'deleted', 'delete_failed'))
+```
+
+`storage_cleanup_log_run_at_idx` บน `run_at DESC` — ดูรอบล่าสุดเร็ว
+
 ---
 
 ## Views
@@ -686,7 +727,7 @@ CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
 
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 12 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59 + `reviews` D-64):
+RLS `ENABLE` ครบทั้ง 14 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59 + `reviews` D-64 + `storage_cleanup_config`/`storage_cleanup_log` D-66):
 
 | ตาราง | policy | สรุป |
 |---|---|---|
@@ -702,6 +743,8 @@ RLS `ENABLE` ครบทั้ง 12 ตาราง จำนวน policy ต
 | `advertisement_posts` | 4 | select: active หรือ admin · insert/update/delete: admin เท่านั้น (D-58) |
 | `advertisement_likes` | 3 | select: ทุกคน (ให้ view's `EXISTS` ทำงาน) · insert/delete: เฉพาะแถวของตัวเอง (D-58) |
 | `reviews` | **3** | select: ทุกคน (public rating) · insert: เฉพาะผู้ซื้อจริงของธุรกรรมนั้น (`EXISTS` เทียบ `transactions`) + **RESTRICTIVE กันผู้ถูกแบน** · ไม่มี UPDATE/DELETE เลย = immutable (D-64) |
+| `storage_cleanup_config` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (แก้ผ่าน SQL ตรงด้วย `service_role` เท่านั้น) (D-66) |
+| `storage_cleanup_log` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (เขียนได้ทาง Edge Function `service_role` เท่านั้น) (D-66) |
 
 **ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
@@ -737,6 +780,8 @@ RLS `ENABLE` ครบทั้ง 12 ตาราง จำนวน policy ต
 | `advertisement_likes` | Users can remove their own like | DELETE | `{authenticated}` | `user_id = auth.uid()` | – |
 | `reviews` | reviews_select_all | SELECT | `{authenticated}` | `true` | – |
 | `reviews` | reviews_insert_buyer_only | INSERT | `{authenticated}` | – | `reviewer_id = auth.uid() AND EXISTS(SELECT 1 FROM transactions t WHERE t.id = transaction_id AND t.buyer_id = auth.uid() AND t.seller_id = reviewee_id)` |
+| `storage_cleanup_config` | storage_cleanup_config: admin read | SELECT | `{authenticated}` | `private.is_admin()` | – |
+| `storage_cleanup_log` | storage_cleanup_log: admin read | SELECT | `{authenticated}` | `private.is_admin()` | – |
 
 **RESTRICTIVE — กันผู้ถูกแบน (D-52, 2026-08-21) ทุกตัว `TO authenticated`**
 
@@ -1252,6 +1297,8 @@ GRANT EXECUTE ON FUNCTION public.search_products(text, bigint, numeric, numeric)
 ```
 
 > 📌 **จำนวนรูปสูงสุด 3 บังคับที่ `products.image_urls` ไม่ใช่ที่ Storage** — policy บน `storage.objects` เห็นทีละไฟล์ นับรวมไม่ได้ ผลคืออัปไฟล์ที่ 4 เข้า bucket ได้ แต่ผูกกับประกาศไม่ได้ (กลายเป็นไฟล์กำพร้า) เหตุผลเต็ม: `DECISIONS.md` **D-12**
+>
+> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## Scheduled Jobs (pg_cron)` ท้ายหมวด Storage
 
 ### bucket `avatars`
 
@@ -1277,6 +1324,8 @@ GRANT EXECUTE ON FUNCTION public.search_products(text, bigint, numeric, numeric)
 ```
 
 > 📌 **`"Profile".avatar_url` เป็นแค่ text ไม่มีอะไรผูกกับไฟล์จริงใน bucket** — ลบไฟล์แล้วคอลัมน์ยังชี้ URL เดิม และเปลี่ยนรูปแล้วไฟล์เก่าไม่ถูกลบ (ไฟล์กำพร้าแบบเดียวกับ D-12)
+>
+> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## Scheduled Jobs (pg_cron)` ท้ายหมวด Storage
 
 ### bucket `chat-images` (L4, เพิ่ม 2026-08-16, D-29)
 
@@ -1342,6 +1391,45 @@ public URL: `https://rooydbxgcsybyanwsewv.supabase.co/storage/v1/object/public/s
 🔴 **ไม่มี policy INSERT/UPDATE/DELETE เลย** — อัปโหลด/แก้ไขไฟล์ในนี้ได้เฉพาะผ่าน Dashboard (service_role bypass RLS) เท่านั้น ตั้งใจให้เป็นแบบนี้เพราะเป็นหน้าคงที่ ไม่ต้องการให้ใครแก้ได้จากแอป
 
 **ไฟล์ที่ต้องมี (ยังไม่ได้อัปโหลด ณ 2026-08-09):** `email-confirmed.html` — pete เตรียมอัปโหลดเองผ่าน Dashboard ตาม `DECISIONS.md` D-19
+
+---
+
+## Scheduled Jobs (pg_cron)
+
+### เก็บกวาดไฟล์กำพร้าใน Storage — Edge Function `cleanup-orphan-storage` (เพิ่ม 2026-08-25, D-66, ปิดข้อเสนอ P-12)
+
+Extension `pg_cron` + `pg_net` เปิดใช้แล้ว (installed, ไม่ใช่ schema `public` — WARN จาก advisor เรื่อง `pg_net` อยู่ใน public เป็นค่า default ตอนติดตั้ง ไม่กระทบความปลอดภัย เหมือน `pg_trgm` เดิม)
+
+**Edge Function `cleanup-orphan-storage`** (`verify_jwt: true`) — scan bucket `product-images`/`avatars` ทั้งหมดผ่าน Storage API (`admin.storage.from(bucket).list(...)`, **ไม่ใช่** query `storage.objects` ตรง เพราะ PostgREST ไม่ expose schema `storage`) เทียบกับ path ที่ถูกอ้างถึงจริงใน `products.image_urls` / `"Profile".avatar_url` — ไฟล์ไหนไม่ถูกอ้างถึงเลย **และ** เก่ากว่า `storage_cleanup_config.grace_period_hours` ถือว่ากำพร้า
+
+- `dry_run = true` (ค่าเริ่มต้น): insert log `would_delete` เท่านั้น **ยังไม่ลบไฟล์จริง**
+- `dry_run = false`: เรียก `admin.storage.from(bucket).remove([path])` จริง แล้ว log `deleted`/`delete_failed`
+- อ่าน/เขียนทุกอย่างผ่าน `SUPABASE_SERVICE_ROLE_KEY` ที่ inject มาให้อัตโนมัติในทุก Edge Function (ไม่ต้องตั้ง secret เอง)
+
+**cron job** (`cron.job`, ตาราง Postgres — ดูได้ด้วย `SELECT * FROM cron.job;`):
+
+```sql
+SELECT cron.schedule(
+  'cleanup-orphan-storage-daily',
+  '0 19 * * *',   -- 19:00 UTC = 02:00 ไทย (ICT, UTC+7) ทุกวัน
+  $$
+  SELECT net.http_post(
+    url := 'https://rooydbxgcsybyanwsewv.supabase.co/functions/v1/cleanup-orphan-storage',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer <anon key>'),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $$
+);
+```
+
+> 📌 `Authorization` ใช้ **anon key** (public, ไม่ใช่ความลับ) ได้ เพราะ `verify_jwt` ของ Edge Function เช็คแค่ว่า JWT เซ็นด้วย project secret จริงไหม (anon/service_role เซ็นด้วยกุญแจเดียวกัน) — สิทธิ์จริงในการลบไฟล์มาจาก `SUPABASE_SERVICE_ROLE_KEY` ที่ฟังก์ชันสร้าง client เองข้างใน ไม่เกี่ยวกับ token ที่ใช้เรียก
+>
+> 🔴 **`net.http_post` default timeout 5000ms สั้นเกินไปสำหรับงานนี้** (ต้อง list ทีละ user folder) — ต้องใส่ `timeout_milliseconds := 60000` เสมอ ไม่งั้น `net._http_response.error_msg` จะขึ้น timeout ทั้งที่ฟังก์ชันรันสำเร็จจริงฝั่ง server (เจอจริงตอนทดสอบ dry-run รอบแรก — เรียกซ้ำโดยไม่รู้ตัวจนกว่าจะเช็ค `storage_cleanup_log`)
+
+**ทดสอบแล้วก่อน apply จริง (dry-run, 2026-08-25):** scan `product-images` 22 ไฟล์ พบกำพร้า 6, `avatars` 5 ไฟล์ พบกำพร้า 2 — เทียบกับ `products.image_urls`/`"Profile".avatar_url` ตรงแล้วว่าไม่มีไฟล์ที่ log ผิดพลาด (ไม่มีไฟล์ที่ยังถูกอ้างถึงหลุดเข้า log)
+
+**สลับเป็นลบจริง:** `UPDATE public.storage_cleanup_config SET dry_run = false WHERE id = 1;` — **ต้องให้ pete ตรวจ `storage_cleanup_log` อย่างน้อย 1 รอบเต็ม (รอบถัดไปคือ 02:00 ไทย) แล้วเห็นว่ารายการถูกต้องก่อน** ยังไม่สลับ ณ วันที่เขียนนี้
 
 ---
 

@@ -437,7 +437,9 @@ PT-16/17/19 พูดถึงกรณี `ensureReplaced`/`ensureInsertedInto`
 
 พบ 3 ข้อจากการ isolate ทีละตัวแปรกว่า 20 พุช (ทุกข้อยืนยันแยกกันจริง ไม่ใช่เดารวมกัน) — ขยาย PT-23 §1 ("ItemRef ใช้นอก itemBuilder สดไม่ได้") ให้ครอบคลุมกรณีที่ **อยู่ใน itemBuilder สดจริง** แต่ก็ยังพังอยู่ดี:
 
-1. **`item['field']` ใช้เป็น param/value ของ action ไม่ได้เลยสักตัว** — ลองแล้วพังเหมือนกันหมดทั้ง `Navigate(...).params`, `ShowDialog.component(...).params`, `ShowBottomSheet(...).params`, `SetState(field, item['x'])` แม้โครงสร้างจะ**เหมือนโค้ดที่ push ผ่านจริงอยู่แล้วเป๊ะ** (`MyPostsList`'s `onTap: Navigate(ff.Pages.productDetails, params: {'productId': item['id']})`) — สาเหตุที่โค้ดนั้นดูเหมือนใช้ได้จริงยังไม่ทราบแน่ชัด (อาจเป็นเพราะ `findByKey(...)` เป้าหมายของมัน drift แล้วเลย no-op ไม่ได้ re-validate จริงในพุชที่ทดสอบ — ดู PT-19 เรื่อง key drift) error ที่ได้เสมอ: `Parameter X ... not properly set` + `Generator variable does not exist` ลามไปทุก node ที่เหลือใน itemBuilder เดียวกัน แม้ node ที่ไม่เกี่ยวเลยก็โดน (เช่น Text อื่นๆ ในการ์ดเดียวกัน) — **ถ้าต้องการ item-scoped value เข้า action จริงๆ ให้ทำ scaffold-level `databaseRequest` + `nodeKeyRef` (PT-14/ProfileUser) แทน ไม่ใช่ item[]**
+1. **`item['field']` ใช้เป็น param/value ของ action ไม่ได้เลยสักตัว** — ลองแล้วพังเหมือนกันหมดทั้ง `Navigate(...).params`, `ShowDialog.component(...).params`, `ShowBottomSheet(...).params`, `SetState(field, item['x'])` แม้โครงสร้างจะ**เหมือนโค้ดที่ push ผ่านจริงอยู่แล้วเป๊ะ** (`MyPostsList`'s `onTap: Navigate(ff.Pages.productDetails, params: {'productId': item['id']})`) error ที่ได้เสมอ: `Parameter X ... not properly set` + `Generator variable does not exist` ลามไปทุก node ที่เหลือใน itemBuilder เดียวกัน แม้ node ที่ไม่เกี่ยวเลยก็โดน (เช่น Text อื่นๆ ในการ์ดเดียวกัน) — **ถ้าต้องการ item-scoped value เข้า action จริงๆ ให้ทำ scaffold-level `databaseRequest` + `nodeKeyRef` (PT-14/ProfileUser) แทน ไม่ใช่ item[]**
+
+   ✅ **root cause ยืนยันแล้ว (D-67, 2026-08-25):** ไม่ใช่ข้อจำกัดของ `item['field']` เอง — สาเหตุจริงคือ `findByKey(...)` selector ของ `page.ensureReplaced` ที่สร้าง itemBuilder นี้ (`MyPostsList`) ชี้ key ที่ live drift ไปแล้ว (`ListView_z48phx0c` → `ListView_1xe02ssc`) พิสูจน์ด้วย `flutterflow ai inspect --page <ชื่อหน้า>` เทียบ key จริงแล้วแก้ selector ให้ตรง — error ทั้ง `productId`/`Generator variable`/`Condition configuration` หายพร้อมกันหมดทันที (ไม่ต้องแก้ตรรกะ `item['field']` เลย) **บทเรียน: เจอ error กลุ่มนี้ (`Parameter X not properly set` + `Generator variable does not exist` ลามทั้ง itemBuilder) ให้เช็ค key drift ของ `ensureReplaced`/`findByKey` เป้าหมายก่อนเป็นอันดับแรกเสมอ** ไม่ใช่สงสัยว่า `item[]` ใช้ไม่ได้ — ดู PT-19 เรื่อง key drift โดยทั่วไป
 
    🔴 **ข้อยกเว้นที่ยืนยันแล้วว่าใช้ได้จริง (D-55, 2026-08-22): `UpdateAppState.set(field, item['x'])` ทำงานปกติ** — ต่างจาก `SetState`(page state)/`Navigate.params`/`ShowDialog.params`/`ShowBottomSheet.params` ที่พังทั้งหมดตามข้อบนนี้ `UpdateAppState.set(ff.AppState.viewedProfileUserId, item['seller_id'])` / `item['id']` compile+push ผ่านสะอาด ยืนยันจาก `generated_code/`: `FFAppState().viewedProfileUserId = productRowItem.sellerId!;` / `bannedUserItem.id!` เป็นโค้ดจริงที่ export ออกมา — เป็นทางเดียวที่ทดสอบแล้วว่า pass item-scoped value เข้า app state ได้โดยไม่ต้องพึ่ง scaffold-level `databaseRequest`/`nodeKeyRef`
 2. **`item['field']` ผ่าน Dart helper function ไม่ได้** — ฟังก์ชันแบบ `Container photoSlot(DslExpression url, ...) => Container(...)` เรียกด้วย `photoSlot(item['x'], ...)` จาก itemBuilder พังทันที**แม้ไม่มี action เลย** (แค่ property ธรรมดาอย่าง `Image`'s src กับ `visible:`) ต้อง inline literal ตรงจุดเรียกเท่านั้น (ซ้ำโค้ดได้ อย่าสกัดเป็นฟังก์ชัน) — เหตุผลลึกไม่ทราบ (compiler ไม่น่าอ่าน Dart source ได้ น่าจะเป็น ambient/thread-local state บางอย่างที่ขาดตอนตรง function boundary)
@@ -630,3 +632,28 @@ app.editPage(ff.Pages.pageName, (page) {
 - widget ที่เพิ่ง insert ใน**พุชเดียวกัน**อ้างชื่อ/key ตัวเองไม่ได้ (PT-22) — ต้องแยกพุช: insert ก่อน (ไม่ผูก action) → พุชถัดไปค่อยผูกด้วย key จริงที่ยืนยันจาก typed SDK ที่ refresh แล้ว
 
 **ทดลองแล้วไม่เกี่ยว (บันทึกกันลองซ้ำ):** `isStreamingSupabaseQuery: true` บน action-based `PostgresQuery` (ไม่ใช่ page-level `databaseRequest`) — inert เหมือนที่ PT-32 บันทึกไว้ ไม่ได้ช่วยอะไรกับ pipeline นี้
+
+---
+
+## PT-34 — `Scaffold`/`AppBar` backgroundColor patch ผ่าน typed `patch.color(...)` ไม่ได้ ต้อง raw proto (D-67, retheme, 2026-08-25)
+
+**ปัญหา:** `page.update(node, (patch) { patch.color(NamedColor('primaryBackground')); })` ใช้ได้กับ `Text`/`Button`/`Icon`/`IconButton`/`Container`/`Card`/`Divider`/`TextField` เท่านั้น (ตรวจจาก SDK's `_applyColorPatch` switch ตรง ๆ ไม่ใช่เดา) — เรียกกับ `Scaffold`/`AppBar` throw ทันที: `Bad state: Color patches are not supported for Scaffold.`
+
+**ทางแก้ที่ใช้ได้จริง:** raw proto ผ่าน `page.mutateNode`:
+
+```dart
+page.mutateNode(page.findByKey('Scaffold_xxx'), (node) {
+  node.props.scaffold.backgroundColorValue = FFColorValue(
+    inputValue: FFColor(themeColor: FFColor_ThemeColor.PRIMARY_BACKGROUND),
+  );
+});
+page.mutateNode(page.findByKey('AppBar_xxx'), (node) {
+  node.props.appBar.backgroundColorValue = FFColorValue(
+    inputValue: FFColor(themeColor: FFColor_ThemeColor.PRIMARY_BACKGROUND),
+  );
+});
+```
+
+`FFColorValue`/`FFColor`/`FFColor_ThemeColor` มาจาก `package:flutterflow_ai/schema/flutterflow_schema.dart` (export จาก barrel หลักอยู่แล้ว ไม่ต้อง import เพิ่ม) — enum ชื่อ slot ตรงกับที่เห็นใน `flutterflow ai inspect` เป๊ะ (`"themeColor": "PRIMARY_BACKGROUND"`) สำหรับสี literal ใช้ `FFColor(value: Int64(argb))` แทน `themeColor:` ยืนยันผลจริงจาก `generated_code/` หลัง push ว่าค่าตรงตามที่ตั้ง
+
+**ใช้แล้วที่:** `chatList`/`productDetails`'s Scaffold+AppBar background ใน retheme sweep (D-67)

@@ -1484,3 +1484,23 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ยังไม่ทำ:** UI แสดง `reports` ทั้งสองประเภทแยก tab/filter บนหน้า `ReportsFeedback` (list ยังโชว์รวมกันเหมือนเดิม แค่ `ReportDetail` แยกเนื้อหาตามประเภท) · **ยังไม่ทดสอบผ่านแอปจริงโดย pete**
 
 **ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete**
+
+---
+
+## D-66 — P-12: เก็บกวาดไฟล์กำพร้าใน Storage เริ่มและปิดครบ (2026-08-25)
+
+**บริบท:** pete สั่ง "เก็บกวาดฝ่ายกำพร้าก่อน" — เลือกแนวทาง **Edge Function รันเป็นรอบ** (ไม่ใช่ trigger `AFTER DELETE`) พร้อม 2 พารามิเตอร์ความปลอดภัย: grace period **24 ชม.**, รอบแรก **dry-run ก่อน** ค่อยเปิดลบจริง
+
+**Schema:** ตารางใหม่ 2 ตัว — `storage_cleanup_config` (singleton, `dry_run`/`grace_period_hours`, toggle ผ่าน `UPDATE` เดียวไม่ต้อง redeploy) และ `storage_cleanup_log` (audit trail append-only, `action IN ('would_delete','deleted','delete_failed')`) ทั้งคู่ RLS admin-read เท่านั้น เขียนได้ทาง `service_role` เท่านั้น เปิด extension `pg_cron`/`pg_net` เพิ่ม
+
+**Edge Function `cleanup-orphan-storage`:** list ไฟล์ทุกไฟล์ใน bucket `product-images`/`avatars` ผ่าน Storage API (`.storage.from(bucket).list(...)`) เทียบกับ path ที่ถูกอ้างถึงจริงใน `products.image_urls`/`"Profile".avatar_url` — ไฟล์ที่ไม่ถูกอ้างถึง **และ** เก่ากว่า grace period ถือว่ากำพร้า `dry_run=true` (ค่าเริ่มต้น) log อย่างเดียว ไม่ลบจริง
+
+**cron job** `cleanup-orphan-storage-daily` — รันทุกวัน 19:00 UTC (02:00 ไทย) เรียก Edge Function ผ่าน `net.http_post` ด้วย **anon key** (public พอ เพราะสิทธิ์ลบจริงมาจาก `SUPABASE_SERVICE_ROLE_KEY` ที่ฟังก์ชันสร้าง client เองข้างใน ไม่เกี่ยวกับ token ที่ใช้เรียก)
+
+**🔴 เจอกับดักจริงระหว่างทดสอบ dry-run (พิสูจน์ว่าตัดสินใจ dry-run-ก่อนถูกต้อง):**
+1. `.schema('storage').from('objects')` ใช้ไม่ได้ — PostgREST ของโปรเจกต์นี้ไม่ expose schema `storage` เจอ error `Invalid schema: storage` ตั้งแต่ทดสอบรอบแรก แก้ด้วยเปลี่ยนไปใช้ Storage API's `list()` แทน (list โฟลเดอร์ระดับบนสุด = uid ก่อน แล้ว list ไฟล์ในแต่ละโฟลเดอร์)
+2. `net.http_post` default timeout 5000ms สั้นเกินสำหรับงานนี้ (list ทีละ user folder หลาย round-trip) — client รายงาน timeout ทั้งที่ฟังก์ชันรันสำเร็จจริงฝั่ง server (เห็นจาก log ซ้ำ 2 ชุดในการทดสอบ) แก้ด้วย `timeout_milliseconds := 60000` ทุกครั้งที่เรียก
+
+**ทดสอบ dry-run แล้ว (2026-08-25):** `product-images` scan 22 ไฟล์ พบกำพร้า 6, `avatars` scan 5 ไฟล์ พบกำพร้า 2 — cross-check ด้วยมือว่าทุกไฟล์ที่ log ไม่ปรากฏใน `products.image_urls`/`"Profile".avatar_url` เลยจริง (ไม่มี false positive)
+
+**ยังไม่ทำ:** ยังไม่สลับ `dry_run = false` — รอ pete ตรวจ `storage_cleanup_log` อย่างน้อย 1 รอบเต็มจากตัว cron จริง (รอบแรก 02:00 ไทย คืนถัดไป) ก่อนเปิดลบจริง

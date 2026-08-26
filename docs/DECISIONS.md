@@ -1545,3 +1545,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **เจตนาลดความเสี่ยง:** ปุ่มค้นหา/13 category chip/price filter button — ไม่แตะเลย ยังคง `SetState('productsList', ...)` เดิมที่ไม่ได้ใช้แล้ว (ยิง RPC ซ้ำ 1 รอบทุกครั้งที่กด ไม่กระทบ UX เพราะเป็น user-triggered ไม่ใช่ต่อเนื่อง) — ไม่คุ้มความเสี่ยงที่จะไปแก้ ~15 action chain ที่ทำงานถูกต้องอยู่แล้วเพื่อลด 1 RPC call ต่อครั้ง ปรับทีหลังได้
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงบนมือถือ (เครื่องพัฒนาไม่มี Flutter SDK ติดตั้ง, `local_run.list_devices` คืนค่าง่าง) ยืนยันแค่ `generated_code/` (โครงสร้าง/parameter ตรงตามที่เขียน) + canvas screenshot ผ่าน Live Session (ไม่มี error, custom widget แสดง placeholder ตามปกติที่ design-time render ไม่ได้)
+
+## D-69 — `addproduct`: เพิ่มปุ่มลบรูปที่อัปแล้ว (2026-08-26)
+
+**บริบท:** pete ขอฟีเจอร์ลบรูปในหน้าเพิ่มรายการ เมื่อไม่เอารูปที่เพิ่งอัปแล้ว
+
+**ทำ:** reuse badge icon เดิม (`Icon_hzgec1g3`/`Icon_r8r3w5z6`/`Icon_bwoocet1` — เดิมเป็น check_circle สีเขียว แค่บอกสถานะ ไม่มี action ผูก) เปลี่ยน icon เป็น `cancel` สีแดง (`error` token) แล้วผูก `ON_TAP` ให้เป็นปุ่มลบ — ไม่สร้าง widget ใหม่/ไม่ต้อง restructure Stack เลย เพราะ node เดิมอยู่ใน `if (imageXUploaded)` แล้ว (โชว์เฉพาะช่องที่อัปแล้วพอดี) action chain: `removeFromUploadedImageUrls(imageXUrl)` ก่อน (ต้องอ่านค่า URL ก่อนล้าง) แล้วค่อย set `imageXUrl=''`/`imageXUploaded=false`
+
+**ทำไมไม่ลบไฟล์ใน Storage ตรงนี้เลย:** ตั้งใจ — ปล่อยให้ orphan-cleanup batch job ที่มีอยู่แล้ว (D-66) กวาดทีหลังตาม grace period แทน ลดความเสี่ยง/ความซับซ้อนของปุ่มนี้
+
+**กับดักที่เจอ:** `SetState`/`State` field ต้องเป็น typed handle (`ff.Pages.addproduct.state.xxx`) ห้ามส่ง string ตรง ๆ แม้ทั้งไฟล์ `dsl/edit.dart` ก่อนหน้านี้จะใช้ string มาตลอด — validator บล็อกตั้งแต่ compile ไม่ใช่ runtime (ยืนยันจาก error message "Use ff.Pages.addproduct.state.X instead of SetState(...)")
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ยืนยันแค่ `generated_code/` ว่า nested `InkWell` ห่อ icon ถูกตำแหน่ง/ลำดับ action ถูก)

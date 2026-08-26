@@ -34,6 +34,7 @@
 | widget key จริง | ชนิด | → คอลัมน์ |
 |---|---|---|
 | `Stack_s1nq0r5h`/`Stack_vdp8xsqu`/`Stack_361f48qw` (3 ช่องรูป, tap เพื่ออัป) | UploadData → Supabase | `image_urls` (text[]) — สะสมใน page state `uploadedImageUrls` แล้วส่งเข้า insert; รูปที่เพิ่งอัปโชว์พรีวิวจริงผ่าน page state แยกต่อช่อง `image1Url`/`image2Url`/`image3Url` (ต้อง set แยกจาก `uploadedImageUrls` เพราะ Image widget ผูกได้แค่ URL เดียวต่อช่อง ไม่ใช่ทั้ง list) |
+| `Icon_hzgec1g3`/`Icon_r8r3w5z6`/`Icon_bwoocet1` (เดิม badge check_circle กลางรูป ตอนนี้ reuse เป็นปุ่มลบ, icon `cancel` สีแดง) | ลบรูปที่อัปแล้ว | ล้าง page state 3 ตัวของช่องนั้น: `removeFromUploadedImageUrls(imageXUrl)` ก่อน แล้วค่อย set `imageXUrl=''`/`imageXUploaded=false` — **ไม่ลบไฟล์ใน Storage ที่นี่** ปล่อยให้ orphan-cleanup batch job (D-66) กวาดทีหลัง (2026-08-26) |
 | `TextField_rl5m9b8b` | ชื่อสินค้า | `title` |
 | `TextField_gxb0yu0f` | รายละเอียด | `description` |
 | `TextField_1egqbjvw` | ราคา | `price` (ผ่าน custom function `parseProductPrice`) |

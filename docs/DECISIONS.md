@@ -1571,3 +1571,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 2. ขั้นตอนอ่านค่า ChoiceChips (`selectedConditionLabel = choiceChipsValue`) ต้องคงไว้แต่ `WidgetState` ไม่รองรับ ChoiceChips (PT-12 §5) — ใช้ placeholder self-assignment ผ่าน typed DSL ก่อน แล้ว `app.raw` overwrite แค่ node เดียวเป็น `varFromWidgetValue` ทีหลัง (proto shape เดียวกับ ProfileUser avatar capture)
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ไม่มี Flutter SDK บนเครื่องพัฒนา) ยืนยันแค่ `generated_code/` ตรงกับที่ตั้งใจทุกบรรทัด — รอ pete ทดสอบจริง: (1) ลืมเลือกหมวดหมู่ → ต้องเห็นสแนตช์บาร์ ไม่ใช่เงียบ (2) กรอกครบ → ยังบันทึกสำเร็จเหมือนเดิม (3) ไม่แตะ ChoiceChips เลย → ยังบันทึกได้ (fallback เป็น 'used' เหมือนพฤติกรรมเดิมก่อนแก้)
+
+## D-71 — ตรวจ `AdminCreatePost` ตามที่ pete ถาม (เหมือน addproduct ไหม) — ไม่เหมือน แต่เจอช่องโหว่คนละแบบ เลยแก้ด้วย (2026-08-26)
+
+**คำถาม:** pete ถามว่าหน้าเพิ่มประกาศฝั่งแอดมิน (`AdminCreatePost` — โพสต์แบนเนอร์ขึ้น Home, คนละอันกับ `addproduct`) เป็นบั๊กแบบเดียวกับ D-70 ไหม
+
+**ผลตรวจ:** ไม่เหมือน — `advertisement_posts` ไม่มีฟิลด์ไหนที่ fallback แล้วโดน DB ปฏิเสธ (`title`/`body` nullable, `image_url` NOT NULL แต่ default page-state เป็น `''` ซึ่ง insert ผ่านได้ปกติไม่ชน constraint ต่างจาก `category_id` ที่ชน FK) จึงไม่มี insert throw ให้เงียบแบบ addproduct
+
+**แต่เจอช่องโหว่อื่นแทน:** ปุ่ม "โพสต์ประกาศ" ไม่เช็คว่าอัปโหลดรูปหรือยังก่อน insert — ลืมอัปรูปแล้วกด จะ "สำเร็จเงียบๆ" (ขึ้น snackbar "โพสต์ประกาศแล้ว" ตามปกติ) แต่ได้แบนเนอร์ที่ `image_url` ว่างเปล่าไปโชว์ที่ Home แบบไม่มีรูป — คนละอาการกับ D-70 (นั่นคือ "กดแล้วไม่มีอะไรเกิดขึ้นเลย" ส่วนนี้คือ "กดแล้วสำเร็จปลอมได้ของเสีย") แต่ต้นตอเดียวกัน: ไม่มีการตรวจก่อน insert
+
+**ทำ:** เพิ่ม guard บนปุ่ม `Button_2m3kcgma`: `imageUrl == ''` → snackbar "กรุณาอัปโหลดรูปภาพประกาศก่อน" ก่อนถึง insert ส่วน insert/snackbar สำเร็จ/navigate กลับ `HomeAdmin` คงเดิมทุกจุด ง่ายกว่า D-70 เพราะ `imageUrl` เป็น page state ธรรมดา (ไม่ใช่ widget-state read แบบ ChoiceChips) จึงไม่ต้องใช้ raw-proto workaround เลย — `Equals(State(imageUrl), '')` ตรงกับ default จริงของ field พอดี
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง

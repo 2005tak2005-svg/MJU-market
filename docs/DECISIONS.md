@@ -1522,3 +1522,24 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **เจอด้วย:** `app.component('ReportUserSheet', ...)` (D-65) ที่ landed แล้วแต่ไม่เคย retire ออกจากสคริปต์ (ซ้ำ pattern เดียวกับ D-47/D-49) ทำ push ค้าง "already exists" — แก้ด้วยการลบ declaration แล้วสร้าง reference-only `ComponentHandle(ComponentDeclaration(...))` stub แทน (pattern เดียวกับ `banUserSheetRef`/`rejectProductSheetRef` ที่มีอยู่แล้ว)
 
 **ยังไม่ทำ:** ยังไม่ได้ดู screenshot จริงผ่าน Live Session (bridge ไม่ bind ตอนทดสอบ, `rpc_error[bridge_unavailable]`) ยืนยันแค่จาก `generated_code/` — **pete ยืนยันแล้วว่า "ดูดีขึ้นกว่าเดิม" (2026-08-25)** แต่ยังไม่ใช่การทดสอบผ่านแอปจริงแบบละเอียด
+
+---
+
+## D-68 — แก้บั๊ก scroll ค้างที่ grid สินค้าใน `Home` (2026-08-26)
+
+**บริบท:** pete รายงานว่าเลื่อนหน้า Home ลงมาถึง grid สินค้า (`AllList`) แล้วเลื่อนกลับขึ้นไม่ได้ ต้องออกไปหน้าอื่นแล้วกลับเข้ามาใหม่
+
+**Root cause:** `GridView_fxvqqbog` (`AllList`) มี `shrinkWrap: true` เพื่อซ้อนอยู่ใน `SingleChildScrollView` ของ Column นอก แต่ FlutterFlow AI SDK codegen ไม่เคยใส่ `physics:` ให้ GridView/ListView ที่ `shrinkWrap: true` เลยทั้งโปรเจกต์ (ตรวจ `generated_code/lib/**` ยืนยันแล้ว) — proto `FFGridView` ไม่มี field physics เลย ตั้งผ่าน DSL/fast-lane ไม่ได้จริง ๆ (ไม่ใช่แค่ SDK ไม่ expose) ทำให้ grid มี Scrollable ของตัวเองแย่ง gesture arena กับ scroll หลักของหน้า
+
+**ลองแล้วไม่ผ่าน:** แทน `GridView` ด้วย custom widget (`physics: NeverScrollableScrollPhysics()` ตรง ๆ ในโค้ด) — พารามิเตอร์ `products: List<PostgresRow>` (bind กับ page state `productsList`) ถูก FlutterFlow backend validator ปฏิเสธเสมอ (`"parameter products not set properly"`) ยืนยันด้วย control probe: พารามิเตอร์ `string` ธรรมดา bind page state เดียวกัน push ผ่านปกติ → สรุปว่า custom-widget parameter ที่เป็น `List<PostgresRow>` ใช้ไม่ได้กับ FlutterFlow AI SDK ปัจจุบัน แม้ page state field เดียวกันจะผูกกับ native GridView `source:` ได้ปกติ (รายละเอียด `PATTERNS.md` PT-35)
+
+**ทางแก้จริงที่ใช้:** ไม่ต้องปิด scroll ของ grid — ทำให้ grid เป็น scrollable ตัวเดียวของหน้าแทน
+1. ปิด `scrollable` บน `Column_q5ywpv4w` (Column นอก) → หาย `SingleChildScrollView` ที่ครอบทั้งหน้า
+2. ปิด `shrinkWrap` บน `GridView_fxvqqbog` + ตั้ง `props.expanded` (เทียบเท่า `Expanded` ใน Flutter) ให้ grid ยืดเต็มพื้นที่ที่เหลือ
+3. Pull-to-refresh ไม่ต้องแก้ — ยัง trigger ที่ node เดิม เพราะ grid ยังเป็น scrollable ตัวเดียว
+
+**ผลกระทบ UX (pete ยืนยันรับได้):** ช่องค้นหา/กรองราคา/รายการโพสต์แอดมิน/chip หมวดหมู่ กลายเป็น header คงที่ ไม่เลื่อนหายไปพร้อมเนื้อหาอีกต่อไป — เฉพาะโซน grid สินค้าที่เลื่อนได้ ยืนยันจาก `generated_code/` (ไม่มี `SingleChildScrollView`/`shrinkWrap` ค้างแล้ว) + screenshot ผ่าน Live Session canvas ไม่มี overflow
+
+**⚠️ ระหว่างทดลอง custom widget เกิด push ขึ้นจริงโดยไม่ตั้งใจ 2 ครั้ง** (diagnostic custom widget `DiagnosticStringProbe`/`ProductGridView` + placement `StringProbe` บน `Home`) — ลบออกหมดแล้วในพุชสุดท้าย ยืนยันจาก `generated_code/`/`lib/flutterflow_project/pages/home.dart` ว่าไม่มีร่องรอยเหลือ
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงบนมือถือ (ยืนยันแค่ generated code + canvas screenshot) — โซน grid อาจดูอึดอัดบนจอเล็ก เพราะ header คงที่กินพื้นที่เยอะ (ช่องค้นหา + แถวราคา + รายการโพสต์แอดมินสูง 290px + แถว category chip) ยังไม่วัดจริง

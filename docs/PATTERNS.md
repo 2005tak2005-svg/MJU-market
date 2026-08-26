@@ -657,3 +657,35 @@ page.mutateNode(page.findByKey('AppBar_xxx'), (node) {
 `FFColorValue`/`FFColor`/`FFColor_ThemeColor` มาจาก `package:flutterflow_ai/schema/flutterflow_schema.dart` (export จาก barrel หลักอยู่แล้ว ไม่ต้อง import เพิ่ม) — enum ชื่อ slot ตรงกับที่เห็นใน `flutterflow ai inspect` เป๊ะ (`"themeColor": "PRIMARY_BACKGROUND"`) สำหรับสี literal ใช้ `FFColor(value: Int64(argb))` แทน `themeColor:` ยืนยันผลจริงจาก `generated_code/` หลัง push ว่าค่าตรงตามที่ตั้ง
 
 **ใช้แล้วที่:** `chatList`/`productDetails`'s Scaffold+AppBar background ใน retheme sweep (D-67)
+
+---
+
+## PT-35 — GridView/ListView `shrinkWrap: true` ซ้อนใน scrollable อื่น = scroll ค้าง (ไม่มี physics ให้ตั้งเลย) (D-68, 2026-08-26)
+
+**ปัญหา:** FlutterFlow AI SDK codegen ไม่เคยใส่ `physics:` ให้ `GridView.builder`/`ListView.builder` ที่ `shrinkWrap: true` เลย (ตรวจทั้ง `generated_code/lib/**` ไม่เจอสักจุด) — proto ของ GridView/ListView ไม่มี field physics ให้ตั้งเลย ไม่ใช่แค่ DSL/fast-lane ไม่ expose ทำให้ widget ที่ shrinkWrap แล้วซ้อนอยู่ใน scrollable อื่น (เช่น `SingleChildScrollView` ของ Column ที่ `scrollable: true`) มี Scrollable ของตัวเองแย่ง gesture arena กับตัวนอก — อาการ: เลื่อนเข้าโซนนั้นแล้วเลื่อนกลับไม่ได้ ต้อง rebuild widget (ออกแล้วกลับเข้าหน้า) ถึงจะหาย
+
+**ทางแก้ที่ใช้ได้จริง:** อย่าซ้อน scrollable สองชั้น — ทำให้ list/grid ตัวในเป็น scrollable ตัวเดียวของ scope นั้นแทน
+
+```dart
+// 1. ปิด scrollable บน Column ที่ครอบ — เอา SingleChildScrollView ออก
+page.mutateNode(page.findByKey('Column_xxx'), (node) {
+  node.props.column.scrollable = false;
+});
+
+// 2. ปิด shrinkWrap บน list/grid ตัวใน + ทำให้ยืดเต็มพื้นที่ที่เหลือ
+page.mutateNode(page.findByKey('GridView_xxx'), (node) {
+  node.props.gridView.shrinkWrapValue = FFBooleanValue(inputValue: false);
+  node.props.expanded = FFExpanded(
+    expandedType: FFExpanded_ExpandedType.EXPANDED,
+    flexValue: FFIntegerValue(inputValue: 1),
+  );
+});
+```
+
+🔴 ต้องใช้ `shrinkWrapValue` (ฟิลด์ใหม่) ไม่ใช่ `legacyShrinkWrap` ที่ `[deprecated = true]` — ใน proto ของ FlutterFlow "Expanded" ไม่ใช่ node ห่อแยกต่างหาก เป็นแค่ property บน node ลูกโดยตรง (`props.expanded`) เทียบเท่า DSL's `Expanded(child)` ที่จริง ๆ ก็แค่ `child.props.expanded = ...` แล้วคืน node เดิม (ดู SDK's `UI.expanded`) — ไม่ต้อง wrap node ใหม่เลย
+
+**ผลข้างเคียงที่ต้องแจ้ง pete ก่อนทำ:** widget อื่นที่อยู่เหนือ list/grid ใน Column เดิม (header/filter/ปุ่ม) จะกลายเป็นแถบคงที่ ไม่เลื่อนหายไปพร้อมเนื้อหาอีกต่อไป — เป็น trade-off ที่ต้องให้ pete เลือกรับก่อน ไม่ใช่ทำเงียบ ๆ
+
+**ลองแล้วไม่ได้ผล (อย่าลองซ้ำ):** แทน list/grid เดิมด้วย custom widget ที่ใส่ `physics: NeverScrollableScrollPhysics()` ตรง ๆ ในโค้ด — parameter ที่เป็น `List<PostgresRow>` (`listOf(ff.Tables.xxx)`) bound กับ page state ถูก FlutterFlow backend validator ปฏิเสธเสมอ (`"parameter ... not set properly"`) แม้ page state field เดียวกันจะ bind กับ native GridView/ListView `source:` ได้ปกติ — ยืนยันด้วย control probe (parameter type `string` bind page state เดียวกัน push ผ่านปกติ) สรุปว่าเป็นข้อจำกัดเฉพาะ custom-widget parameter ที่เป็น `List<PostgresRow>` ไม่ใช่ page-state binding โดยรวม
+
+**ใช้แล้วที่:** `Home`'s `AllList` (D-68)

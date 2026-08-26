@@ -1557,3 +1557,17 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **กับดักที่เจอ:** `SetState`/`State` field ต้องเป็น typed handle (`ff.Pages.addproduct.state.xxx`) ห้ามส่ง string ตรง ๆ แม้ทั้งไฟล์ `dsl/edit.dart` ก่อนหน้านี้จะใช้ string มาตลอด — validator บล็อกตั้งแต่ compile ไม่ใช่ runtime (ยืนยันจาก error message "Use ff.Pages.addproduct.state.X instead of SetState(...)")
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ยืนยันแค่ `generated_code/` ว่า nested `InkWell` ห่อ icon ถูกตำแหน่ง/ลำดับ action ถูก)
+
+## D-70 — แก้บั๊ก `addproduct` กดลงขายแล้วเงียบเมื่อไม่เลือกหมวดหมู่ (2026-08-26)
+
+**บริบท:** pete รายงาน "กดเพิ่มรายการบางทีก็ส่งถึงแอดมิน บางทีก็เงียบไม่มีสแนตช์บาร์"
+
+**Root cause:** ปุ่ม "ลงขายสินค้า" เดิมเช็คแค่ `title` ว่างก่อน insert ตรงเข้า `ProductsTable()` ไม่มี try/catch เลย — `category_id` เป็น NOT NULL + FK → `"CAT"(id)` แต่ `parseCategoryId(null)` fallback เป็น `0` (ไม่มีจริงใน `"CAT"`) → insert throw FK violation แบบไม่มีใครดักจับ → เงียบสนิท ยืนยันจาก PT-18: SDK เวอร์ชันนี้ไม่มี `onSuccess`/`onFailure` หรือ try/catch ให้ Postgres action เลย ทางแก้เดียวคือปิด root cause ฝั่ง client ตรวจแล้วว่า price/condition ไม่ทำให้ insert throw (มี fallback ที่ผ่าน constraint ได้เสมอ) มีแค่ category เท่านั้นที่พัง
+
+**ทำ:** reconstruct ทั้ง action chain ของปุ่มผ่าน `ensureActions` (จำเป็นเพราะ replace ทั้ง trigger เสมอ) เพิ่ม guard ใหม่ "ยังไม่เลือกหมวดหมู่ → สแนตช์บาร์ กรุณาเลือกหมวดหมู่สินค้า" ก่อนถึง insert ส่วนอื่น (title check, ก๊อปปี้ `selectedConditionLabel` จาก ChoiceChips, insert fields, success snackbar, reset image state) reproduce ให้ตรงของเดิมทุกจุด ยืนยันจาก `generated_code/` บรรทัดต่อบรรทัด
+
+**กับดักที่เจอ (ใหม่ 2 อย่าง, บันทึกที่ PT-37):**
+1. `Equals(WidgetState(dropdown, .value), null)` compile เป็น `== ''` ไม่ใช่ `== null` (runtime จริงคือ `null`) — guard แรกที่เขียนไปไม่ทำงานจริง แก้โดยเทียบผลลัพธ์ `parseCategoryId(...)` กับ sentinel `0` แทน (โดเมน int ไม่ใช่ string)
+2. ขั้นตอนอ่านค่า ChoiceChips (`selectedConditionLabel = choiceChipsValue`) ต้องคงไว้แต่ `WidgetState` ไม่รองรับ ChoiceChips (PT-12 §5) — ใช้ placeholder self-assignment ผ่าน typed DSL ก่อน แล้ว `app.raw` overwrite แค่ node เดียวเป็น `varFromWidgetValue` ทีหลัง (proto shape เดียวกับ ProfileUser avatar capture)
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ไม่มี Flutter SDK บนเครื่องพัฒนา) ยืนยันแค่ `generated_code/` ตรงกับที่ตั้งใจทุกบรรทัด — รอ pete ทดสอบจริง: (1) ลืมเลือกหมวดหมู่ → ต้องเห็นสแนตช์บาร์ ไม่ใช่เงียบ (2) กรอกครบ → ยังบันทึกสำเร็จเหมือนเดิม (3) ไม่แตะ ChoiceChips เลย → ยังบันทึกได้ (fallback เป็น 'used' เหมือนพฤติกรรมเดิมก่อนแก้)

@@ -41,7 +41,9 @@
 | `TextField_kqo5qlgf` | เบอร์ติดต่อ | `contact_phone` |
 | `ChoiceChips_viplbq3c` (มือหนึ่ง/มือสอง) | `condition` | ผ่าน custom function `mapProductCondition` — อ่านจาก page state `selectedConditionLabel` ไม่ใช่จาก widget ตรง ๆ (ดู PT-12 ข้อ 5) |
 | `DropDown_b2e5c9nv` (จาก `"CAT"` 12 หมวดหมู่จริง) | `category_id` | ผ่าน custom function `parseCategoryId` — **map จาก label ไม่ใช่ parse ตัวเลข** (ดู PT-12 ข้อ 4 — `FlutterFlowDropDown` ไม่มี value list แยกจาก label) |
-| `Button_85x7xhe6` ("ลงขายสินค้า") | submit | Insert Row เข้า `products`, `seller_id` ผูกกับ `AuthUser(userId)` เอง |
+| `Button_85x7xhe6` ("ลงขายสินค้า") | submit | title ว่าง → snackbar ก่อน · **หมวดหมู่ไม่ได้เลือก → snackbar ก่อน insert เช่นกัน (D-70)** · ผ่านทั้งคู่ค่อย Insert Row เข้า `products`, `seller_id` ผูกกับ `AuthUser(userId)` เอง |
+
+> 🔴 **D-70 (2026-08-26):** เดิมเช็คแค่ title ก่อน insert ทำให้ไม่เลือกหมวดหมู่ → `category_id` FK violation → insert throw แบบไม่มีใครดักจับ (PT-18: Postgres action ไม่มี error handling ใน SDK นี้เลย) → กดแล้วเงียบสนิทไม่มี snackbar เพิ่ม guard เช็คหมวดหมู่แล้ว รายละเอียด `DECISIONS.md` D-70 / `PATTERNS.md` PT-37 — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 
 ❗ **ไม่ต้องส่ง `moderation_status`** ปล่อยให้ default `'pending'` ทำงาน (ยืนยันจาก DSL script — ไม่ได้ส่งฟิลด์นี้)
 ❗ **UI ต้องกันที่ 3 รูปเอง** — DB กันไว้ด้วย CHECK แต่ถ้าปล่อยให้อัปครบ 4 ไฟล์ก่อน ผู้ใช้จะเสียเน็ตฟรีแล้วโดนปฏิเสธตอนกดบันทึก + เหลือไฟล์กำพร้าใน bucket (**ยังไม่ได้ทำ** — หน้านี้มีแค่ 3 ช่องพอดีอยู่แล้วจึงกันเองโดยธรรมชาติ แต่ยังไม่มี guard แยกถ้ามีคนแก้ layout เพิ่มช่องทีหลัง)

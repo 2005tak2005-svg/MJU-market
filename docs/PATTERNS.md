@@ -686,6 +686,73 @@ page.mutateNode(page.findByKey('GridView_xxx'), (node) {
 
 **ผลข้างเคียงที่ต้องแจ้ง pete ก่อนทำ:** widget อื่นที่อยู่เหนือ list/grid ใน Column เดิม (header/filter/ปุ่ม) จะกลายเป็นแถบคงที่ ไม่เลื่อนหายไปพร้อมเนื้อหาอีกต่อไป — เป็น trade-off ที่ต้องให้ pete เลือกรับก่อน ไม่ใช่ทำเงียบ ๆ
 
-**ลองแล้วไม่ได้ผล (อย่าลองซ้ำ):** แทน list/grid เดิมด้วย custom widget ที่ใส่ `physics: NeverScrollableScrollPhysics()` ตรง ๆ ในโค้ด — parameter ที่เป็น `List<PostgresRow>` (`listOf(ff.Tables.xxx)`) bound กับ page state ถูก FlutterFlow backend validator ปฏิเสธเสมอ (`"parameter ... not set properly"`) แม้ page state field เดียวกันจะ bind กับ native GridView/ListView `source:` ได้ปกติ — ยืนยันด้วย control probe (parameter type `string` bind page state เดียวกัน push ผ่านปกติ) สรุปว่าเป็นข้อจำกัดเฉพาะ custom-widget parameter ที่เป็น `List<PostgresRow>` ไม่ใช่ page-state binding โดยรวม
+**ลองแล้วไม่ได้ผลตรงๆ:** แทน list/grid เดิมด้วย custom widget ที่ใส่ `physics: NeverScrollableScrollPhysics()` ในโค้ด แล้วรับข้อมูลผ่าน parameter ที่เป็น `List<PostgresRow>` (`listOf(ff.Tables.xxx)`) — ถูก FlutterFlow backend validator ปฏิเสธเสมอ (`"parameter ... not set properly"`) แม้ page state field เดียวกันจะ bind กับ native GridView/ListView `source:` ได้ปกติ — ยืนยันด้วย control probe (parameter type `string` bind page state เดียวกัน push ผ่านปกติ) สรุปว่าเป็นข้อจำกัดเฉพาะ custom-widget parameter ที่เป็น `List<PostgresRow>` ไม่ใช่ page-state binding โดยรวม **มีทางแก้จริงแล้ว — ดู PT-36 (custom widget fetch ข้อมูลเอง แทนรับ list เป็น parameter)**
 
-**ใช้แล้วที่:** `Home`'s `AllList` (D-68)
+**เลือกใช้ pattern ไหน:** ถ้ายอมรับ trade-off "header กลายเป็นแถบคงที่" ได้ → ใช้ pattern นี้ (ไม่มี custom code เลย) ถ้าต้องการ whole-page scroll จริง ๆ → ต้องไปทาง PT-36 (มี custom code แต่รักษา UX เดิมได้ครบ)
+
+**ใช้แล้วที่:** `Home`'s `AllList` — ใช้ตอนแรก (D-68 v1) แล้วถูก pete ขอเปลี่ยนเป็น PT-36 วันเดียวกัน (D-68 v2)
+
+---
+
+## PT-36 — Custom widget ที่ต้องใช้ข้อมูลจาก Postgres table/view แบบ list ให้ fetch เอง อย่ารับเป็น parameter (D-68 v2, 2026-08-26)
+
+**ปัญหา:** ตาม PT-35 — custom widget parameter ที่เป็น `List<PostgresRow>` (`listOf(ff.Tables.xxx)`) ถูก FlutterFlow backend validator ปฏิเสธเสมอไม่ว่าจะ bind กับ source แบบไหน แต่บางสถานการณ์ (เช่นแก้บั๊ก nested-scrollable ของ PT-35) จำเป็นต้องมี custom widget ที่โชว์ list ของข้อมูลจาก Postgres จริง ๆ
+
+**ทางแก้ที่ใช้ได้จริง:** อย่าส่ง list เข้า widget เลย — ให้ widget **fetch เอง** ผ่าน Supabase client ตรง ๆ (เหมือน custom action ที่มีอยู่แล้วถ้ามี) แล้วรับแค่ scalar parameter (string/int/double/bool — พิสูจน์แล้วว่า bind page/app state ได้ปกติ) เป็นตัวกำหนดว่าจะ fetch อะไร:
+
+```dart
+class ProductGridSection extends StatefulWidget {
+  const ProductGridSection({
+    super.key, this.width, this.height,
+    required this.keyword, required this.categoryId,
+    required this.minPrice, required this.maxPrice,
+    required this.refreshToken,
+  });
+  final double? width, height;
+  final String keyword, minPrice, maxPrice;
+  final int categoryId, refreshToken;
+  @override State<ProductGridSection> createState() => _ProductGridSectionState();
+}
+
+class _ProductGridSectionState extends State<ProductGridSection> {
+  late Future<List<ProductsReviewViewRow>> _future;
+
+  @override
+  void initState() { super.initState(); _future = _fetch(); }
+
+  @override
+  void didUpdateWidget(covariant ProductGridSection old) {
+    super.didUpdateWidget(old);
+    if (old.keyword != widget.keyword || old.categoryId != widget.categoryId ||
+        old.minPrice != widget.minPrice || old.maxPrice != widget.maxPrice ||
+        old.refreshToken != widget.refreshToken) {
+      setState(() => _future = _fetch());
+    }
+  }
+
+  Future<List<ProductsReviewViewRow>> _fetch() async {
+    final response = await Supabase.instance.client.rpc('search_products', params: {...});
+    return (response as List).map((r) => ProductsReviewViewRow(r as Map<String, dynamic>)).toList();
+  }
+  // build(): FutureBuilder -> GridView.builder(physics: NeverScrollableScrollPhysics(), shrinkWrap: true, ...)
+}
+```
+
+**Refetch-on-change ใช้ `didUpdateWidget` เทียบค่าพารามิเตอร์เก่า/ใหม่ ไม่ใช่ `context.watch<FFAppState>()`** — เพราะ action chain ที่ set app state (`FFAppState().searchKeyword = ...`) หลายจุดในโปรเจกต์นี้ไม่เรียก `notifyListeners()` เลย ใช้แค่ `safeSetState` ของหน้าเอง (ตรวจโค้ดจริงยืนยันแล้ว) `didUpdateWidget` ไม่พึ่งกลไกนั้น ใช้ได้แน่นอนเพราะ Flutter เรียกให้เองทุกครั้งที่ parent rebuild ด้วยค่า constructor ใหม่
+
+**Pull-to-refresh ต้องผูกที่ Column (ตัว scrollable จริง) ไม่ใช่ตัว widget** — widget ไม่ scroll เองแล้ว (physics ปิดอยู่) ไม่มีทางรับรู้ pull gesture ได้เอง ต้องให้ trigger ธรรมชาติจาก scrollable จริงส่งสัญญาณเข้ามาแทน ผ่าน page state field ที่เพิ่มค่าทุกครั้งที่ pull:
+
+```dart
+app.editPageState(ff.Pages.home, (state) {
+  state.ensureField('gridRefreshToken', int_.withDefault(0));
+});
+page.ensureActions(
+  page.findByKey('Column_q5ywpv4w'), // Column ที่ scrollable:true — ไม่ใช่ widget
+  triggerType: FFActionTriggerType.ON_PULL_TO_REFRESH,
+  actions: [SetState.increment('gridRefreshToken', 1)],
+);
+```
+
+🔴 **ยืนยันแล้วว่า codegen ห่อ `RefreshIndicator` ถูกตำแหน่งจริง** (ไม่เคยพิสูจน์มาก่อนตอน push) — `generated_code/` ออกมาเป็น `RefreshIndicator(onRefresh: ..., child: SingleChildScrollView(physics: AlwaysScrollableScrollPhysics(), ...))` คือห่อ*นอก* scrollable จริงถูกต้อง (ถ้าห่อผิดตำแหน่ง เช่นอยู่ *ข้างใน* `SingleChildScrollView` การลากปัดจะไม่ทำงานเลยเพราะ notification ไม่มีทางไหลไปหา RefreshIndicator ที่เป็น descendant ของ scrollable เดียวกัน)
+
+**ใช้แล้วที่:** `Home`'s `AllList` → `ProductGridSection` (D-68 v2) — รักษา whole-page scroll ไว้ได้ครบ ต่างจาก PT-35 ที่ต้องแลก header คงที่

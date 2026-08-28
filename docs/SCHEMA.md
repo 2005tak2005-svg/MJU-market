@@ -270,6 +270,21 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - ไม่เปิด Realtime
 
+### `public.admin_contact_view` (L6, เพิ่ม 2026-08-28, D-74)
+
+```sql
+CREATE VIEW public.admin_contact_view AS
+ SELECT p.id, p.avatar_url, p.full_name
+   FROM "Profile" p
+  WHERE p.role = 'admin'
+  ORDER BY p.created_at ASC
+  LIMIT 1;
+```
+
+- ไม่มี `security_invoker` (เหมือน `public_profiles`) — จงใจ ให้ user ธรรมดาอ่าน avatar/ชื่อแอดมินได้แม้ `"Profile"` RLS ปิดไม่ให้เห็นแถวคนอื่น (สำหรับ user ธรรมดา `"Profile"` เห็นแค่แถวตัวเอง) — logic เลือกแอดมิน (earliest-created `role='admin'`) เหมือนกับที่ฝัง SQL ไว้ใน `find_or_create_chat_with_admin` อยู่แล้ว
+- คืนแถวเดียวเสมอ (หรือ 0 แถวถ้ายังไม่มีแอดมิน) — ใช้โหลดครั้งเดียวตอนเปิดหน้า ไม่ใช่ query ต่อแถว
+- `get_advisors` (security): finding ใหม่มีแค่ class `security_definer_view` (เหมือน `public_profiles`/`public_directory_view` อยู่แล้ว) ไม่มี finding class ใหม่
+
 ### `public.advertisement_posts` (L3/L8, เพิ่ม 2026-08-22, D-58)
 
 | # | คอลัมน์ | ชนิด | null? | default |
@@ -472,7 +487,7 @@ CREATE VIEW public.chat_summary WITH (security_invoker = true) AS
     c.last_message,
     c.created_at,
     array_agg(p.full_name ORDER BY p.full_name) AS member_names,
-    array_agg(cu.user_id) AS user_ids,
+    array_agg(cu.user_id ORDER BY p.full_name) AS user_ids,
     EXISTS (
       SELECT 1 FROM chat_message cm
       WHERE cm.chat_id = c.id
@@ -481,11 +496,17 @@ CREATE VIEW public.chat_summary WITH (security_invoker = true) AS
           (SELECT cu2.last_read_at FROM chat_user cu2
              WHERE cu2.chat_id = c.id AND cu2.user_id = auth.uid()),
           '-infinity'::timestamptz)
-    ) AS is_unread                                     -- เพิ่ม 2026-08-17, D-31 — คำนวณต่อ auth.uid() ของผู้เรียกเอง
+    ) AS is_unread,                                    -- เพิ่ม 2026-08-17, D-31 — คำนวณต่อ auth.uid() ของผู้เรียกเอง
+    array_agg(COALESCE(p.avatar_url, '') ORDER BY p.full_name) AS member_avatar_urls  -- เพิ่ม 2026-08-28, D-73
    FROM chat c
      JOIN chat_user cu ON cu.chat_id = c.id
      JOIN public_profiles p ON p.id = cu.user_id
   GROUP BY c.id, c.last_message, c.created_at;
+```
+
+> 📌 `member_avatar_urls` (D-73, 2026-08-28) — `ORDER BY p.full_name` เพิ่มให้ `user_ids`/`member_avatar_urls` ด้วย (เดิม `user_ids` ไม่มี ORDER BY) เพื่อให้ index ตรงกับ `member_names` เสมอ (`array_agg` หลายตัวในควรี query เดียวกัน ไม่รับประกัน order ตรงกันถ้าไม่ระบุ) COALESCE เป็น `''` กัน NULL element ในอาเรย์ (nullable text ต้นทาง)
+
+```sql
 
 -- reloptions: security_invoker=true
 CREATE VIEW public.chat_messages_view WITH (security_invoker = true) AS

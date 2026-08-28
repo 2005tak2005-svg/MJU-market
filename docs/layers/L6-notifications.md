@@ -1,7 +1,7 @@
 # Layer 6 — Notifications
 
 > schema → `../SCHEMA.md` · ตรวจ → `../checks/L6.sql`
-> **สถานะ: 🟨 ตาราง+RLS+UI ใช้งานจริงแล้ว (D-22/D-23/D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เขียนได้ทางเดียว (reject→insert), ไม่มี trigger อัตโนมัติ · **Realtime บนรายการ `Notifications` ทำแล้ว (D-60, 2026-08-24)** ยังไม่มี unread badge ตัวเลข/push จริงตอนปิดแอป**
+> **สถานะ: 🟨 ตาราง+RLS+UI ใช้งานจริงแล้ว (D-22/D-23/D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เขียนได้ทางเดียว (reject→insert), ไม่มี trigger อัตโนมัติ · **Realtime บนรายการ `Notifications` ทำแล้ว (D-60, 2026-08-24)** · **avatar แอดมิน + คุยกับแอดมินจากแจ้งเตือน + badge ตาม type ทำแล้ว (D-74, 2026-08-28)** ยังไม่มี unread badge ตัวเลข/push จริงตอนปิดแอป**
 
 ## 🎯 เป้าหมาย
 
@@ -17,13 +17,22 @@
 
 **Realtime (D-60, 2026-08-24):** `notifications` เพิ่มเข้า `supabase_realtime` publication แล้ว — ดู `SCHEMA.md`
 
+**`admin_contact_view` (D-74, 2026-08-28):** view ใหม่ ไม่มี security_invoker คืนแถวแอดมิน (id/avatar_url/full_name) แถวเดียว — ดู `SCHEMA.md`
+
 ## 🎨 FlutterFlow — ทำแล้ว
 
-`Notifications` page ผูก `notifications` filter `user_id = currentUserUid` · bell icon บน `Home` → `Notifications` · แตะรายการ → mark `is_read=true` (table update ตรง ปลอดภัยเพราะมี RLS self-only อยู่แล้ว) + Navigate `ProductDetails` ด้วย `ref_product_id` (D-26) · จุดแดง unread ผูก `is_read` (D-31) — **มีบั๊ก: ไม่หายทันทีตอนกลับมาหน้าเดิม ต้องออกจากหน้าจริงก่อน (D-32, รายละเอียด `L4-chat.md` ข้อ 3)**
+`Notifications` page ผูก `notifications` filter `user_id = currentUserUid` · bell icon บน `Home` → `Notifications` · จุดแดง unread ผูก `is_read` (D-31) — **มีบั๊ก: ไม่หายทันทีตอนกลับมาหน้าเดิม ต้องออกจากหน้าจริงก่อน (D-32, รายละเอียด `L4-chat.md` ข้อ 3)**
 
 **Realtime ทำแล้ว (D-60, 2026-08-24):** page-level `databaseRequest` + `isStreamingSupabaseQuery` + `ON_DATA_CHANGE` (`PATTERNS.md` PT-32) — รายการใหม่ขึ้นเองระหว่างเปิดหน้าค้างอยู่ ไม่ต้องออกแล้วกลับเข้ามาใหม่ ยืนยันจาก `generated_code/` (compile เป็น `StreamBuilder` จริง) — **ยังไม่ทดสอบผ่านแอปจริง**
 
-**ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon (ตัดสโคปไว้ตอน D-60 — pete สั่งเว้นรอบนี้) · push notification จริงตอนปิดแอป (FCM/OneSignal)
+**รายการต่อแถวปรับใหม่ทั้งชุด (D-74, 2026-08-28)** — เดิมทุกแถวเหมือนกัน (ไอคอนเดียว, แตะแล้ว mark read + Navigate ProductDetails เสมอ) ตอนนี้:
+- avatar วงกลม (รูปแอดมิน จาก `admin_contact_view`, ค่าเดียวใช้ร่วมทุกแถว — ไม่ใช่ per-row)
+- badge ไอคอน 4 สีตาม `type` (approved/rejected/banned/unbanned)
+- แตะแถว → mark `is_read=true` + Navigate `ProductDetails` **เฉพาะ** `listing_approved`/`listing_rejected` (แก้บั๊กเดิม: `account_banned`/`account_unbanned` เคย Navigate ด้วย `productId` เป็น null เสมอ)
+- ปุ่ม "คุยกับแอดมิน" แยกจากการแตะแถว — โผล่เฉพาะแถว `listing_rejected`/`account_banned` (เลือกสโคปนี้ตามที่ pete ตอบ) เรียก `findOrCreateChatWithAdmin` (ต่อยอดให้ relay memberNames/userIds แล้ว) → Navigate `chatMessages`
+- รายละเอียดกับดักที่เจอ (action ซ้ำ structure ชน validate, `Equals(item[],null)` ไม่เช็ค null จริง) → `PATTERNS.md` PT-39, ตัดสินใจเต็ม → `DECISIONS.md` D-74 — **ยังไม่ทดสอบผ่านแอปจริง**
+
+**ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon (ตัดสโคปไว้ตอน D-60 — pete สั่งเว้นรอบนี้) · push notification จริงตอนปิดแอป (FCM/OneSignal) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)
 
 ## 🧪 Definition of Done
 

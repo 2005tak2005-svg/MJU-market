@@ -1598,3 +1598,37 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **กับดักที่เจอระหว่างทำ (รายละเอียด `PATTERNS.md` PT-38):** ลองเพิ่ม action ใหม่เป็น `triggerActions` entry ที่ 2 บนปุ่มเดิมก่อน (คิดว่าปลอดภัยกว่าไม่แตะของเดิมเลย) — push ผ่าน แต่ codegen เรนเดอร์ ON_TAP ให้ปุ่มได้แค่ entry เดียว entry ที่ 2 หายเงียบ ไม่มี error ต้องแก้เป็น wrap `rootAction` เดิมแทน (`followUpAction` รันไม่มีเงื่อนไข ไม่ต้อง deep-copy chain เดิมไปไว้ 2 ที่ ซึ่งจะชน `outputVariableName` ซ้ำ)
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/` ว่า logic ตรงตามต้องการ) · `phone` ยังไม่มีช่องแก้ไข (ค้างจาก L1 เดิม)
+
+---
+
+## D-73 — `chatList` เพิ่มรูปโปรไฟล์คู่สนทนาใน ChatListItems (2026-08-28)
+
+**สเปค:** pete ขอ bind รูปโปรไฟล์ผู้ใช้ในหน้า Chat listview (`Scaffold_hpdt0eh6`)
+
+**ทำ:**
+- Supabase: `chat_summary` เดิมไม่มีคอลัมน์รูป — เพิ่ม `member_avatar_urls` (`array_agg(COALESCE(p.avatar_url,'') ORDER BY p.full_name)`, ORDER BY เดียวกับ `member_names`/`user_ids` เพื่อให้ index ตรงกัน — COALESCE เป็น `''` ไม่ปล่อย NULL กันปัญหา nullable array element ฝั่ง Dart)
+- Custom function ใหม่ `getOtherUserAvatar` (mirror `getOtherUsers`, PT-06) คืน URL รูปของสมาชิกคนแรกที่ไม่ใช่ตัวเอง
+- `ChatListItems`' วงกลม avatar (เดิมเป็น `Icons.group` ตายตัวทุกแถว) เปลี่ยนเป็น `Stack` (Icon fallback / `CachedNetworkImage`) toggle ด้วย `getOtherUserAvatar(...)`
+
+**กับดัก (รายละเอียด `PATTERNS.md` PT-38):** ลองเพิ่ม action เป็น `triggerActions` entry ใหม่ก่อน (ปุ่มเดียวมีหลาย ON_TAP) — codegen เรนเดอร์แค่ entry แรก ไม่มี error ต้องแก้เป็น wrap `rootAction` เดิมแทน
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/`)
+
+---
+
+## D-74 — `Notifications` ปรับให้มีรูปโปรไฟล์ + คุยกับแอดมินได้ + แยกสีตามประเภท (2026-08-28)
+
+**สเปค:** pete ขอให้หน้า Notifications ทำงานคล้ายหน้า Chat (มี avatar) และเริ่มบทสนทนาได้ตรงๆ จากแจ้งเตือน + แยกสีตามประเภทแจ้งเตือนในลิสต์เดียว — คำถามต้นทาง: "รวม 2 table view เข้า listview เดียวกันได้ไหม" ตอบ: ได้ผ่าน SQL view join (แบบ `chat_summary`) แต่ `notifications.user_id` เป็นผู้รับเสมอ (ไม่มี sender) ทุก type เป็น admin/system-triggered ทั้งหมด → avatar ที่มีความหมายจริงคือรูปแอดมิน (ค่าเดียว ใช้ร่วมทุกแถว ไม่ใช่ per-row join)
+
+**ทำ:**
+- Supabase: view ใหม่ `admin_contact_view` (`SELECT id, avatar_url, full_name FROM "Profile" WHERE role='admin' ORDER BY created_at LIMIT 1`) ไม่มี `security_invoker` (convention เดียวกับ `public_profiles` — `"Profile"` RLS ปิดไม่ให้ user ธรรมดาเห็นแถวแอดมินตรงๆ) `get_advisors` ยืนยัน finding ใหม่มีแค่ class เดิมที่ยอมรับแล้ว (`security_definer_view`)
+- Custom action ใหม่ `loadAdminContact` (ไม่ใช้ page-state `PostgresQuery` — ผลลัพธ์เป็น list เสมอ ไม่เหมาะกับ scalar เดี่ยว, PT-10) เขียนเข้า App State `adminContactAvatarUrl`/`adminContactName` ครั้งเดียวตอน onLoad — pattern เดียวกับ D-55's `viewedProfileBio`/`loadViewedProfile`
+- `findOrCreateChatWithAdmin` (custom action เดิม ใช้กับปุ่ม "ติดต่อแอดมิน" บน ProductDetails อยู่แล้ว) ต่อยอดด้วย `updateCustomAction` ให้ query `chat_summary` แล้ว relay `pendingChatMemberNames`/`pendingChatUserIds` เพิ่ม (mirror `findOrCreateChatWithSeller`) — ไม่แตะ ProductDetails เลย (แค่เขียนทับ state ที่ปุ่มเดิมไม่ได้ใช้อยู่แล้ว)
+- Rebuild `NotificationsList` item ทั้งก้อน (`ensureReplaced`, retired หลัง push สำเร็จ): avatar วงกลม (bind App State ไม่ผูก item — ใช้ค่าเดียวกันทุกแถว), badge ไอคอน 4 สีตาม `type`, ปุ่ม "คุยกับแอดมิน" (เฉพาะแถว `listing_rejected`/`account_banned` — ตามที่ pete เลือก) เรียก `findOrCreateChatWithAdmin` แล้ว Navigate `chatMessages` พร้อม 3 param ครบ
+- **แก้บั๊กเดิมไปด้วย:** แถว `account_banned`/`account_unbanned` เคย Navigate ไป ProductDetails ด้วย `productId` เป็น null เสมอ (เพราะ `ref_product_id` เป็น NULL เสมอสำหรับ 2 type นี้) ตอนนี้เช็ค `type` ก่อน Navigate เลย (nested AND: ไม่ใช่ banned และไม่ใช่ unbanned ถึง Navigate) — 2 type นี้ไม่ลอง Navigate อีกต่อไป
+
+**กับดักใหม่ 2 อย่าง (รายละเอียด `PATTERNS.md` PT-39):**
+1. เขียน type-aware navigate เป็น 2 branch ที่มี `Navigate(...)` เหมือนกันทุกตัวอักษร (คนละ branch) — ชน validate error เดียวกับ PT-38 ("output variable name เดียวกับ widget อื่น") ทั้งที่ `Navigate` ไม่มี `outputAs` เลย เป็น structural duplication ไม่ใช่ชื่อซ้ำ แก้ด้วยกลับเป็น AND-nesting (เช็คนิเสธ 2 เงื่อนไข) ให้เหลือ `Navigate` จุดเดียว
+2. ลองเช็ค `Equals(item['ref_product_id'], null)` ก่อน — compile เป็น `== ''` ไม่ใช่เช็ค null จริง (ขยาย PT-37 จาก widget-state ไปถึง item-scoped Postgres field) เปลี่ยนไปเช็ค `type` (NOT NULL) แทน
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/`) · ไม่มี thumbnail สินค้าในแถว approved/rejected (ตัดสโคปตามที่ pete เลือก) · `listing_approved` ยังไม่มี write path จริง (หนี้เดิม L6 ไม่เกี่ยวกับงานนี้)

@@ -23,6 +23,7 @@
 - **ปุ่ม "ข้อความ" ใน Drawer ของ `HomeAdmin`** (D-30) — Navigate ไป `chatList` ให้แอดมินเข้าไปอ่าน/ตอบได้
 - **จุดแดง glow บอกยังไม่อ่านใน `chatList`** (D-31, 2026-08-17) — `chat_summary.is_unread` (คำนวณต่อ `auth.uid()`) หายไปหลังแตะ (`mark_chat_read` RPC อัปเดต `chat_user.last_read_at` ของตัวเอง)
 - **`chatList` layout crash แก้แล้ว** (D-40, 2026-08-18) — `shrinkWrap: true`, ทดสอบผ่านแอปจริงแล้ว
+- **`ChatListItems` มีรูปโปรไฟล์คู่สนทนาแล้ว** (D-73, 2026-08-28) — `chat_summary.member_avatar_urls` ใหม่ + `getOtherUserAvatar` custom function วงกลม avatar เปลี่ยนจาก `Icons.group` ตายตัวเป็นรูปจริง (fallback icon เมื่อไม่มีรูป) — **ยังไม่ได้ทดสอบผ่านแอปจริง**
 - **`chatMessages` bubble UI สองฝั่ง + ส่งรูปได้จริง** (D-41, 2026-08-18) — ของตัวเอง/คนอื่นแยกฝั่ง+สี, ปุ่มแนบรูปอัปโหลดเข้า `chat-images` แล้ว insert `chat_message.image_url`, แตะรูปเปิดดูเต็มผ่าน component `FullImageViewer`, ComposeBar ติดขอบล่างจอ (`Expanded`) — **ทดสอบผ่านแอปจริงโดย pete แล้วทั้งหมด**
 
 **กับดัก SDK ที่เจอใหม่ทั้งหมด:** `../PATTERNS.md` **PT-22** (state/onLoad ใน `ensurePage` เดียวกันอ้างกันเองไม่ได้ ต้องแยกพุช) · **PT-23** (ItemRef นอก itemBuilder สด, ไม่มี RPC action, ไม่มี list literal, `SetState` vs `UpdateAppState.set`, custom function list arg nullable เสมอ, page param `.withDefault` ไม่ถึง constructor) · **PT-24** (nullable table/view row model field เป็น `String?` จริง ไม่ใช่ `''`, field ใหม่บน view ใช้พุชเดียวกันไม่ได้, `Expanded` vs `shrinkWrap` คนละปัญหา, `outputAs` ชนข้าม widget, ไม่มี `onLongPress`)

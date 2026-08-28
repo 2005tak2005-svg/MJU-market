@@ -1664,3 +1664,18 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ยืนยันจาก `generated_code/`:** การ์ดเป็น `InkWell` จริง เรียก `showAlignedDialog` เปิด `AdPostDetailCardWidget()`, popup bind `FFAppState().viewedAdPost*` ถูกต้องครบ (title/body conditional + fallback), ปุ่มปิดเรียก `context.pop()`
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete
+
+---
+
+## D-77 — เบอร์โทร/เบอร์ติดต่อ: Text Mask ไทย + validate ครบ 10 หลักก่อน submit (2026-08-28)
+
+**สเปค:** pete ขอ mask รูปแบบเบอร์โทรไทยให้ `SignUp` (`PhoneField`) กับ `addproduct` (เบอร์ติดต่อ) แล้วขอเพิ่ม validate ให้กรอกครบ 10 หลักก่อนกดส่งด้วย
+
+**ทำ:**
+- Mask `###-###-####` (fast-lane `TextField.mask.mask`, ยืนยันแล้วว่า map ไป `MaskTextInputFormatter` จริงใน `generated_code/` ไม่ใช่ deprecated proto field) + `keyboardType: phone` ให้ทั้งสอง field
+- `addproduct` (เบอร์ติดต่อ = **บังคับ**, ไม่มี "(ไม่บังคับ)" กำกับเหมือน SignUp): เพิ่ม custom function `isPhoneComplete(String) -> bool` (ตัด `-` แล้วเช็คความยาว==10) ผูกเป็นเงื่อนไขที่ 3 ใน `Button_85x7xhe6` ON_TAP chain (ต่อจากเช็คชื่อสินค้า/หมวดหมู่เดิม) — ครอบทั้งกรณีว่างและกรอกไม่ครบในเช็คเดียว
+- `SignUp` (`PhoneField` = **ไม่บังคับ** ตาม label เดิม): validate อยู่ใน custom action `SignUpWithProfile` (Dart จริง ไม่ใช่ Action Flow) — เพิ่มเช็คว่าถ้ากรอกมาไม่ว่าง ต้องครบ 10 หลัก ถ้าว่างปล่อยผ่านเหมือนเดิม
+
+**กับดักที่เจอ (แก้แล้ว ไม่ใช่ของ session นี้ทำพัง):** `dsl/edit.dart` ตัน compile ตอน push — key `ListView` ของ `Mypost`'s `MyPostsList` drift อีกรอบ (`ListView_1xe02ssc` → `ListView_8nazfbk1`, ครั้งที่ 3 แล้ว ดูคอมเมนต์ในสคริปต์) ไม่เกี่ยวกับงานเบอร์โทรเลย แก้ key แล้ว push ผ่าน
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete · ไม่ได้เพิ่ม validate ระดับ DB (CHECK constraint) ยังพึ่ง client-side อย่างเดียว

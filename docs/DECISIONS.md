@@ -1649,3 +1649,18 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **กับดักใหม่ (รายละเอียด `PATTERNS.md` PT-40):** การ splice action node ออกจากกลางเชนต้อง guard ด้วยเนื้อหา (เช็คชื่อ field ที่ step นั้นเซ็ต) ไม่ใช่ guard ด้วย key — key เปลี่ยนทุกครั้งที่ push (เจอมาแล้วหลายรอบ session นี้) แต่ชื่อ field เป้าหมายไม่เปลี่ยน
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/`)
+
+---
+
+## D-76 — `Home` `AdPostCard` แตะเปิดป๊อปอัพดูโพสต์เต็ม (`AdPostDetailCard`) (2026-08-28)
+
+**สเปค:** pete ขอให้แตะการ์ดโพสต์แอดมิน (`AdPostsList` บน `Home`) แล้วเปิดป๊อปอัพดูโพสต์เต็ม คล้าย `UserProfileCard` (D-55, `Container_8r0nr4pi`)
+
+**ทำ:**
+- 3 App State ใหม่ `viewedAdPostImageUrl`/`viewedAdPostTitle`/`viewedAdPostBody` — ไม่ต้อง custom action fetch แบบ D-55 เพราะข้อมูลอยู่ใน `adPosts` (page state) อยู่แล้ว แตะแล้วก็อปเข้า App State ตรง ๆ
+- Component ใหม่ `AdPostDetailCard`: ปุ่มปิด + รูปเต็ม + หัวข้อ (ซ่อนถ้าว่าง) + เนื้อหาเต็มแบบ scroll ได้ (ซ่อนถ้าว่าง มี fallback "ยังไม่มีรายละเอียดเพิ่มเติม") — ไม่มีปุ่มไลก์/รายงานซ้ำ เพราะมีอยู่แล้วที่การ์ด
+- Re-author `AdPostsList` itemBuilder ทั้งก้อน (`ensureReplaced`, retired หลัง push สำเร็จ ตาม PT-16/21/23) — ต้องทำทั้งก้อนเพราะ onTap ใหม่ต้องอ้าง `item['image_url']`/`item['title']`/`item['body']` (item-scoped, PT-23 §1) เนื้อหารูป/หัวข้อ/แถวไลก์เดิมไม่เปลี่ยนเลย ปุ่มไลก์/เลิกไลก์ยังมี `onPressed` แยกของตัวเอง ไม่ชนกับ `onTap` ของการ์ด
+
+**ยืนยันจาก `generated_code/`:** การ์ดเป็น `InkWell` จริง เรียก `showAlignedDialog` เปิด `AdPostDetailCardWidget()`, popup bind `FFAppState().viewedAdPost*` ถูกต้องครบ (title/body conditional + fallback), ปุ่มปิดเรียก `context.pop()`
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete

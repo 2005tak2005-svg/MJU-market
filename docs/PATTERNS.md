@@ -782,3 +782,28 @@ page.ensureActions(
 ข้อดี: ส่วนที่ typed DSL ทำได้ (validate/insert/reset) ผ่าน compiler เต็มรูปแบบ (ตรวจ shape ให้ฟรี) ส่วนที่ทำไม่ได้ (ChoiceChips read) แตะ raw proto แค่ 1 node เดียวที่รู้ shape แน่นอนอยู่แล้ว ไม่ต้องเดาโครงสร้าง action ทั้งก้อน
 
 **ใช้แล้วที่:** `addproduct`'s `Button_85x7xhe6` (D-70) — เช็คทุกครั้งที่จะ reconstruct action chain เดิมที่มีขั้นตอนอ่านค่า ChoiceChips ปนอยู่ หรือจะเขียน guard เทียบ Dropdown/TextField ว่า "ยังไม่ได้เลือก/กรอก" ด้วย `Equals(..., null)`
+
+---
+
+## PT-38 — ปุ่มเดียวมีหลาย ON_TAP action ไม่ได้: proto เก็บได้แต่ codegen เรนเดอร์แค่ entry แรก (D-72, 2026-08-27)
+
+**ปัญหา:** ต้องการเพิ่ม action ใหม่ (update `bio`) เข้าปุ่มที่มี trigger chain ซับซ้อนอยู่แล้ว (`SaveFullNameButton`) โดยไม่แตะของเดิม ลองเพิ่ม `triggerActions` entry ที่ 2 (`ON_TAP` ซ้ำ) ผ่าน raw proto (`node.triggerActions.add(FFTriggerActions(...))`) — push ผ่าน validate ผ่าน `inspect` เห็น 2 entries จริง แต่ `generated_code/lib/.../*_widget.dart` มี `onPressed` แค่จาก entry แรกเท่านั้น เงียบหาย ไม่มี error — **FlutterFlow codegen เรนเดอร์ ON_TAP ให้ widget เดียวได้แค่ 1 entry เท่านั้น แม้ proto จะเก็บได้หลาย entry ก็ตาม** ห้ามใช้วิธีนี้กับ action ใหม่บนปุ่ม/widget ที่มี ON_TAP อยู่แล้ว
+
+**ทางแก้ที่ใช้ได้จริง:** wrap `rootAction` เดิมแทน ไม่เพิ่ม entry ใหม่ — ห่อ conditional ใหม่ไว้นอกสุด แล้วให้ `followUpAction` ของ node ระดับบนชี้ไปที่ chain เดิม (ย้าย ไม่ก็อปปี้):
+
+```dart
+final mainEntry = button.triggerActions.firstWhere((t) => t.trigger.triggerType == FFActionTriggerType.ON_TAP);
+final existingChain = mainEntry.rootAction; // ย้าย ไม่ก็อปปี้
+mainEntry.rootAction = FFActionNode(
+  key: 'myWrapper',
+  conditionActions: FFConditionActions(
+    trueActions: [FFConditionActions_FFTrueConditionAction(condition: ..., trueAction: myNewActionChain)],
+    // ไม่ต้องมี falseAction
+  ),
+  followUpAction: existingChain, // รันเสมอไม่ว่า trueActions จะ match หรือไม่
+);
+```
+
+**🔴 ห้าม deep-copy `existingChain` ไปไว้ทั้งใน `trueActions[].trueAction.followUpAction` และ `falseAction`** — ลองแล้วพัง: `PostgresUpdate`/`PostgresQuery` ทุกตัวใน chain เดิมมี `outputVariableName` (`nameUpd`/`yearUpd`/...) ก็อปปี้ 2 ชุดชื่อชนกัน validate error "Name already in use" ทันที ใช้ `followUpAction` (sibling field ของ `conditionActions` บน node เดียวกัน ไม่ใช่ nested ใน branch) รันแทน — ยืนยันแล้วว่า **`followUpAction` รันไม่มีเงื่อนไข ไม่สนว่า `trueActions` จะ match ข้อไหนหรือไม่ match เลยก็ตาม** (compile ออกมาเป็น `if (cond) {...}` ตามด้วย chain เดิมนอก if แยกกัน คนละ `if` — ไม่ nested)
+
+**ใช้แล้วที่:** `ProfileUser`'s `SaveFullNameButton` (`Button_66r90pya`, D-72) — เช็คทุกครั้งที่จะเพิ่ม action ใหม่เข้า widget ที่มี trigger เดิมอยู่แล้ว โดยเฉพาะถ้าจะให้ independently-optional จากของเดิม

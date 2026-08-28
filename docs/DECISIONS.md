@@ -1583,3 +1583,18 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ทำ:** เพิ่ม guard บนปุ่ม `Button_2m3kcgma`: `imageUrl == ''` → snackbar "กรุณาอัปโหลดรูปภาพประกาศก่อน" ก่อนถึง insert ส่วน insert/snackbar สำเร็จ/navigate กลับ `HomeAdmin` คงเดิมทุกจุด ง่ายกว่า D-70 เพราะ `imageUrl` เป็น page state ธรรมดา (ไม่ใช่ widget-state read แบบ ChoiceChips) จึงไม่ต้องใช้ raw-proto workaround เลย — `Equals(State(imageUrl), '')` ตรงกับ default จริงของ field พอดี
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง
+
+---
+
+## D-72 — `ProfileUser` เพิ่มฟิลด์ Bio: แสดงค่าปัจจุบัน + แก้ไข + บันทึกเข้า Supabase (2026-08-27)
+
+**สเปค:** pete ขอเพิ่มช่อง Bio ในหน้าโปรไฟล์ตัวเอง (`ProfileUser`, `Scaffold_8myjbpxe`) — ทั้งแสดงผลและบันทึกเข้า Supabase `"Profile".bio` คอลัมน์นี้มีอยู่แล้ว (nullable text, D-55) และลงทะเบียนใน typed SDK's ProfileFields แล้วตั้งแต่ D-57 จึงไม่ต้องแตะ schema เลย งานนี้เป็น FlutterFlow-only ทั้งหมด
+
+**ทำ:**
+- Text แสดง bio ปัจจุบัน (`Text_fp8vxt1z`, ชื่อ `BioDisplayText`) ต่อท้ายบรรทัดอีเมลใน ProfileHeader — bind ผ่าน page-level query (`Scaffold_8myjbpxe`'s `databaseRequest`) แบบเดียวกับ `full_name`/`email` visibility `EXISTS_AND_NON_EMPTY` (ซ่อนเมื่อว่าง ไม่มี fallback text)
+- `TextField` "Bio" (`NewBioField`, page state `newBio`) ต่อท้าย FacultyDropdown ก่อนปุ่ม Save ใน RenameProfileFields
+- ปุ่ม `SaveFullNameButton` (`Button_66r90pya`) เพิ่ม logic "ถ้า `newBio != ''` → update `bio` → เคลียร์ `newBio` → snackbar 'บันทึก Bio แล้ว'" **เป็น independent จากชุด full_name/year/faculty เดิมทั้งหมด** — กรอกแค่ Bio อย่างเดียวก็บันทึกได้ ไม่ต้องกรอกฟิลด์อื่น (ตรงข้ามกับชุดเดิมที่ยังมีบั๊กเดิมอยู่ว่าต้องกรอกครบ 3 ฟิลด์ถึงจะเห็นผล refetch/reset/snackbar — บั๊กนี้ไม่ได้แตะ ไม่อยู่ในสโคป)
+
+**กับดักที่เจอระหว่างทำ (รายละเอียด `PATTERNS.md` PT-38):** ลองเพิ่ม action ใหม่เป็น `triggerActions` entry ที่ 2 บนปุ่มเดิมก่อน (คิดว่าปลอดภัยกว่าไม่แตะของเดิมเลย) — push ผ่าน แต่ codegen เรนเดอร์ ON_TAP ให้ปุ่มได้แค่ entry เดียว entry ที่ 2 หายเงียบ ไม่มี error ต้องแก้เป็น wrap `rootAction` เดิมแทน (`followUpAction` รันไม่มีเงื่อนไข ไม่ต้อง deep-copy chain เดิมไปไว้ 2 ที่ ซึ่งจะชน `outputVariableName` ซ้ำ)
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/` ว่า logic ตรงตามต้องการ) · `phone` ยังไม่มีช่องแก้ไข (ค้างจาก L1 เดิม)

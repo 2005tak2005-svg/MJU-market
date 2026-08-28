@@ -51,7 +51,8 @@
    - visibility ของทุก field ใช้ `EXISTS_AND_NON_EMPTY` / `DOES_NOT_EXIST_OR_IS_EMPTY` (**ห้ามใช้ `EQUAL_TO ''`** — ดู PT-14 ข้อ 2)
    - อัปรูป → bucket `avatars` path `<currentUserId>/<ไฟล์>` (PT-08) **ต้องตั้ง `maxResolution` + `imageQuality`** ไม่งั้นโดน 413 (PT-14 ข้อ 3)
    - ทดสอบผ่านแอปจริงแล้ว: แสดงข้อมูลถูก · เปลี่ยนชื่อ/รูปได้ · Log Out ออกจริง
-   - ⬜ ยังไม่ได้ทำ: แก้ `phone` / `bio`
+   - ✅ **`bio`: แสดง + แก้ไข + บันทึกเข้า Supabase — D-72 (2026-08-27)** independent จากชุด full_name/year/faculty (กรอกแค่ Bio อย่างเดียวก็บันทึกได้) — **ยังไม่ได้ทดสอบผ่านแอปจริง**
+   - ⬜ ยังไม่ได้ทำ: แก้ `phone`
    ❌ **`student_id` และ `role` แก้ไม่ได้** — `with_check` ของ policy บล็อกไว้ทั้งคู่
 
 5. **App State (ของจริงใน v2 ตอนนี้):** `email` / `password` / `fullName` / `phone` (ใช้ตอน Sign Up) — **ยังไม่มี** `currentUserId` / `currentUserRole` ระดับ app ตามที่ร่างไว้เดิม เพราะ role check ย้ายไปอยู่ใน custom action `IsCurrentUserAdmin` แทน (ดูข้อ 3) ถ้า layer หลังต้องใช้ `currentUserRole` ที่ระดับ app ต้องเพิ่มเอง
@@ -126,7 +127,7 @@
 | ที่ใช้ในเอกสาร | ประเภท | หมายเหตุ |
 |---|---|---|
 | `SignUp` · `Login` · `Home` · `HomeAdmin` · `ConfirmEmail` · `ProfileUser` · `ProductDetails` · `addproduct` · `Mypost` | ชื่อหน้า | `ConfirmEmail` ใหม่ 2026-08-09 (D-20, route `/confirm-email`) · `ProfileUser`/`ProductDetails`/`Mypost` เพิ่ม 2026-08-14 — 9 หน้าที่มีอยู่ใน v2 ตอนนี้ |
-| `ProfileUser` widget keys | Node key | `Scaffold_8myjbpxe` (page query) · `Container_vxr167r8` AvatarUploadTrigger · `Image_lt96pnt8` AvatarStoredImage · `Container_r0wbdujg` placeholder · `Text_wonqknhq` full_name · `Text_8jg3asd2` fallback ชื่อ · `Text_1x2wui64` email · `Container_twiyefr8` Edit Profile (toggle) · `Button_wbzo87yz` Log Out — 🔴 **อ้างด้วย key เสมอ ห้ามใช้ positional path** (PT-14 ข้อ 4) |
+| `ProfileUser` widget keys | Node key | `Scaffold_8myjbpxe` (page query) · `Container_vxr167r8` AvatarUploadTrigger · `Image_lt96pnt8` AvatarStoredImage · `Container_r0wbdujg` placeholder · `Text_wonqknhq` full_name · `Text_8jg3asd2` fallback ชื่อ · `Text_1x2wui64` email · `Text_fp8vxt1z` BioDisplayText (D-72) · `Container_twiyefr8` Edit Profile (toggle) · `Button_wbzo87yz` Log Out · `TextField_7g6k3ztw` NewFullNameField · `DropDown_7d69khfq` YearOfStudyDropdown · `DropDown_u54ggrfr` FacultyDropdown · `TextField_tyxvqh4t` NewBioField (D-72) · `Button_66r90pya` SaveFullNameButton — 🔴 **อ้างด้วย key เสมอ ห้ามใช้ positional path** (PT-14 ข้อ 4) |
 | `SignUpWithProfile` · `IsCurrentUserAdmin` · `LoginWithEmailPassword` · `VerifyOtp` · `ResendSignupOtp` | Custom Action | ทั้งหมดรับ 0 argument ตามเหตุผลใน PT-09 · `LoginWithEmailPassword` ใหม่ 2026-08-09 (D-17) แทนที่ built-in `LoginEmailPassword` — sync `AppStateNotifier` เอง ดู PT-11 · `VerifyOtp`/`ResendSignupOtp` ใหม่ 2026-08-09 (D-20) — `VerifyOtp` ก็ sync `AppStateNotifier` เองเหมือนกัน (PT-11 ใช้ซ้ำ) |
 | `email` · `password` · `fullName` · `phone` · `loginEmail` · `loginPassword` · `otpCode` | App State | `loginEmail`/`loginPassword` ใหม่ 2026-08-09 — ย้ายจาก Page State ของ `Login` มาเป็น App State เพราะ `LoginWithEmailPassword` (custom action 0 arg) อ่านได้แค่ App State ตาม PT-09 · `otpCode` ใหม่ 2026-08-09 (D-20) — อ่านโดย `VerifyOtp` |
 

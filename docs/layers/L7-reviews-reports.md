@@ -21,7 +21,9 @@
 
 `ReportUserSheet` (component ใหม่, D-65 — mirror `ReportProductSheet` เป๊ะ, param `userId`) · ปุ่ม "รายงานผู้ใช้" แทรกใน `UserProfileCard` (D-55's popup — ครอบคลุมทุกจุดเข้าถึงโปรไฟล์: `ProductDetails`/`BannedUsers`/`UserDirectory`) ผูก visibility ซ่อนตอนดูโปรไฟล์ตัวเองด้วย typed `visible: Not(Equals(...))` ล้วน ไม่ต้องใช้ raw proto (ต่างจาก D-51 เพราะทั้งสองฝั่งเป็น typed expression อยู่แล้ว)
 
-`RateSellerSheet` (component ใหม่, D-64) — `Slider` 1-5 (ไม่มี `RatingBar` ที่ construct ได้จริงในระบบนี้) + comment `TextField` + ปุ่มยกเลิก/ส่ง · custom action `submitSellerReview` (0-arg, หา `transaction_id`/`seller_id` เองจาก `transactions` แล้ว insert `reviews` ตรง ไม่ผ่าน RPC) · ปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` ต่อจาก `ContactAdminButton` ผูก visibility เข้ากับ `can_rate_seller` ผ่าน `productField()`/`nodeKeyRef` เดิม (D-44/D-59) — โชว์เฉพาะผู้ซื้อจริงของสินค้าที่ขายแล้วและยังไม่เคยรีวิว
+`RateSellerSheet` (component ใหม่, D-64) — **ช่องให้คะแนนเปลี่ยนจาก `Slider` 1-5 เป็นแตะเลือก 5 ดาว (`StarRatingInput` custom widget, D-75)** + comment `TextField` + ปุ่มยกเลิก/ส่ง · custom action `submitSellerReview` (0-arg, หา `transaction_id`/`seller_id` เองจาก `transactions` แล้ว insert `reviews` ตรง ไม่ผ่าน RPC) · ปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` ต่อจาก `ContactAdminButton` ผูก visibility เข้ากับ `can_rate_seller` ผ่าน `productField()`/`nodeKeyRef` เดิม (D-44/D-59) — โชว์เฉพาะผู้ซื้อจริงของสินค้าที่ขายแล้วและยังไม่เคยรีวิว
+
+**คะแนนเฉลี่ยผู้ขายโชว์ที่การ์ดสินค้าหน้า Home แล้วด้วย (D-75)** — `seller_avg_rating`/`seller_review_count` (มีอยู่แล้วบน `products_review_view` ตั้งแต่ D-64) โชว์เป็น 5 ดาว + จำนวนรีวิวใน `ProductGridSection`
 
 **ยังไม่ทำ (ตามคำตอบ pete):** แก้ไข/ลบรีวิวที่โพสต์แล้ว · แสดงคะแนนเฉลี่ยที่หน้าโปรไฟล์ผู้ขาย (ทำแค่บน `ProductDetails`) · หน้า "MyPurchases" แยก (จุดเข้าใช้ `ProductDetail` เดิม) · แยก tab/filter รายงานสินค้า vs ผู้ใช้บน `ReportsFeedback` list (list ยังโชว์รวมกัน แค่ `ReportDetail` แยกเนื้อหา)
 

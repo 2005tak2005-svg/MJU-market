@@ -1632,3 +1632,20 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 2. ลองเช็ค `Equals(item['ref_product_id'], null)` ก่อน — compile เป็น `== ''` ไม่ใช่เช็ค null จริง (ขยาย PT-37 จาก widget-state ไปถึง item-scoped Postgres field) เปลี่ยนไปเช็ค `type` (NOT NULL) แทน
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/`) · ไม่มี thumbnail สินค้าในแถว approved/rejected (ตัดสโคปตามที่ pete เลือก) · `listing_approved` ยังไม่มี write path จริง (หนี้เดิม L6 ไม่เกี่ยวกับงานนี้)
+
+---
+
+## D-75 — `RateSellerSheet`: Slider → แตะเลือก 5 ดาว + โชว์คะแนนเฉลี่ยผู้ขายที่การ์ดสินค้าหน้า Home (2026-08-28)
+
+**คำถาม:** pete ถามว่าคุ้มไหมที่จะเปลี่ยน `Slider_mscx98aq` (ช่องให้คะแนนใน `RateSellerSheet`) เป็น widget ดาว แล้วขอให้โชว์คะแนนเฉลี่ยผู้ขายที่การ์ดสินค้า Grid หน้า Home ด้วย
+
+**ตรวจก่อนตอบ:** FFWidgetType มี `RatingBar` จริง (ตั้งค่า literal ผ่าน fast-lane patch ได้) แต่ typed DSL ไม่มี wrapper ให้ และที่สำคัญกว่า — ไม่มีทางผูกค่า/ไอคอนของ `Icon` แบบ dynamic ใน DSL นี้เลย (`Icon.icon` เป็น `String` literal ไม่ใช่ DslExpression) ทำให้สร้างแถวดาวแบบแตะแล้วเปลี่ยนสีจริงด้วย native FF widget ไม่ได้ตรงๆ **คำตอบ:** คุ้ม แต่ทางที่ไปได้จริงคือ custom Flutter widget (แบบเดียวกับ `ProductGridSection`, PT-36) ไม่ใช่ FF widget tree
+
+**ทำ:**
+- Custom widget ใหม่ `StarRatingInput` (stateful, 5 ดาวแตะเลือกได้) เขียนเข้า `FFAppState().pendingReviewRating` ตรงทุกครั้งที่แตะ ไม่ต้องมี callback — แทนที่ `Slider_mscx98aq` ใน `RateSellerSheet`
+- ปุ่ม "ส่งรีวิว" เดิมมี step "`pendingReviewRating = Slider's widget state`" กลายเป็น dead code เมื่อ Slider หายไป — ตัด step นี้ออกจาก action chain ด้วย raw proto แบบ splice (`firstNode.followUpAction = firstNode.followUpAction.followUpAction`) ไม่แตะ step อื่นเลย
+- `ProductGridSection` (custom widget การ์ดสินค้าหน้า Home, มีอยู่แล้ว) เพิ่มแถว 5 ดาว + จำนวนรีวิว ผูกกับ `product.sellerAvgRating`/`sellerReviewCount` — คอลัมน์ทั้งสองมีอยู่แล้วบน `products_review_view` ตั้งแต่ D-64 ไม่ต้องแก้ schema เลย
+
+**กับดักใหม่ (รายละเอียด `PATTERNS.md` PT-40):** การ splice action node ออกจากกลางเชนต้อง guard ด้วยเนื้อหา (เช็คชื่อ field ที่ step นั้นเซ็ต) ไม่ใช่ guard ด้วย key — key เปลี่ยนทุกครั้งที่ push (เจอมาแล้วหลายรอบ session นี้) แต่ชื่อ field เป้าหมายไม่เปลี่ยน
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริง (ตรวจแค่ `generated_code/`)

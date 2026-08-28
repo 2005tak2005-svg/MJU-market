@@ -1639,7 +1639,7 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **คำถาม:** pete ถามว่าคุ้มไหมที่จะเปลี่ยน `Slider_mscx98aq` (ช่องให้คะแนนใน `RateSellerSheet`) เป็น widget ดาว แล้วขอให้โชว์คะแนนเฉลี่ยผู้ขายที่การ์ดสินค้า Grid หน้า Home ด้วย
 
-**ตรวจก่อนตอบ:** FFWidgetType มี `RatingBar` จริง (ตั้งค่า literal ผ่าน fast-lane patch ได้) แต่ typed DSL ไม่มี wrapper ให้ และที่สำคัญกว่า — ไม่มีทางผูกค่า/ไอคอนของ `Icon` แบบ dynamic ใน DSL นี้เลย (`Icon.icon` เป็น `String` literal ไม่ใช่ DslExpression) ทำให้สร้างแถวดาวแบบแตะแล้วเปลี่ยนสีจริงด้วย native FF widget ไม่ได้ตรงๆ **คำตอบ:** คุ้ม แต่ทางที่ไปได้จริงคือ custom Flutter widget (แบบเดียวกับ `ProductGridSection`, PT-36) ไม่ใช่ FF widget tree
+**ตรวจก่อนตอบ:** FFWidgetType มี `RatingBar` จริง — ตอนแรกเข้าใจผิดว่า bind แบบ dynamic ไม่ได้เลย (เช็คแค่ `list_props`/fast-lane ซึ่งเป็น literal-only surface) แต่ proto จริง (`FFRatingBar`) มี `allowInteraction: bool` (แตะเลือกได้จริง เหมือน Slider) + `initialRatingValue`/`unratedColorValue`/`emptyIconValue`/`fullIconValue` เป็น `*Value` type ที่ผูก `variable:` ได้ปกติ — **แก้ความเข้าใจผิดนี้กับ pete ตรงๆ แล้ว**: native `RatingBar` ทำได้จริง แค่ต้องผ่าน raw proto (`node.props.ensureRatingBar()`) เพราะ typed DSL ไม่มี wrapper class ให้ ไม่ใช่ทำไม่ได้เลย — **pete ตัดสินใจแล้วว่าใช้ custom widget ต่อไป** (เหตุผล: UX ที่ต้องการเป็นแบบ "star rating ทั่วไป" อยู่แล้ว ของเดิมที่ทำ+ทดสอบผ่านแล้วตอบโจทย์พอ ไม่คุ้มรื้อไปทำ raw-proto RatingBar ซ้ำ) — ถ้าจะกลับไปทาง native ทีหลัง ดูจุดเริ่มที่ `node.props.ensureRatingBar()` ในคอมเมนต์นี้
 
 **ทำ:**
 - Custom widget ใหม่ `StarRatingInput` (stateful, 5 ดาวแตะเลือกได้) เขียนเข้า `FFAppState().pendingReviewRating` ตรงทุกครั้งที่แตะ ไม่ต้องมี callback — แทนที่ `Slider_mscx98aq` ใน `RateSellerSheet`

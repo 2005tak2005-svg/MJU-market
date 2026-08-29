@@ -1697,3 +1697,21 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **กับดักที่เจอ (คุ้มบันทึกกันซ้ำ):** key ของ `ListView` drift อีกรอบระหว่าง session นี้เอง (`ListView_px04ibmd` → `ListView_oru8qeq4` หลัง push) — ยืนยันด้วย `flutterflow ai inspect --page Mypost` สดก่อน `ensureReplaced` ทุกครั้งตามเคย ครั้งนี้ไม่โดนเพราะเช็คซ้ำก่อน push
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete (โดยเฉพาะ error path ตอนลบไม่สำเร็จ/ปิด dialog กลางคัน) · ไม่ได้ทำ optimistic remove จาก `myPostsList` เอง เพราะเหตุผลข้างบน — ถ้า pete สลับ filter chip/refresh หน้าไวมากหลังลบอาจเห็นแถวเก่าโผล่กลับมาแวบเดียวก่อนหายจริงตอน query ใหม่ (ไม่ crash แค่ภาพหลอนชั่วครู่ ไม่เคยเกิดจริงเพราะทุก refresh path ใน `Mypost` เป็น query ใหม่จาก DB ทั้งหมด)
+
+---
+
+## D-79 — Pre-migration security audit: ปิด 2 ช่องโหว่จริงในระบบ Ban (D-52) (2026-08-29)
+
+**บริบท:** pete ลองเล่นแอปคร่าวๆ แล้วเห็นว่า flow หลักถูกต้อง กำลังพิจารณาย้ายออกจาก FlutterFlow ไปพัฒนาต่อบน IDE ธรรมดา (export code แบบ one-way ตามกฎ CLAUDE.md ข้อ 6) — ก่อนตัดสินใจ pete ยืนยันให้ทดสอบด้วยบัญชี user ธรรมดาให้ครบก่อนตามที่ DoD กำหนด สั่ง `db-verifier` ไล่ตรวจ RLS/impersonation ของทุก decision ที่ยัง flag ว่า "ยังไม่ทดสอบผ่านแอปจริง" (D-52/53/56/58/59/60/64/65/32/33/61) เจอว่าเกือบทั้งหมด **PASS จริง** ยกเว้น 2 จุดใน D-52
+
+**เจอจริง:**
+1. **`products` (ตารางจริง) ไม่มี RLS ซ่อนประกาศของผู้ถูกแบนเลย** — การซ่อนเดิมทำแค่ที่ `products_review_view` (gate-in-view) ยืนยันด้วย impersonation: user ธรรมดา query `products` ตรง ๆ (ไม่ผ่าน view) เห็นประกาศของผู้ถูกแบนครบ
+2. **`enforce_ban_admin_only` trigger (D-52) enforce แค่ "ต้องเป็นแอดมิน" ไม่ได้ enforce "ต้องผ่าน RPC"** — กฎห้ามแบนตัวเอง/ห้ามแบนแอดมิน/ต้องมีเหตุผล เป็นแค่ convention ใน `admin_set_user_ban()` ยืนยันด้วย impersonation จริง 3 เคส: แอดมินแบนแอดมินอื่นตรงๆสำเร็จ, แอดมินที่ถูกแบน (setup ผ่าน raw UPDATE) ปลดแบนตัวเองตรงๆสำเร็จ, แบนด้วยเหตุผลว่างสำเร็จ — ทั้งหมด bypass ได้เพราะไม่ผ่าน RPC
+
+**แก้:**
+1. เพิ่ม RESTRICTIVE policy `products_block_banned_seller_select` บน `products` — พาริตี้กับ `products_review_view` เป๊ะ (`NOT private.is_user_banned(seller_id) OR seller_id = auth.uid() OR private.is_admin()`) ไม่กระทบ soft-ban เดิม (ผู้ถูกแบนยังท่องแอปได้)
+2. ย้าย 3 กฎจาก `admin_set_user_ban()` เข้า `enforce_ban_admin_only()` เอง (ห้ามแก้แถวตัวเอง/ห้ามแบนแอดมิน/ต้องมีเหตุผลเมื่อ `is_banned=true`) — RPC ยังคง guard เดิมไว้คู่กัน (error message อ่านง่ายกว่าก่อนชน trigger)
+
+ยืนยันด้วย impersonation ซ้ำหลังแก้ทั้ง 3 เคสข้างบน (error ตรงตามที่คาด) + regression test ว่า `admin_set_user_ban()` (การแบนที่ถูกต้องตามกติกา) ยังทำงานปกติ + `get_advisors` security ไม่มี finding ใหม่จากการแก้นี้ รายละเอียด SQL เต็ม `SCHEMA.md` (ตาราง RESTRICTIVE + `enforce_ban_admin_only`)
+
+**ยังไม่ทำ:** `search_products` (D-62) มี advisor finding `function_search_path_mutable` ที่ไม่เคยบันทึกไว้ — ยังไม่แก้ (ไม่กระทบ correctness เท่า 2 จุดข้างบน) · ยังไม่ให้ ui-checker ยืนยันว่ามีจุดใดใน FlutterFlow DSL ผูก query เข้า `products` ตรงๆ แทน view/RPC หรือไม่ (ช่องโหว่ข้อ 1 เป็นการปิดที่ DB ไว้ก่อน ยังไม่รู้ว่าเคยถูกใช้จริงหรือเปล่า)

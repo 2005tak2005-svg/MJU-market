@@ -1679,3 +1679,21 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **กับดักที่เจอ (แก้แล้ว ไม่ใช่ของ session นี้ทำพัง):** `dsl/edit.dart` ตัน compile ตอน push — key `ListView` ของ `Mypost`'s `MyPostsList` drift อีกรอบ (`ListView_1xe02ssc` → `ListView_8nazfbk1`, ครั้งที่ 3 แล้ว ดูคอมเมนต์ในสคริปต์) ไม่เกี่ยวกับงานเบอร์โทรเลย แก้ key แล้ว push ผ่าน
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete · ไม่ได้เพิ่ม validate ระดับ DB (CHECK constraint) ยังพึ่ง client-side อย่างเดียว
+
+---
+
+## D-78 — `Mypost`'s `MyPostsList`: swipe ซ้ายไปขวาเพื่อลบประกาศ (พร้อม dialog ยืนยัน) (2026-08-29)
+
+**สเปค:** pete ขอ swipe-to-delete บนแต่ละแถวของ `ListView_px04ibmd` (`MyPostsList`) — เลือกแบบ confirm dialog ก่อนลบจริง (ไม่ใช่ immediate+undo) + swipe ซ้ายไปขวา ใช้ได้กับทุกแถวรวมของที่ขายแล้ว
+
+**ตรวจก่อนทำ:** ไม่มี native swipe/`Dismissible`/`Slidable` widget หรือ trigger type ใดๆ ในเลเยอร์ DSL นี้เลย (grep ทั้ง SDK ไม่เจอ) — ต้องใช้ custom widget ตามกฎข้อ 9
+
+**ทำ:**
+- Custom widget ใหม่ `MyPostSwipeableRow` — ห่อแถว title/price/moderation_status/sold-badge เดิมด้วย `Dismissible` (`direction: startToEnd`) + `AlertDialog` ยืนยันก่อนลบจริงเสมอ
+- **ลบจริงและ navigate ทำข้างในตัว widget เองตรงๆ** (`Supabase.instance.client.from('products').delete().eq('id', ...)` + `context.pushNamed(ProductDetailsWidget.routeName, ...)`) — ไม่ใช้ FF action-chain callback เลย เพราะ**พารามิเตอร์ชนิด action บน custom widget ใช้ไม่ได้ในเวอร์ชัน SDK นี้** (`flutterflow ai validate` ฟ้องตรงๆ: `Unsupported operation: Action types are not compiled in declaration pass 1.` — component (`app.component`) รองรับ action param ปกติ แต่ custom widget (`app.customWidget`) ไม่รองรับ ต่างชั้นกัน)
+- ลบสำเร็จแล้วซ่อนตัวเองด้วย local state (`_deleted` + `setState`) ไม่พึ่ง parent list อัปเดต — เลี่ยงปัญหา `Dismissible` assertion (ต้องหายจากข้อมูลจริงก่อน widget ถูก rebuild) โดยไม่ต้องมีทางย้อนกลับไปแก้ page state `myPostsList` เลย (เข้าถึงไม่ได้จาก custom widget อยู่แล้ว ไม่มี Provider ห่อ `_model`)
+- Re-author `MyPostsList` itemBuilder ทั้งก้อนผ่าน `ensureReplaced` (จำเป็นเพราะ `item['field']` ใช้นอก itemBuilder สดไม่ได้ ตาม PT-23 §1/D-42) — retired ออกจากสคริปต์แล้วหลัง push สำเร็จ (PT-36 §3) เหลือแค่ `updateCustomWidget` แบบ rerun-safe ไว้สำหรับแก้โค้ด widget ทีหลัง
+
+**กับดักที่เจอ (คุ้มบันทึกกันซ้ำ):** key ของ `ListView` drift อีกรอบระหว่าง session นี้เอง (`ListView_px04ibmd` → `ListView_oru8qeq4` หลัง push) — ยืนยันด้วย `flutterflow ai inspect --page Mypost` สดก่อน `ensureReplaced` ทุกครั้งตามเคย ครั้งนี้ไม่โดนเพราะเช็คซ้ำก่อน push
+
+**ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete (โดยเฉพาะ error path ตอนลบไม่สำเร็จ/ปิด dialog กลางคัน) · ไม่ได้ทำ optimistic remove จาก `myPostsList` เอง เพราะเหตุผลข้างบน — ถ้า pete สลับ filter chip/refresh หน้าไวมากหลังลบอาจเห็นแถวเก่าโผล่กลับมาแวบเดียวก่อนหายจริงตอน query ใหม่ (ไม่ crash แค่ภาพหลอนชั่วครู่ ไม่เคยเกิดจริงเพราะทุก refresh path ใน `Mypost` เป็น query ใหม่จาก DB ทั้งหมด)

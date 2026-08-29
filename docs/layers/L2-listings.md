@@ -55,6 +55,8 @@ Backend Query ผูก `products_review_view` filter `seller_id = currentUserId
 
 ✅ **filter `seller_id` apply แล้ว (D-35) + status filter chip กรอง list จริงแล้ว (D-37, 2026-08-18)** — เดิม query ไม่มี filter เลย (D-32 ข้อ 5) `D-35` แก้ผ่าน widget-level query patch บน `ListView_7h86cihf` ตอนแรก แต่ widget-level query ผูก filter แบบ dynamic ไม่ได้ (D-36) `D-37` เลยย้ายทั้งหน้าไปใช้ pattern onLoad + page state (เหมือน `Home`) แทน — ยังไม่ได้ทดสอบผ่านแอปจริงด้วย user ธรรมดา
 
+✅ **swipe ซ้ายไปขวาที่แถวเพื่อลบประกาศได้แล้ว (D-78, 2026-08-29)** — custom widget `MyPostSwipeableRow` (`Dismissible` + confirm dialog) ลบผ่าน Supabase ตรง ๆ ในตัว widget เอง (custom widget ใช้ action-param callback ไม่ได้ในเวอร์ชัน SDK นี้ ดู `PATTERNS.md` PT-41) — ยังไม่ได้ทดสอบผ่านแอปจริง
+
 ## 🎨 C. หน้า `Inspect` — Admin approve
 
 1. **DataTable** ผูก `products_review_view` filter `moderation_status = 'pending'`

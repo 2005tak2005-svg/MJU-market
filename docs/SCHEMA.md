@@ -811,9 +811,12 @@ RLS `ENABLE` ครบทั้ง 14 ตาราง จำนวน policy ต
 | `products` | products_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
 | `products` | products_block_banned_update | UPDATE | `NOT private.is_banned()` | `NOT private.is_banned()` |
 | `products` | products_block_banned_delete | DELETE | `NOT private.is_banned()` | – |
+| `products` | products_block_banned_seller_select | SELECT | `NOT private.is_user_banned(seller_id) OR seller_id = auth.uid() OR private.is_admin()` | – |
 | `reports` | reports_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
 | `chat_message` | chat_message_block_banned_insert | INSERT | – | `NOT private.is_banned() OR private.chat_has_admin(chat_id)` |
 | `reviews` | reviews_block_banned_insert | INSERT | – | `NOT private.is_banned()` |
+
+> ✅ **D-79 (2026-08-29):** เพิ่ม `products_block_banned_seller_select` — เดิม 5 ตัวข้างบนจงใจไม่แตะ SELECT เพราะเข้าใจว่า "soft ban" = ไม่ต้องซ่อนอะไรเพิ่มจาก SELECT เลย แต่การซ่อนประกาศของผู้ถูกแบน**จากคนอื่น**เดิมทำแค่ที่ `products_review_view` (gate-in-view) — ถ้า client query `products` ตรง ๆ จะเห็นประกาศของผู้ถูกแบนหลุดออกมา (พบจาก db-verifier ก่อนพิจารณาย้ายออกจาก FlutterFlow) ตัวใหม่นี้ปิดช่องที่ table-level โดยไม่กระทบ soft-ban เดิม: เจ้าของเห็นของตัวเอง, แอดมินเห็นหมด, ผู้ถูกแบนยังท่องแอปได้ปกติ — พาริตี้กับ `products_review_view` เป๊ะ
 
 ```sql
 -- with_check ของ "Users can update own profile" (ค่าจริง คำต่อคำ)
@@ -1025,6 +1028,15 @@ BEGIN
   IF NOT private.is_admin() THEN
     RAISE EXCEPTION 'Only admins can change ban status';
   END IF;
+  IF new.id = auth.uid() THEN
+    RAISE EXCEPTION 'cannot change your own ban status';
+  END IF;
+  IF new.is_banned = true AND new.role = 'admin' THEN
+    RAISE EXCEPTION 'cannot ban an admin';
+  END IF;
+  IF new.is_banned = true AND btrim(coalesce(new.ban_reason, '')) = '' THEN
+    RAISE EXCEPTION 'ban reason is required';
+  END IF;
   RETURN NEW;
 END;
 $function$;
@@ -1042,6 +1054,7 @@ CREATE TRIGGER enforce_ban_admin_only
 - แม่แบบเดียวกับ `enforce_moderation_admin_only` เป๊ะ (D-23) — ปิดช่องที่ `with_check` ของ `Users can update own profile` ล็อกไม่ถึง
 - คุม 4 คอลัมน์ในที่เดียว · `WHEN` เทียบ OLD/NEW ก่อน แก้ `full_name`/`avatar_url` ปกติไม่โดน
 - ยังผ่านตอน `admin_set_user_ban` เรียก เพราะ `private.is_admin()` อ่าน `auth.uid()` ซึ่งคงเป็นแอดมินคนเรียกแม้อยู่ใน SECURITY DEFINER
+- ✅ **D-79 (2026-08-29):** เพิ่ม 3 เงื่อนไข (ห้ามแก้แถวตัวเอง/ห้ามแบนแอดมิน/ต้องมีเหตุผลเมื่อแบน) เข้า trigger เอง — เดิม 3 กฎนี้อยู่แค่ใน `admin_set_user_ban()` (ด้านล่าง) เป็น **convention** ไม่ใช่ **enforcement** จริง แอดมินที่ UPDATE `"Profile"` ตรง ๆ (ข้าม RPC) bypass ได้ทั้งหมด — ยืนยันจาก db-verifier ก่อนพิจารณาย้ายออกจาก FlutterFlow ตอนนี้ทั้ง path ตรง/ผ่าน RPC ถูกกฎเดียวกันแล้ว (RPC ยังคง guard ของตัวเองไว้ด้วยเพื่อ error message ที่อ่านง่ายกว่าก่อนชน trigger)
 
 ### `public.admin_set_user_ban()` (L8, เพิ่ม 2026-08-21, D-52)
 

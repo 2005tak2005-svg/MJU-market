@@ -1715,3 +1715,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 ยืนยันด้วย impersonation ซ้ำหลังแก้ทั้ง 3 เคสข้างบน (error ตรงตามที่คาด) + regression test ว่า `admin_set_user_ban()` (การแบนที่ถูกต้องตามกติกา) ยังทำงานปกติ + `get_advisors` security ไม่มี finding ใหม่จากการแก้นี้ รายละเอียด SQL เต็ม `SCHEMA.md` (ตาราง RESTRICTIVE + `enforce_ban_admin_only`)
 
 **ยังไม่ทำ:** `search_products` (D-62) มี advisor finding `function_search_path_mutable` ที่ไม่เคยบันทึกไว้ — ยังไม่แก้ (ไม่กระทบ correctness เท่า 2 จุดข้างบน) · ยังไม่ให้ ui-checker ยืนยันว่ามีจุดใดใน FlutterFlow DSL ผูก query เข้า `products` ตรงๆ แทน view/RPC หรือไม่ (ช่องโหว่ข้อ 1 เป็นการปิดที่ DB ไว้ก่อน ยังไม่รู้ว่าเคยถูกใช้จริงหรือเปล่า)
+
+---
+
+## D-80 — แก้ Live Test Mode Analyzer Error บน `MyPostSwipeableRow` (D-78) (2026-08-30)
+
+**พบ:** pete กด Retry/รัน Live Test Mode ครั้งแรกหลัง D-78 เจอ `argument_type_not_assignable: The argument type 'String?' can't be assigned to the parameter type 'String'` ที่ `mypost_widget.dart`
+
+**ตรวจก่อนแก้ (กฎข้อ 9):** `flutterflow ai inspect --page Mypost --outline` ยืนยัน key `ListView_oru8qeq4` ยังตรงตามที่ D-78 บันทึกไว้ (ไม่ใช่ key drift รอบใหม่) — ปัญหาไม่ได้อยู่ที่ binding แต่อยู่ที่ type ของ custom widget parameter เอง อ่าน `generated_code/lib/mypost/mypost_widget.dart` เจอ call site `MyPostSwipeableRow(productId: myPostsListItemItem.id, ...)` เทียบกับ `generated_code/.../tables/products_review_view.dart` แล้วพบว่า **`ProductsReviewViewRow` ทุก field เป็น `Type?` หมด** (`String? get id => getField<String>('id')`) แม้ `products.id` เป็น PK `NOT NULL` จริงใน Supabase — codegen ไม่สนใจ constraint จริงของคอลัมน์เลย เป็น pattern เดียวกับ PT-27 §4/§6 (custom function param/return เป็น nullable เสมอ) แค่ยังไม่เคยชนกับ row model field `id` มาก่อนเพราะเพิ่งมี custom widget ตัวแรก (D-78) ที่ประกาศ parameter เป็น `required String` (non-nullable) รับค่าจาก row model ตรงๆ
+
+**แก้:** `MyPostSwipeableRow.productId` เปลี่ยนจาก `required String` เป็น `String?` (ไม่ required) แล้ว guard ด้วย `widget.productId ?? ''` เก็บเป็น local `productId` ตัวเดียวใช้ทั่ว build() แทน `widget.productId` เดิม — เพิ่ม early-return (bail out พร้อม snackbar error สำหรับ delete, เงียบๆสำหรับ tap-to-navigate) เมื่อ `productId.isEmpty` กันกรณี (ทางทฤษฎี ไม่เคยเกิดจริง) ที่แถวไม่มี id จริง ผ่าน `updateCustomWidget('MyPostSwipeableRow', ...)` เดิม (rerun-safe ตาม PT-36 §3) ไม่ต้องแตะ itemBuilder/`ensureReplaced` เลย
+
+**ยืนยัน:** `flutterflow ai validate`/`run` ผ่าน + เช็ค `generated_code/` ว่า call site (`productId: myPostsListItemItem.id` ซึ่งเป็น `String?`) ตอนนี้ type ตรงกับ parameter ใหม่แล้ว (`String?` ↔ `String?`) — **ยังไม่ได้ให้ pete กด Live Test Mode ซ้ำยืนยันว่า error หายจริง**

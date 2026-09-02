@@ -322,6 +322,24 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 
 - composite PK กันกดไลก์ซ้ำในตัว ไม่ต้อง UNIQUE เพิ่ม · insert/delete เท่านั้น ไม่มี UPDATE policy (ไลก์เป็น toggle)
 
+### `public.wishlist_items` (junction table, เพิ่ม 2026-09-02, D-81)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `product_id` | uuid | **NOT NULL** | – |
+| 2 | `user_id` | uuid | **NOT NULL** | `auth.uid()` |
+| 3 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (product_id, user_id)
+FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
+```
+
+- โครงเดียวกับ `advertisement_likes` (D-58) เป๊ะ — composite PK กันบันทึกซ้ำในตัว ไม่ต้อง UNIQUE เพิ่ม · insert/delete เท่านั้น ไม่มี UPDATE policy (บันทึก/เอาออกเป็น toggle)
+- 🔴 **ต่างจาก `advertisement_likes` ตรง RLS `SELECT`**: จำกัดแค่แถวของตัวเอง (`user_id = auth.uid()`) ไม่ใช่ `SELECT true` — wishlist เป็นข้อมูลส่วนตัว ไม่มี public count แบบ `like_count` (ตัดสินใจแล้ว, D-81) ยังใช้ `EXISTS(...auth.uid())` ผูกกับ `products_review_view.saved_by_me` ได้ปกติเพราะ view เป็น `security_invoker=true` และ subquery ต้องการแค่เห็นแถวของผู้เรียกเอง
+- ไม่มี RESTRICTIVE ban policy (เหมือน `advertisement_likes`) — ผู้ถูกแบนยังบันทึก/เอาออกจาก wishlist ของตัวเองได้ ไม่กระทบใคร (D-81)
+
 ### `public.transactions` (L5, เพิ่ม 2026-08-23, D-59)
 
 | # | คอลัมน์ | ชนิด | null? | default |
@@ -561,7 +579,11 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
           AND rv2.reviewer_id = auth.uid()
       ),
       false
-    ) AS can_rate_seller
+    ) AS can_rate_seller,
+    (EXISTS (                                                   -- D-81: wishlist ส่วนตัวของผู้เรียกเอง
+      SELECT 1 FROM wishlist_items wi
+      WHERE wi.product_id = p.id AND wi.user_id = auth.uid()
+    )) AS saved_by_me
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
@@ -714,6 +736,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 >
 > 📌 `products.title` มี **GIN trigram index** (`products_title_trgm_idx`, `pg_trgm` extension, เพิ่ม 2026-08-19, D-46) — รองรับ `ILIKE '%keyword%'` (substring search บน `Home`) ให้ใช้ index แทน full table scan เมื่อข้อมูลโตขึ้น อยู่บนตาราง `products` ไม่ใช่ view (`products_review_view.title` เป็น passthrough ตรง ๆ ใช้ index เดียวกันได้) สร้างด้วย `CREATE INDEX` ธรรมดา ไม่ใช้ `CONCURRENTLY` เพราะ migration tool รันใน transaction block
 >
+> 📌 `saved_by_me` (L3, เพิ่ม 2026-09-02, D-81) — สินค้าที่ผู้เรียกบันทึกไว้ดูทีหลังไหม คำนวณด้วย inline `EXISTS(...auth.uid())` ตรงเดียวกับที่ `advertisement_posts_view.liked_by_me` ใช้ (D-58) ต่างกันแค่ `wishlist_items` RLS `SELECT` จำกัดเฉพาะแถวตัวเอง (ไม่ใช่ `SELECT true`) เพราะ wishlist เป็นข้อมูลส่วนตัว ไม่มี public count ไหลผ่าน `search_products` RPC อัตโนมัติ (RPC ทำ `SELECT * FROM products_review_view` ตรง ๆ ไม่ต้องแก้ RPC)
+>
 > 📌 `chat_messages_view.has_message`/`has_image` (เพิ่ม 2026-08-18, D-41) — `chat_message.message`/`image_url` เป็น genuine `String?` ในโมเดล row ของ FlutterFlow (`getField<String>`) ไม่ใช่ `''` แทน null เทียบ `Equals(item['message'], '')` ตรง ๆ จึงพัง (`null == ''` เป็น false) ใช้ boolean คำนวณจาก SQL แทน
 
 > 🔴 **กฎ: view ใดก็ตามที่ต้องการชื่อ/รูปผู้ใช้ ต้อง join `public_profiles` ห้าม join `"Profile"` ตรง ๆ**
@@ -748,7 +772,7 @@ CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
 
 ## RLS ที่ apply แล้ว
 
-RLS `ENABLE` ครบทั้ง 14 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59 + `reviews` D-64 + `storage_cleanup_config`/`storage_cleanup_log` D-66):
+RLS `ENABLE` ครบทั้ง 15 ตาราง จำนวน policy ต่อตาราง (8 ตารางเดิม + `advertisement_posts`/`advertisement_likes` D-58 + `transactions` D-59 + `reviews` D-64 + `storage_cleanup_config`/`storage_cleanup_log` D-66 + `wishlist_items` D-81):
 
 | ตาราง | policy | สรุป |
 |---|---|---|
@@ -766,6 +790,7 @@ RLS `ENABLE` ครบทั้ง 14 ตาราง จำนวน policy ต
 | `reviews` | **3** | select: ทุกคน (public rating) · insert: เฉพาะผู้ซื้อจริงของธุรกรรมนั้น (`EXISTS` เทียบ `transactions`) + **RESTRICTIVE กันผู้ถูกแบน** · ไม่มี UPDATE/DELETE เลย = immutable (D-64) |
 | `storage_cleanup_config` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (แก้ผ่าน SQL ตรงด้วย `service_role` เท่านั้น) (D-66) |
 | `storage_cleanup_log` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (เขียนได้ทาง Edge Function `service_role` เท่านั้น) (D-66) |
+| `wishlist_items` | 3 | select/insert/delete: เฉพาะแถวของตัวเองเท่านั้น (ต่างจาก `advertisement_likes` ที่ select เป็น "ทุกคน" — wishlist ส่วนตัว) ไม่มี RESTRICTIVE ban policy (D-81) |
 
 **ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
@@ -803,6 +828,9 @@ RLS `ENABLE` ครบทั้ง 14 ตาราง จำนวน policy ต
 | `reviews` | reviews_insert_buyer_only | INSERT | `{authenticated}` | – | `reviewer_id = auth.uid() AND EXISTS(SELECT 1 FROM transactions t WHERE t.id = transaction_id AND t.buyer_id = auth.uid() AND t.seller_id = reviewee_id)` |
 | `storage_cleanup_config` | storage_cleanup_config: admin read | SELECT | `{authenticated}` | `private.is_admin()` | – |
 | `storage_cleanup_log` | storage_cleanup_log: admin read | SELECT | `{authenticated}` | `private.is_admin()` | – |
+| `wishlist_items` | wishlist_items_select_own | SELECT | `{authenticated}` | `user_id = auth.uid()` | – |
+| `wishlist_items` | wishlist_items_insert_own | INSERT | `{authenticated}` | – | `user_id = auth.uid()` |
+| `wishlist_items` | wishlist_items_delete_own | DELETE | `{authenticated}` | `user_id = auth.uid()` | – |
 
 **RESTRICTIVE — กันผู้ถูกแบน (D-52, 2026-08-21) ทุกตัว `TO authenticated`**
 

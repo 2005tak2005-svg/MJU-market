@@ -49,6 +49,17 @@
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 - [ ] 🆕 (D-62/D-63) ทดสอบผ่านแอปจริงด้วย user ธรรมดา: ค้นหาแบบ substring จริงเจอ (ไม่ต้องพิมพ์เป๊ะ), ค้นหาจาก description ด้วยได้, กรองหมวดหมู่+ช่วงราคาพร้อมกันได้ (สองแกนไม่ล้างกัน), กดปุ่ม "กรอง" ราคาแล้วคงอยู่ตอนสลับหมวดหมู่/ค้นหาใหม่, ค่าราคาว่าง/ใส่ตัวอักษรไม่ crash (parse ล้มเหลว = ไม่กรอง), pull-to-refresh เคารพคำค้น/หมวดหมู่ปัจจุบัน, ไม่มีสินค้า pending/rejected/sold หลุดมาในผลค้นหา
 
+## 💾 Wishlist / บันทึกสินค้าไว้ดูทีหลัง (D-81, 2026-09-02)
+
+ตาราง `wishlist_items` (junction, RLS select/insert/delete เฉพาะแถวตัวเอง — ส่วนตัว ไม่มี public count) + `products_review_view.saved_by_me` (`EXISTS`) — pattern เดียวกับ `advertisement_likes` (D-58), รายละเอียด `PATTERNS.md` PT-42
+
+- Heart icon บน `ProductGridSection` (การ์ดหน้า `Home`) — toggle local ไม่ refetch
+- Heart icon บน `ProductDetails` (custom widget `WishlistToggleButton`, self-fetch สถานะเอง)
+- หน้าใหม่ `MyWishlist` (route `my-wishlist`) — filter `saved_by_me = true` แบบเดียวกับที่ `Mypost` filter `seller_id`, ปุ่มลบออกในแถว, pull-to-refresh
+- ทางเข้าใหม่: ปุ่มไอคอนบน `Home` header ต่อจากกระดิ่งแจ้งเตือน
+
+รายละเอียด `DECISIONS.md` D-81 — ยังไม่ทดสอบผ่านแอปจริง (ดู `STATUS.md` คิว 0k)
+
 ## ❓ ค้างอยู่
 
 - 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — ยังไม่ลองรอบ 3 หลัง D-62 เปิดทางใหม่ (RPC คืน list เปล่าได้ตรงๆ อาจลอง `listLength()`/`ActionOutput` บน RPC output แทน custom function ได้ ยังไม่ได้ลอง)

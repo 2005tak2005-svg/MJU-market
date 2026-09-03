@@ -583,7 +583,8 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     (EXISTS (                                                   -- D-81: wishlist ส่วนตัวของผู้เรียกเอง
       SELECT 1 FROM wishlist_items wi
       WHERE wi.product_id = p.id AND wi.user_id = auth.uid()
-    )) AS saved_by_me
+    )) AS saved_by_me,
+    COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller  -- D-82: badge ผู้ขายน่าเชื่อถือ
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
@@ -725,6 +726,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `buyer_id`/`buyer_name`/`can_see_buyer` (D-59, เพิ่ม 2026-08-23) — `buyer_name` join `public_profiles` ตามกฎ PT-01 (ไม่ join `"Profile"` ตรง ๆ) `can_see_buyer` คอมพิวต์ owner-or-admin ที่ SQL ครั้งเดียว (`COALESCE(..., false)` ตามแม่แบบ `admin_users_view`/D-52) — ฝั่ง FlutterFlow ผูก `visible: can_see_buyer` ตรง ๆ ไม่ต้องแต่ง AND/OR เอง
 >
 > 📌 `seller_avg_rating`/`seller_review_count`/`my_transaction_id`/`can_rate_seller` (L7, เพิ่ม 2026-08-24, D-64) — คะแนนเฉลี่ย+จำนวนรีวิวของผู้ขาย (LEFT JOIN subquery `GROUP BY reviewee_id`, pattern เดียวกับ `advertisement_posts_view.like_count`/D-58) และธุรกรรม+สิทธิ์ให้คะแนนของผู้เรียกเองบนสินค้านี้ (`can_rate_seller` คอมพิวต์ครั้งเดียวเหมือน `can_see_buyer`/`can_show_picker` — status ขายแล้ว + ผู้เรียกคือผู้ซื้อจริง + ยังไม่เคยรีวิวธุรกรรมนี้) ฝั่ง FlutterFlow ผูกปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` เข้ากับ `can_rate_seller` ตรง ๆ ผ่าน `productField()`/`nodeKeyRef` เดิม (D-44/D-59)
+>
+> 📌 `is_trusted_seller` (เพิ่ม 2026-09-03, D-82) — badge "ผู้ขายน่าเชื่อถือ" คอมพิวต์จาก `rv.avg_rating >= 4.5 AND rv.review_count >= 3` (`COALESCE(..., false)` กัน NULL ตอนผู้ขายยังไม่มีรีวิวเลย) ตาม pattern PT-24 §1 เพราะ `visible:` ใน FlutterFlow DSL ไม่มี comparator ตัวเลข (`>=` ทำที่ SQL เท่านั้น) — ผูก `visible:` ตรง ๆ ทั้งบน `ProductDetails` และการ์ดหน้า `Home`
 >
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
 >

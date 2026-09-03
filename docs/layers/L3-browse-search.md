@@ -60,6 +60,16 @@
 
 รายละเอียด `DECISIONS.md` D-81 — ยังไม่ทดสอบผ่านแอปจริง (ดู `STATUS.md` คิว 0k)
 
+## 🏪 Mini Storefront + Badge ผู้ขายน่าเชื่อถือ (D-82, 2026-09-03)
+
+`products_review_view.is_trusted_seller` (`avg_rating >= 4.5 AND review_count >= 3`, PT-24 §1 computed-boolean pattern เพราะ `visible:` ไม่มี comparator ตัวเลข) — รายละเอียด `PATTERNS.md` PT-24 §8, `DECISIONS.md` D-82
+
+- หน้าใหม่ `SellerStorefront` (route `seller-storefront`) — filter `seller_id`/`moderation_status='approved'`/`status<>'sold'`/`id<>excludeProductId` แบบเดียวกับที่ `MyWishlist` filter `saved_by_me` pull-to-refresh
+- ทางเข้า: ปุ่ม "ดูสินค้าอื่น ๆ ของผู้ขาย" ใน `UserProfileCard` popup (ใช้ได้จาก ProductDetails/BannedUsers/UserDirectory ทุกที่ที่เปิด popup นี้) — `openProfileChain` ขยายรับ `excludeProductId` optional
+- Badge: icon+label บน `ProductDetails` (ข้างชื่อผู้ขาย) และ icon บน `ProductGridSection` (การ์ดหน้า Home ต่อท้ายแถวดาว)
+
+รายละเอียด `DECISIONS.md` D-82 — ยังไม่ทดสอบผ่านแอปจริง (badge ยังไม่เคยเห็นค่า TRUE จริงเพราะข้อมูลทดสอบไม่มีรีวิวคร่อม threshold)
+
 ## ❓ ค้างอยู่
 
 - 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — ยังไม่ลองรอบ 3 หลัง D-62 เปิดทางใหม่ (RPC คืน list เปล่าได้ตรงๆ อาจลอง `listLength()`/`ActionOutput` บน RPC output แทน custom function ได้ ยังไม่ได้ลอง)

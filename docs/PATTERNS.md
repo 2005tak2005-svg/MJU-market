@@ -880,4 +880,6 @@ Container(
 
 **ข้อจำกัด:** ใช้ได้เมื่อ "เงื่อนไขว่าง" คำนวณเป็น column ที่ SQL ได้ (เช่น count จาก subquery) — ถ้าจำเป็นต้องรู้ความยาวของ list ที่**โหลดมาแล้วฝั่ง client** จริง ๆ (ไม่ใช่คำนวณซ้ำที่ SQL ได้) ปัญหาเดิมของ D-46/PT-27 ยังไม่มีทางแก้
 
+**🔴 กับดักที่เจอจริง (D-84):** count column ต้อง apply **filter เดียวกันเป๊ะ** กับที่ list ที่จะโชว์จริงใช้ ไม่ใช่แค่ filter หลักๆ (`seller_id`/`status`) — ลืม exclude parameter ตัวหนึ่งไป (`excludeProductId`) ทำให้ count นับเกิน (เห็นว่ามี 1 แต่ list ที่กรอง exclude แล้วเหลือ 0) → empty-state ไม่โผล่ทั้งที่ list ว่างจริง ก่อนใช้ pattern นี้ให้ไล่เทียบ **ทุก filter** ของ query ที่โหลด list กับ query ที่คำนวณ count ให้ตรงกันเป๊ะทีละตัว ถ้า count query เป็น view ที่รับ parameter จาก client ไม่ได้ (เช่น view ธรรมดา) และ list มี exclude ที่ต้องพึ่ง page param → ต้องย้าย count ไปเป็น RPC function รับ parameter แทน (ตัวอย่างจริง `get_seller_profile_header`, D-84)
+
 **ใช้แล้วที่:** `SellerStorefront`'s "ยังไม่มีรายการประกาศ" (D-83) — เช็คก่อนบอกว่า empty-state "ทำไม่ได้" ทุกครั้ง (เช่นตอนกลับไปแก้ `Home`/`AllList` ตาม D-46's "ยังไม่ลองรอบ 3")

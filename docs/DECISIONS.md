@@ -1773,3 +1773,22 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ยืนยันด้วย SQL:** `is_trusted_seller` ตรงสูตรมือ 100% (0 trusted จาก 9 แถว — ยังไม่มีรีวิวจริงในข้อมูลทดสอบ ตรงกับที่ D-64/D-81 บันทึกว่า rating system ยังไม่เคยทดสอบผ่านแอปจริง) filter ของ storefront ทดสอบกับ seller ที่มี 4 ประกาศ คืนถูกแค่ 1 ที่ approved+ยังไม่ขาย ตรงตามคาด
 
 **ยังไม่ทำ:** ยังไม่ได้ทดสอบผ่านแอปจริงโดย pete ทั้งหมด (badge ยังไม่เคยเห็นค่า TRUE จริงเพราะไม่มีรีวิวคร่อม threshold ในข้อมูลทดสอบ — ต้องทำธุรกรรม+ให้คะแนนจริงก่อนถึงจะเห็น, ปุ่ม storefront จากทั้ง 3 ทางเข้า, `excludeProductId` ไม่ค้างข้าม session)
+
+## D-83 — `SellerStorefront` seller header (avatar/badge/rating/member-since) + empty state + sold-items section (2026-09-06)
+
+**บริบท:** pete ส่ง mockup มาขอเทียบกับหน้า `SellerStorefront` (D-82) ที่ตอนนั้นเป็นแค่ flat list สินค้า ไม่มี header ผู้ขายเลย — ตัดสินใจ 2 จุดก่อนลงมือ (ถามตรง ๆ แทนเดา ตามกฎข้อ 11): (1) badge สีส้มในรูป = `is_trusted_seller` เดิมจาก D-82 ไม่ใช่ concept ใหม่ (2) "หมายเลขสมาชิก" ในรูปไม่มี concept รองรับใน schema เลย → ตัดออกจาก UI ทั้งหมด ไม่สร้างคอลัมน์ใหม่
+
+**Supabase (apply ตรงตามกฎข้อ 5):** view ใหม่ `seller_profile_view` (รายละเอียดคอลัมน์ + เหตุผล → `SCHEMA.md`) — เหตุผลที่แยกจาก `products_review_view` แทนต่อคอลัมน์เดิม: header ต้อง render ได้แม้ผู้ขาย `active_listing_count = 0` (นั่นคือเคส empty-state เอง) ซึ่ง `products_review_view` (join จาก `products`) ไม่มีแถวให้ในเคสนั้น
+
+**FlutterFlow (5 push บนหน้า `SellerStorefront`):**
+1. register `seller_profile_view` เข้า typed compiler (guard `findTable`, เหมือน `is_trusted_seller` เดิม)
+2. state ใหม่ 2 ตัว (`sellerProfileRows`/`sellerSoldList`) + query 2 ตัวต่อท้าย onLoad chain เดิม + **re-author body ทั้งก้อนเป็น 4 `ListView` เรียงกันใน `Column`**: header (1-row source, avatar+badge+rating+member-since+empty-state ทั้งหมด item[]-scoped จาก row เดียวกัน), รายการ active เดิม (คงพฤติกรรมเดิมทุกอย่าง), header ของ sold section (อีก 1-row ListView บน source เดียวกับ header แค่แสดงคนละ field — แยกเป็น ListView ที่ 2 เพราะต้องอยู่ **หลัง** รายการ active ในลำดับ แต่ item[] ใช้ได้แค่ในสโคป ListView ของตัวเอง), รายการ sold ใหม่
+3. pull-to-refresh ต่อคิวเดิม
+4. **แก้บั๊กที่เจอเองระหว่างอ่าน `generated_code/` ก่อนปิดงาน:** body root Column ไม่มี scrollable ครอบ + child ทั้ง 4 เป็น `shrinkWrap:true` ทำให้ Column สูงเท่าผลรวมเนื้อหา ไม่มีทาง scroll ถ้าเกินจอ (`RenderFlex overflow`) → เพิ่ม `scrollable: true` ที่ root Column (compile เป็น `SingleChildScrollView`)
+5. pull-to-refresh re-wire อีกรอบ (ทุกจุดที่ `ensureReplaced` คีย์ตายเสมอ ต้อง re-wire ตาม PT-16/21)
+
+**Empty-state ใช้ได้จริงรอบแรกในโปรเจกต์นี้ (D-46/PT-27 เคยลอง 2 วิธีแล้วพังทั้งคู่):** ผูก `visible: Equals(item['active_listing_count'], 0)` จาก `seller_profile_view` (คอลัมน์ที่โหลดตรงจาก query ปกติ) แทนที่จะพยายามหา "list ว่างไหม" จาก `sellerStorefrontList` เอง — ไม่ชน failure mode เดิมเลยเพราะไม่มี custom function ไม่มี `List<PostgresRow>` ActionOutput เข้าใกล้ `SetState` ตรงไหน รายละเอียด `PATTERNS.md` PT-43
+
+**🔴 ความเสี่ยงที่รู้แล้วแต่ยังไม่ได้แก้ (แจ้ง pete ก่อน ไม่ใช่ทำเงียบ ๆ):** ข้อ 4 ข้างบนทำให้เข้าเงื่อนไข **PT-35** (nested scrollable: `ListView shrinkWrap:true` 4 ตัวซ้อนใน `Column(scrollable:true)`) — ถ้าผู้ขายมีประกาศ active+sold รวมกันเยอะพอจนแต่ละ `ListView` มี scroll extent ของตัวเองจริง อาจเจอ "เลื่อนเข้าโซนนั้นแล้วเลื่อนกลับไม่ได้" ตาม PT-35 ทางแก้เต็มของ PT-35 (ปิด scrollable ครอบ + ทำ list เดียวเป็น `Expanded`) ใช้ไม่ได้ตรง ๆ เพราะหน้านี้มี 4 list ไม่ใช่ 1 ทางแก้จริงถ้าเจอคือ PT-36 (custom widget fetch เอง) ซึ่งเป็นงานคนละขนาด — **ยังไม่ทดสอบผ่านแอปจริงกับข้อมูลจำนวนมากพอ**
+
+**ยังไม่ทำ:** ทดสอบผ่านแอปจริงทั้งหมด (badge/empty-state/sold-section/scroll กับ seller ที่มีประกาศเยอะ) — ดู `STATUS.md`

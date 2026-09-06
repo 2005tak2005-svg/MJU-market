@@ -1368,6 +1368,55 @@ GRANT EXECUTE ON FUNCTION public.search_products(text, bigint, numeric, numeric)
 
 - **`search_products`** — `LANGUAGE sql` ธรรมดา ไม่ใช่ SECURITY DEFINER (ไม่ต้อง bypass อะไร — `products_review_view` เป็น `security_invoker=true` อยู่แล้ว กรอง banned-seller/RLS ให้ตามปกติ) `RETURNS SETOF products_review_view` แทน `products` ตรง ๆ (ตาม P-05 note เดิม) เพื่อให้ได้ `category_name`/`seller_name`/`first_image_url`/`can_see_buyer` ฯลฯ ติดมาครบ ไม่ต้อง query ซ้ำฝั่ง FlutterFlow แทนที่ built-in typed-filter ของ D-45–D-48 ทั้งชุด (exact-match only เพราะ `iLike`/`like` ไม่มี null-safe codegen ในระบบ FlutterFlow AI SDK นี้) ทุกพารามิเตอร์ optional (`NULL` = ไม่กรองแกนนั้น) ANDed กันหมด — คำค้นค้นทั้ง `title`/`description` (กว้างกว่า P-05 draft เดิมที่มีแค่ title) `title` มี GIN trigram index อยู่แล้ว (D-46) EXECUTE grant `authenticated` เท่านั้น (revoke `anon`/PUBLIC ออกแล้ว — สอดคล้องกับคำตอบ pete ว่าไม่เปิด browse ก่อน login)
 
+### L3 mini storefront — `get_seller_profile_header()` (เพิ่ม 2026-09-06, D-84)
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_seller_profile_header(
+  p_seller_id uuid,
+  p_exclude_product_id uuid DEFAULT NULL
+)
+RETURNS SETOF public.seller_profile_view
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT
+    p.id,
+    p.full_name,
+    p.avatar_url,
+    (p.avatar_url IS NOT NULL AND p.avatar_url <> ''),
+    COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false),
+    CASE
+      WHEN COALESCE(rv.review_count, 0) = 0 THEN 'ยังไม่มีคะแนนจากผู้ซื้อ'
+      ELSE 'จากผู้ซื้อ ' || rv.avg_rating || ' ⭐ (' || rv.review_count || ' รีวิว)'
+    END,
+    'เป็นสมาชิกมาแล้ว ' || EXTRACT(year FROM age(now(), p.created_at))::int || ' ปี ' || EXTRACT(month FROM age(now(), p.created_at))::int || ' เดือน',
+    COALESCE(active.cnt, 0)::integer,
+    'รายการที่ขายแล้ว (' || COALESCE(sold.cnt, 0)::text || ')'
+  FROM "Profile" p
+  LEFT JOIN ( SELECT reviewee_id, round(avg(rating), 1) AS avg_rating, count(*) AS review_count
+    FROM reviews GROUP BY reviewee_id) rv ON rv.reviewee_id = p.id
+  LEFT JOIN ( SELECT seller_id, count(*) AS cnt FROM products
+    WHERE moderation_status = 'approved' AND status <> 'sold'
+      AND (p_exclude_product_id IS NULL OR id <> p_exclude_product_id)
+      AND (NOT private.is_user_banned(seller_id) OR seller_id = auth.uid() OR private.is_admin())
+    GROUP BY seller_id) active ON active.seller_id = p.id
+  LEFT JOIN ( SELECT seller_id, count(*) AS cnt FROM products
+    WHERE moderation_status = 'approved' AND status = 'sold'
+      AND (p_exclude_product_id IS NULL OR id <> p_exclude_product_id)
+      AND (NOT private.is_user_banned(seller_id) OR seller_id = auth.uid() OR private.is_admin())
+    GROUP BY seller_id) sold ON sold.seller_id = p.id
+  WHERE p.id = p_seller_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_seller_profile_header(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_seller_profile_header(uuid, uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authenticated;
+```
+
+- **`get_seller_profile_header`** — เหมือน `seller_profile_view` ทุกคอลัมน์ (`RETURNS SETOF seller_profile_view` เพื่อคง row shape เดิม) ต่างแค่ `active`/`sold` count subquery ตัด `p_exclude_product_id` ออกด้วย แก้ปัญหา count กับลิสต์ที่โชว์จริงไม่ตรงกัน (ดู D-84) — **SECURITY DEFINER** (ต่างจาก `search_products`) เพราะต้อง bypass RLS ของ `"Profile"` เหมือน `seller_profile_view` เอง (view ไม่มี `security_invoker`) EXECUTE grant `authenticated` เท่านั้น `seller_profile_view` เดิมยังอยู่ ไม่ถูกลบ (เป็นแหล่ง row-shape/type ให้ FlutterFlow เท่านั้น ไม่มีใคร query ตรงอีกแล้ว)
+
 ---
 
 ## Storage

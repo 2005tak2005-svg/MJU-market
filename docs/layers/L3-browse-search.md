@@ -80,6 +80,8 @@ View ใหม่ `seller_profile_view` (profile-level, ไม่ผูกกั
 
 รายละเอียด `DECISIONS.md` D-83 — 🔴 **ความเสี่ยงที่รู้แล้วยังไม่ได้แก้:** body ต้องห่อ `scrollable: true` (กัน overflow ตอนสินค้าเยอะ) ซึ่งเข้าเงื่อนไข **PT-35** (nested scrollable ค้าง) เพราะมี 4 `ListView` ซ้อนอยู่ข้างใน — ยังไม่ทดสอบผ่านแอปจริงกับ seller ที่มีประกาศเยอะพอ
 
+**แก้บั๊ก (D-84, 2026-09-06):** `active_listing_count`/`sold_section_label` เดิมนับรวมชิ้นที่กำลังดูอยู่ (excludeProductId) ทำให้ seller ที่มี active ชิ้นเดียว (=ชิ้นที่กำลังดู) count=1 แต่ list ที่โชว์จริงว่าง — empty-state เลยไม่โผล่ (เจอ 100% เพราะข้อมูลทดสอบทุก seller มี active คนละ 1 ชิ้น) แก้ด้วย RPC `get_seller_profile_header` (ตัด excludeProductId ออกจาก count ด้วย) เรียกผ่าน custom action แทน typed query ตรง ๆ รายละเอียด `DECISIONS.md` D-84
+
 ## ❓ ค้างอยู่
 
 - 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — **D-83/PT-43 เปิดทางใหม่ที่ยืนยันแล้วว่าใช้ได้จริง** (ผูก `visible:` กับ count column จาก query แยก แทนคำนวณจาก list เอง) น่าจะพอร์ตมาใช้กับ `Home`/`search_products` ได้ ถ้า RPC เพิ่ม count คืนมาด้วย — ยังไม่ได้ลอง

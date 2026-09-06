@@ -70,6 +70,16 @@
 
 รายละเอียด `DECISIONS.md` D-82 — ยังไม่ทดสอบผ่านแอปจริง (badge ยังไม่เคยเห็นค่า TRUE จริงเพราะข้อมูลทดสอบไม่มีรีวิวคร่อม threshold)
 
+### Seller header + empty state + sold section (D-83, 2026-09-06)
+
+View ใหม่ `seller_profile_view` (profile-level, ไม่ผูกกับการมี product row — รายละเอียด `SCHEMA.md`) ต่อยอด `SellerStorefront`:
+
+- Header: avatar (fallback icon ถ้าไม่มีรูป), ชื่อ+badge `is_trusted_seller` เดิม, rating label, "เป็นสมาชิกมาแล้ว X ปี Y เดือน"
+- Empty state "ยังไม่มีรายการประกาศ" — **ใช้ได้จริงรอบแรกในโปรเจกต์** ผ่าน `visible: Equals(item['active_listing_count'], 0)` จาก view ใหม่ (คนละกลไกจาก D-46 ที่เคยพัง 2 รอบ) → `PATTERNS.md` PT-43
+- Section ใหม่ "รายการที่ขายแล้ว (N)" — list สินค้า `status='sold'` แยกจาก active list เดิม
+
+รายละเอียด `DECISIONS.md` D-83 — 🔴 **ความเสี่ยงที่รู้แล้วยังไม่ได้แก้:** body ต้องห่อ `scrollable: true` (กัน overflow ตอนสินค้าเยอะ) ซึ่งเข้าเงื่อนไข **PT-35** (nested scrollable ค้าง) เพราะมี 4 `ListView` ซ้อนอยู่ข้างใน — ยังไม่ทดสอบผ่านแอปจริงกับ seller ที่มีประกาศเยอะพอ
+
 ## ❓ ค้างอยู่
 
-- 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — ยังไม่ลองรอบ 3 หลัง D-62 เปิดทางใหม่ (RPC คืน list เปล่าได้ตรงๆ อาจลอง `listLength()`/`ActionOutput` บน RPC output แทน custom function ได้ ยังไม่ได้ลอง)
+- 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — **D-83/PT-43 เปิดทางใหม่ที่ยืนยันแล้วว่าใช้ได้จริง** (ผูก `visible:` กับ count column จาก query แยก แทนคำนวณจาก list เอง) น่าจะพอร์ตมาใช้กับ `Home`/`search_products` ได้ ถ้า RPC เพิ่ม count คืนมาด้วย — ยังไม่ได้ลอง

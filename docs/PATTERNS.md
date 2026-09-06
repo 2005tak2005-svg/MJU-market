@@ -858,3 +858,26 @@ mainEntry.rootAction = FFActionNode(
 **2. `CustomWidget(widgetName:, arguments: {...})` (การวาง custom widget ที่ประกาศแล้วลงบนหน้า) แต่ละ argument รับได้แค่ `DslExpression` (`Param`/`State`/`AppState`/...) หรือ literal เท่านั้น — ส่ง raw `FFValue`/`FFVariable` ตรง ๆ compile ไม่ผ่าน** (`Invalid argument (value): Expected a DSL expression or scalar literal.`) และ **ไม่มี escape hatch แบบ raw-proto ให้ custom widget's `arguments` เหมือนที่ `visible:` มี** (`node.props.ensureVisibility()` ใช้ได้กับ `visible:` แต่ไม่มี equivalent สำหรับ custom-widget parameter values) — ถ้าค่าที่ต้องการผูกไม่มี `DslExpression` subtype รองรับ (เช่น field ที่มาจาก `POSTGRES_QUERY` source ผูกกับ `nodeKeyRef` แบบที่ `productField()` helper ของ D-64 ใช้กับ `visible:`) ทางออกเดียวคือ **ให้ widget self-fetch ค่านั้นเองใน `initState`/`build`** (เหมือน `ProductGridSection` self-fetch ทั้ง list) แทนพยายามส่งเป็น parameter — ใช้แล้วที่ `WishlistToggleButton` (D-81): รับแค่ `productId` (`Param('productId')`, เป็น `DslExpression` จริง ผูกได้ปกติ) แล้ว query `wishlist_items` เองตรงใน `initState` แทนรับ `initialSaved` เป็น param
 
 **ใช้แล้วที่:** `wishlist_items`/`products_review_view.saved_by_me` (D-81) — เช็คก่อนออกแบบ toggle feature ใหม่ทุกครั้ง (ข้อ 1) และก่อนพยายามผูก dynamic Postgres-row field เข้า custom widget parameter ทุกครั้ง (ข้อ 2 — ไปทาง self-fetch ตั้งแต่แรกถ้า field นั้นมาจาก view/nodeKeyRef ไม่ใช่ page/app state ธรรมดา)
+
+---
+
+## PT-43 — Empty-state UI **ใช้ได้จริงรอบแรก**: ผูก `visible:` กับคอลัมน์ที่โหลดจาก query แยก ไม่ใช่จาก length ของ list เอง (D-83, `SellerStorefront`, 2026-09-06)
+
+**ปัญหาเดิม (D-46/PT-27):** ทุกความพยายามทำ "ซ่อน/โชว์ empty-state ตาม list ว่างไหม" ที่ต้อง**คำนวณจาก list นั้นเอง** (raw-proto `listLength()` condition, หรือ custom function `isEmpty(list) => ...` แล้ว `SetState`) ถูก backend ปฏิเสธเสมอไม่ว่า target field type อะไร — root cause จริงคือ custom function ที่กิน `List<PostgresRow>` ActionOutput เป็น argument พังทุกครั้งที่ผลลัพธ์ไปจบที่ `SetState`
+
+**ทางแก้ที่ใช้ได้จริง:** อย่าคำนวณ "ว่างไหม" จาก list เป้าหมายเลย — ให้ query **แยกอิสระ** (คนละ state field, คนละ source) คืนค่า **count เป็นคอลัมน์ธรรมดา** (ไม่ใช่ boolean derive จาก list) แล้วผูก `visible: Equals(item['count_column'], 0)` จาก query นั้น ไม่ใช่จาก list ที่จะโชว์/ซ่อน:
+
+```dart
+// state ที่โหลด count มาจาก view ที่คำนวณไว้แล้ว (D-83's seller_profile_view.active_listing_count)
+// เป็นคนละ state field จาก list ที่จะซ่อน/โชว์ (sellerStorefrontList)
+Container(
+  visible: Equals(item['active_listing_count'], 0), // item = แถวจาก query แยก
+  child: /* empty-state message */,
+)
+```
+
+**ทำไมไม่ชน failure mode เดิม:** ไม่มี custom function เลยตลอดสาย, ไม่มี `List<PostgresRow>` ActionOutput เข้าใกล้ `SetState` ที่ไหนเลย — `active_listing_count` เป็น integer ธรรมดาที่โหลดจาก `PostgresQuery` ปกติแล้ว `SetState` ตรง ๆ เหมือน field อื่นทุกตัว, ส่วน `Equals(item['x'], 0)` เป็น literal equality ที่ `visible:` รองรับอยู่แล้ว (PT-24 §1) ไม่ใช่ comparator ตัวเลข
+
+**ข้อจำกัด:** ใช้ได้เมื่อ "เงื่อนไขว่าง" คำนวณเป็น column ที่ SQL ได้ (เช่น count จาก subquery) — ถ้าจำเป็นต้องรู้ความยาวของ list ที่**โหลดมาแล้วฝั่ง client** จริง ๆ (ไม่ใช่คำนวณซ้ำที่ SQL ได้) ปัญหาเดิมของ D-46/PT-27 ยังไม่มีทางแก้
+
+**ใช้แล้วที่:** `SellerStorefront`'s "ยังไม่มีรายการประกาศ" (D-83) — เช็คก่อนบอกว่า empty-state "ทำไม่ได้" ทุกครั้ง (เช่นตอนกลับไปแก้ `Home`/`AllList` ตาม D-46's "ยังไม่ลองรอบ 3")

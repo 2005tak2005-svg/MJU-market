@@ -437,7 +437,7 @@ CHECK (action IN ('would_delete', 'deleted', 'delete_failed'))
 
 ## Views
 
-11 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
+12 view — นิยามด้านล่างคือผล `pg_get_viewdef()` ของจริง คำต่อคำ
 
 ```sql
 -- ⭐ ไม่มี security_invoker โดยตั้งใจ (reloptions = NULL) → รันด้วยสิทธิ์ owner
@@ -772,6 +772,42 @@ CREATE VIEW public.advertisement_posts_view WITH (security_invoker = true) AS
 ```
 
 > เพิ่ม 2026-08-22 (D-58) — `title`/`body` ผ่าน `COALESCE` กัน force-unwrap crash บน FF `Text` widget ตามธรรมเนียมเดิม (D-38) `WHERE is_active = true` กรองโพสต์ที่ถูกซ่อนออกให้ทุก caller (รวม `Home`) `liked_by_me` ใช้ `auth.uid()` ตรงในตัว view เอง
+
+```sql
+-- ไม่มี security_invoker (เหมือน public_profiles/public_directory_view, D-01)
+-- — ต้องรันด้วยสิทธิ์ owner ถึงจะข้าม RLS ของ "Profile" ได้
+CREATE VIEW public.seller_profile_view AS
+ SELECT p.id,
+    p.full_name,
+    p.avatar_url,
+    (p.avatar_url IS NOT NULL AND p.avatar_url <> ''::text) AS has_avatar,
+    COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller,
+    CASE
+        WHEN COALESCE(rv.review_count, 0) = 0 THEN 'ยังไม่มีคะแนนจากผู้ซื้อ'::text
+        ELSE (('จากผู้ซื้อ '::text || rv.avg_rating) || ' ⭐ ('::text) || rv.review_count || ' รีวิว)'::text
+    END AS rating_label,
+    ((('เป็นสมาชิกมาแล้ว '::text || (EXTRACT(year FROM age(now(), p.created_at)))::integer) || ' ปี '::text) || (EXTRACT(month FROM age(now(), p.created_at)))::integer) || ' เดือน'::text AS member_since_label,
+    COALESCE(active.cnt, 0)::integer AS active_listing_count,
+    ('รายการที่ขายแล้ว ('::text || COALESCE(sold.cnt, 0)::text) || ')'::text AS sold_section_label
+   FROM "Profile" p
+     LEFT JOIN ( SELECT reviews.reviewee_id,
+            round(avg(reviews.rating), 1) AS avg_rating,
+            count(*) AS review_count
+           FROM reviews
+          GROUP BY reviews.reviewee_id) rv ON rv.reviewee_id = p.id
+     LEFT JOIN ( SELECT products.seller_id,
+            count(*) AS cnt
+           FROM products
+          WHERE products.moderation_status = 'approved'::text AND products.status <> 'sold'::text AND (NOT private.is_user_banned(products.seller_id) OR products.seller_id = auth.uid() OR private.is_admin())
+          GROUP BY products.seller_id) active ON active.seller_id = p.id
+     LEFT JOIN ( SELECT products.seller_id,
+            count(*) AS cnt
+           FROM products
+          WHERE products.moderation_status = 'approved'::text AND products.status = 'sold'::text AND (NOT private.is_user_banned(products.seller_id) OR products.seller_id = auth.uid() OR private.is_admin())
+          GROUP BY products.seller_id) sold ON sold.seller_id = p.id;
+```
+
+> เพิ่ม 2026-09-06 (D-83) — profile-level seller header สำหรับ `SellerStorefront`: rating/badge/member-since/counts ที่ **ไม่ผูกกับการมี product row** (ต่างจาก `products_review_view.seller_avg_rating`/`is_trusted_seller` ที่ join จาก `products` — ผู้ขายไม่มีประกาศเลยจะไม่มีแถวให้ดึง) เกณฑ์ `is_trusted_seller` สูตรเดียวกับ D-82 ทุกประการ `active`/`sold` subquery hand-replicate เงื่อนไข `products_block_banned_seller_select` (D-79) เพราะ view นี้ไม่มี `security_invoker` จึงไม่ได้พึ่ง RLS ของ `products` อัตโนมัติเหมือน `products_review_view` — ถ้าไม่ทำ นับสินค้าของผู้ขายที่โดนแบนจะไม่ตรงกับที่ `products_review_view` โชว์จริง คอลัมน์ label ทั้งหมด (`rating_label`/`member_since_label`/`sold_section_label`) คอมพิวต์เป็นข้อความไทยพร้อมใช้ที่ SQL ทั้งก้อนตามธรรมเนียม `first_image_url`/`year_label` — DSL `Text` bind ได้แค่ 1 field ต่อ 1 widget ไม่รองรับ string composition หรือ date math เอง
 
 ## RLS ที่ apply แล้ว
 

@@ -1792,3 +1792,21 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **🔴 ความเสี่ยงที่รู้แล้วแต่ยังไม่ได้แก้ (แจ้ง pete ก่อน ไม่ใช่ทำเงียบ ๆ):** ข้อ 4 ข้างบนทำให้เข้าเงื่อนไข **PT-35** (nested scrollable: `ListView shrinkWrap:true` 4 ตัวซ้อนใน `Column(scrollable:true)`) — ถ้าผู้ขายมีประกาศ active+sold รวมกันเยอะพอจนแต่ละ `ListView` มี scroll extent ของตัวเองจริง อาจเจอ "เลื่อนเข้าโซนนั้นแล้วเลื่อนกลับไม่ได้" ตาม PT-35 ทางแก้เต็มของ PT-35 (ปิด scrollable ครอบ + ทำ list เดียวเป็น `Expanded`) ใช้ไม่ได้ตรง ๆ เพราะหน้านี้มี 4 list ไม่ใช่ 1 ทางแก้จริงถ้าเจอคือ PT-36 (custom widget fetch เอง) ซึ่งเป็นงานคนละขนาด — **ยังไม่ทดสอบผ่านแอปจริงกับข้อมูลจำนวนมากพอ**
 
 **ยังไม่ทำ:** ทดสอบผ่านแอปจริงทั้งหมด (badge/empty-state/sold-section/scroll กับ seller ที่มีประกาศเยอะ) — ดู `STATUS.md`
+
+## D-84 — แก้บั๊ก empty-state ไม่โผล่ที่ pete เจอจริง: `active_listing_count` ไม่ตัด `excludeProductId` (2026-09-06)
+
+**pete รายงาน:** `Container_6dvb4t4u` (empty-state "ยังไม่มีรายการประกาศ") ไม่ขึ้น ทั้งที่ลิสต์ว่างเปล่าจริง เสนอทางเลือก "โชว์ทุกรายการยกเว้นชิ้นที่กดเข้ามา" (ยุบ active/sold split ทิ้ง) ว่าจะง่ายกว่าไหม
+
+**สาเหตุจริง (ยืนยันด้วยข้อมูลจริง):** `seller_profile_view.active_listing_count` นับสินค้า active ทั้งหมดของผู้ขาย **รวมชิ้นที่กำลังดูอยู่ (excludeProductId) ด้วย** เพราะ view ไม่รู้จัก `excludeProductId` เลย ขณะที่ `sellerStorefrontList` (ลิสต์ที่โชว์จริง) กรอง `id <> excludeProductId` ออก — seller ที่มี active แค่ 1 ชิ้น (=ชิ้นที่กำลังดู) จะได้ count=1 แต่ลิสต์จริงว่าง 0 ชิ้น เช็คข้อมูลจริงพบว่า**ทุก seller ในชุดทดสอบตอนนี้มี active แค่คนละ 1 ชิ้นพอดี** จึงเจอบั๊กนี้ 100% ทุกครั้งที่เทส
+
+**ทำไมไม่ทำตามข้อเสนอของ pete ตรง ๆ:** ยุบ active/sold split ทิ้งจะเสียส่วน "รายการที่ขายแล้ว (N)" ที่ทำตามรูปมาให้ไปด้วย และไม่ได้แก้ root cause โดยอัตโนมัติ (count ก็ยังไม่รู้จัก excludeProductId อยู่ดี ต้องคิด empty-condition ใหม่เหมือนกัน)
+
+**ทางแก้ที่เลือก:** RPC ใหม่ `get_seller_profile_header(p_seller_id, p_exclude_product_id)` — สูตรเดียวกับ `seller_profile_view` ทุกอย่าง (`RETURNS SETOF seller_profile_view` คง row shape เดิม) ต่างแค่ active/sold count subquery ตัด `p_exclude_product_id` ออกด้วย (`seller_profile_view` เดิมยังอยู่ ไม่ลบ — เป็นแหล่ง type ให้ FlutterFlow เท่านั้น) รายละเอียด SQL → `SCHEMA.md`
+
+**FlutterFlow:** `CallCustomAction` รับ argument ไม่ได้ (PT-09) จึง mirror `sellerId`/`excludeProductId` (page param) เข้า App State ใหม่ 2 ตัวก่อนเรียก custom action `getSellerProfileHeader` (0-arg, อ่านจาก App State แล้วยิง `Supabase.instance.client.rpc(...)` ตรง) — pattern เดียวกับ `searchProducts`/D-62 เป๊ะ ทำสำเร็จ push เดียว (ไม่ต้องแยก phase เพราะ `app.state()`/`CustomActionHandle` ใช้ราวสตริงชื่อ ไม่ต้องรอ typed SDK refresh)
+
+**🔴 เจอบั๊กตัวเองระหว่างทำ (PT-16 ซ้ำอีกครั้ง):** push แรกพังด้วย `findByKey("ListView_5i6j8a3m") found no matches` — ต้นตอคือ `ensureReplaced` ของ D-83 phase 4 (retarget เป็น `Column_ouodycqs`) **ไม่เคย retire หลัง phase 4 landed จริง** ค้างเป็น live call ที่รันซ้ำทุก push ถัดไป (คลาสเดียวกับ Mypost/D-78, D-81's MyPostsList) ยืนยัน key จริงด้วย `flutterflow ai inspect` (live fetch ไม่ใช่ local snapshot) เจอว่า root เปลี่ยนเป็น `Column_iu5ueqeu` ไปแล้ว แก้โดย retire บล็อกนั้นเป็นคอมเมนต์ก่อนแล้วค่อย push ใหม่ — **บทเรียน: retire ensureReplaced ทันทีที่เห็นว่า push สำเร็จ ในการแก้ไขเดียวกันนั้นเลย อย่าเลื่อนไปทีหลัง**
+
+**ยืนยันด้วย SQL:** เทียบ seller ที่มี active 1 ชิ้น (=ชิ้นที่จะ exclude) — ไม่ exclude ได้ count=1, exclude แล้วได้ count=0 ตรงตามที่ควรเป๊ะ
+
+**ยังไม่ทำ:** ทดสอบผ่านแอปจริงว่า empty-state ขึ้นถูกต้องแล้ว (pete ยังไม่ได้กดซ้ำ)

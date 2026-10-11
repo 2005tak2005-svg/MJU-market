@@ -75,6 +75,12 @@
 
 **ระหว่างที่ยังไม่ verify domain Resend:** ใช้ `mju6577778888@mju.ac.th` (admin, `email_confirmed_at` patch ด้วย SQL, login ได้จริง) ทดสอบ layer อื่นที่ไม่เกี่ยว confirm-email ได้ตามเดิม
 
+## 🔑 ลืมรหัสผ่าน (D-85, 2026-10-11)
+
+OTP recovery ผ่านท่อ D-34 — `Login` > `ForgotPasswordButton` → หน้า `ForgotPassword` (`ForgotEmailField` + `RequestResetButton` → `requestPasswordReset`) → หน้า `ResetPassword` (`ResetOtpField`/`ResetNewPasswordField`/`ResetConfirmPasswordField` + `ResetPasswordButton` → `resetPasswordWithOtp` → `signOut` → `Login`) · App State `resetEmail`/`resetOtp`/`resetNewPassword`/`resetConfirmPassword` · ไม่มีการเปลี่ยน DB · TextField อ่านค่าตอน `onTap` ด้วย `WidgetState` (PT-44)
+
+ข้อจำกัด + ของค้าง → `DECISIONS.md` D-85 (รหัสไป inbox แอดมิน, Edge Function ยังไม่ deploy ข้อความแยก `recovery`, ยังไม่ทดสอบผ่านแอปจริง)
+
 ## 🧪 Definition of Done
 
 **ฝั่ง Supabase — ✅ ข้อด้านล่างผ่านครบ (ผลเต็ม: `../VERIFICATION.md` V-02 / V-04)**
@@ -96,6 +102,7 @@
 - [ ] กรอกช่องเบอร์เป็นช่องว่างล้วนแล้วสมัคร → `phone` ต้องเป็น `NULL` ไม่ใช่ `''` — ยังไม่ได้เทสเคสนี้ผ่านแอปจริง (trigger รองรับแล้วตาม D-14 แต่ path ผ่าน UI ยังไม่เทส)
 - [ ] อัปรูปโปรไฟล์เข้า `avatars` แล้วรูปโผล่จริงจาก public URL — Edit Profile ยังไม่ได้สร้าง
 - [x] **สมัครเสร็จบอกผู้ใช้ให้ไปยืนยันอีเมล + login ก่อนยืนยันดักได้อย่างเข้าใจ** — ✅ **ทดสอบ end-to-end ผ่านแอปจริงสำเร็จแล้ว 2026-08-17** (`mju6606105382@mju.ac.th`, ผ่าน admin-relay ตาม D-34) — ดูหัวข้อ "Confirm Email (D-20 → D-34) ปลดล็อกแล้ว" ด้านบน
+- [ ] 🆕 (D-85) ลืมรหัสผ่านผ่านแอปจริง: ขอรหัส → แอดมินได้อีเมล `PASSWORD RESET` → กรอก OTP + รหัสใหม่ → กลับ `Login` เข้าด้วยรหัสใหม่ได้ · รหัสผิด/หมดอายุ/รหัสไม่ตรงกันขึ้นข้อความไทย · ไม่ถูกเด้งไป `Home` ระหว่างทาง
 - [ ] + DoD ร่วมใน `CLAUDE.md`
 
 ## 🧪 บัญชีทดสอบที่มีอยู่ (อัปเดต 2026-08-09)

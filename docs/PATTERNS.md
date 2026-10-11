@@ -883,3 +883,18 @@ Container(
 **🔴 กับดักที่เจอจริง (D-84):** count column ต้อง apply **filter เดียวกันเป๊ะ** กับที่ list ที่จะโชว์จริงใช้ ไม่ใช่แค่ filter หลักๆ (`seller_id`/`status`) — ลืม exclude parameter ตัวหนึ่งไป (`excludeProductId`) ทำให้ count นับเกิน (เห็นว่ามี 1 แต่ list ที่กรอง exclude แล้วเหลือ 0) → empty-state ไม่โผล่ทั้งที่ list ว่างจริง ก่อนใช้ pattern นี้ให้ไล่เทียบ **ทุก filter** ของ query ที่โหลด list กับ query ที่คำนวณ count ให้ตรงกันเป๊ะทีละตัว ถ้า count query เป็น view ที่รับ parameter จาก client ไม่ได้ (เช่น view ธรรมดา) และ list มี exclude ที่ต้องพึ่ง page param → ต้องย้าย count ไปเป็น RPC function รับ parameter แทน (ตัวอย่างจริง `get_seller_profile_header`, D-84)
 
 **ใช้แล้วที่:** `SellerStorefront`'s "ยังไม่มีรายการประกาศ" (D-83) — เช็คก่อนบอกว่า empty-state "ทำไม่ได้" ทุกครั้ง (เช่นตอนกลับไปแก้ `Home`/`AllList` ตาม D-46's "ยังไม่ลองรอบ 3")
+
+## PT-44 — อ่านค่า TextField ตอน `onTap` ด้วย `WidgetState(name, WidgetStateProperty.text)` แทน `onChanged` (D-85, 2026-10-11)
+
+**กับดัก:** `TextField(onChanged: UpdateAppState.set(...))` compile เป็น `EasyDebounce` **2000 ms** — พิมพ์ช่องสุดท้ายแล้วกดปุ่มทันที custom action 0-arg (อ่าน App State, PT-09) ได้ค่าเก่า (หน้า `Login`/`ConfirmEmail`/`SignUp` เดิมใช้แบบนี้)
+
+**ทางแก้:** ต้นของ `onTap` ของปุ่ม เขียน App State จาก widget ตรง ๆ ก่อนเรียก action:
+```dart
+UpdateAppState.set('resetOtp', WidgetState('ResetOtpField', WidgetStateProperty.text)),
+CallCustomAction(fn, outputAs: 'err'),
+```
+ยืนยันจาก `generated_code/`: `FFAppState().resetOtp = _model.resetOtpFieldTextController.text;` อยู่ใน `onPressed` ก่อนเรียก action · อ้าง widget ด้วยชื่อ string ได้ (ไม่ต้องมี typed handle ของหน้าที่เพิ่งสร้างในสคริปต์เดียวกัน)
+
+**ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` · หน้าเดิมที่ยังเสี่ยงค่าเก่า: `Login`, `ConfirmEmail`, `SignUp` (ยังไม่แก้)
+
+**แนวสคริปต์:** `dsl/edit.dart` สะสมเก่า compile กับ SDK 0.0.41 ไม่ผ่าน → งานใหม่เขียนไฟล์ standalone (`dsl/grid_fix.dart`, `dsl/forgot_password.dart`) ใช้ `app.state` + `app.customAction` + `app.ensurePage` + `app.editPage` ได้ตามปกติ

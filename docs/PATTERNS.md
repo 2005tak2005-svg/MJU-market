@@ -897,6 +897,6 @@ CallCustomAction(fn, outputAs: 'err'),
 
 **หน้าเดิมที่มี chain อยู่แล้ว (มี `Actions.unsupported('action customAction')` ใน `inspect --dsl`):** อย่า `ensureActions` เขียน chain ใหม่ — จะทำ atom ที่ DSL อ่านไม่ได้หาย ให้ลด debounce ของ field แทน: `page.mutateNode(page.findByKey(key), (n) { n.props.textField.debounceTimeValue = FFDoubleValue(inputValue: 100); })` (rerun-safe, ยืนยันจาก `generated_code/`: `Duration(milliseconds: 100)`)
 
-**ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` (WidgetState) · `Login`, `SignUp`, `ConfirmEmail` รวม 7 ช่อง (debounce 100 ms, `dsl/debounce_fix.dart`) · ยังเป็น 2000 ms: `Home` (`SearchField`), `ProfileUser` (ชื่อ/bio), `UserDirectory` (ค้นหา), `AdminCreatePost` (หัวข้อ/เนื้อหา) — ยังไม่ตรวจว่าแต่ละที่อ่านค่าตอนไหน
+**ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` (WidgetState) · 100 ms (`dsl/debounce_fix.dart`): `Login`/`SignUp`/`ConfirmEmail` 7 ช่อง + `Home` `SearchField` (onFieldSubmitted อ่าน `searchQuery`) + `ProfileUser` ชื่อ/bio + `AdminCreatePost` หัวข้อ/เนื้อหา (ปุ่มโพสต์อ่าน Page State ตรง) · ยังเป็น 2000 ms โดยตั้งใจ: `UserDirectory` ช่องค้นหา (กรองสด ไม่มีปุ่มอ่านค่า มีแค่หน่วงตอนพิมพ์)
 
 **แนวสคริปต์:** `dsl/edit.dart` สะสมเก่า compile กับ SDK 0.0.41 ไม่ผ่าน → งานใหม่เขียนไฟล์ standalone (`dsl/grid_fix.dart`, `dsl/forgot_password.dart`) ใช้ `app.state` + `app.customAction` + `app.ensurePage` + `app.editPage` ได้ตามปกติ

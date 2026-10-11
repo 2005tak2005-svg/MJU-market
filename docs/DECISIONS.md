@@ -1826,4 +1826,4 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - 🔴 Edge Function `send-otp-email` ยังเป็น v8 (ข้อความ "finish signing up" ทุก type) — แก้ให้แยก `recovery` (subject `PASSWORD RESET request`, เตือนให้ตรวจตัวตน) **ยังไม่ deploy** เพราะ deploy ถูกบล็อกสิทธิ์
 - โควตาอีเมล (30/ชม. ทั้งโปรเจกต์) ใช้ร่วมกับ OTP สมัคร · cooldown ต่อผู้ใช้/อายุ OTP/ความยาวรหัสผ่านขั้นต่ำของ Auth ยังไม่ได้ตรวจใน Dashboard (โค้ดใช้ 6)
 - ถ้า `updateUser` พังหลัง `verifyOTP` (รหัสถูกใช้ทิ้งแล้ว) action `signOut` แล้วให้ขอรหัสใหม่
-- **ยังไม่ทดสอบผ่านแอปจริง** (รวมเช็คว่า session ชั่วคราวจาก verify ไม่ทำให้ router เด้งไป Home)
+- **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-10-11, บัญชีจริง):** ได้ OTP และเปลี่ยนรหัสผ่านสำเร็จ · ยังไม่ได้ยืนยันแยก: เข้าสู่ระบบด้วยรหัสใหม่, กรอก OTP ผิด/หมดอายุ, session ชั่วคราวไม่ทำให้ router เด้งไป Home

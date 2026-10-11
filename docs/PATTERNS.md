@@ -895,6 +895,8 @@ CallCustomAction(fn, outputAs: 'err'),
 ```
 ยืนยันจาก `generated_code/`: `FFAppState().resetOtp = _model.resetOtpFieldTextController.text;` อยู่ใน `onPressed` ก่อนเรียก action · อ้าง widget ด้วยชื่อ string ได้ (ไม่ต้องมี typed handle ของหน้าที่เพิ่งสร้างในสคริปต์เดียวกัน)
 
-**ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` · หน้าเดิมที่ยังเสี่ยงค่าเก่า: `Login`, `ConfirmEmail`, `SignUp` (ยังไม่แก้)
+**หน้าเดิมที่มี chain อยู่แล้ว (มี `Actions.unsupported('action customAction')` ใน `inspect --dsl`):** อย่า `ensureActions` เขียน chain ใหม่ — จะทำ atom ที่ DSL อ่านไม่ได้หาย ให้ลด debounce ของ field แทน: `page.mutateNode(page.findByKey(key), (n) { n.props.textField.debounceTimeValue = FFDoubleValue(inputValue: 100); })` (rerun-safe, ยืนยันจาก `generated_code/`: `Duration(milliseconds: 100)`)
+
+**ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` (WidgetState) · `Login`, `SignUp`, `ConfirmEmail` รวม 7 ช่อง (debounce 100 ms, `dsl/debounce_fix.dart`) · ยังเป็น 2000 ms: `Home` (`SearchField`), `ProfileUser` (ชื่อ/bio), `UserDirectory` (ค้นหา), `AdminCreatePost` (หัวข้อ/เนื้อหา) — ยังไม่ตรวจว่าแต่ละที่อ่านค่าตอนไหน
 
 **แนวสคริปต์:** `dsl/edit.dart` สะสมเก่า compile กับ SDK 0.0.41 ไม่ผ่าน → งานใหม่เขียนไฟล์ standalone (`dsl/grid_fix.dart`, `dsl/forgot_password.dart`) ใช้ `app.state` + `app.customAction` + `app.ensurePage` + `app.editPage` ได้ตามปกติ

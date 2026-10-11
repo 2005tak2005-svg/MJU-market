@@ -1,7 +1,7 @@
 # Layer 3 — Browse / Search / Filter
 
 > schema → `../SCHEMA.md` · pattern → `../PATTERNS.md` · ตรวจ → `../checks/L3.sql`
-> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · **ค้นหาเป็น substring จริงแล้ว + ช่วงราคาแล้ว (D-62/D-63, 2026-08-24) — ผ่าน RPC `search_products` ไม่ใช่ typed filter อีกต่อไป** สุ่มลำดับ (`ORDER BY random()` ใน RPC) + pull-to-refresh ยังทำงานผ่าน chain เดียวกัน ยังไม่มี empty-state UI (ลองแล้วไม่สำเร็จ D-46), ยังไม่ทดสอบผ่านแอปจริงหลัง D-62/D-63 — ดู `STATUS.md` คิวถัดไป
+> **สถานะ: 🟨 กำลังทำ** — `Home` (`AllList`) กรองตามหมวดหมู่ได้จริงแล้ว (D-37) + เป็น grid 2 คอลัมน์พร้อมรูปสินค้าจริงแล้ว (D-38) · `ProductDetails` โชว์รูปสินค้าจริงแล้ว + fallback icon เมื่อไม่มีรูป (D-42) + รูปที่ 2/3 โชว์แล้วผ่าน scaffold-level query แยกอิสระ (D-44) · **ค้นหาเป็น substring จริงแล้ว + ช่วงราคาแล้ว (D-62/D-63, 2026-08-24) — ผ่าน RPC `search_products` ไม่ใช่ typed filter อีกต่อไป** สุ่มลำดับ (`ORDER BY random()` ใน RPC) + pull-to-refresh ยังทำงานผ่าน chain เดียวกัน empty-state "ไม่พบสินค้า" มีใน `ProductGridSection`, ยังไม่ทดสอบผ่านแอปจริงหลัง D-62/D-63 — ดู `STATUS.md` คิวถัดไป
 
 ## 🎯 เป้าหมาย
 
@@ -28,7 +28,7 @@
 - **ช่วงราคาทำแล้ว (D-63)** — 2 `TextField` (`minPriceField`/`maxPriceField`, keyboard number) + ปุ่ม "กรอง" (`PriceFilterButton`) ต่อจากปุ่ม "ค้นหา" เขียนเข้า App State `searchPriceMin`/`searchPriceMax` (type **String** ไม่ใช่ Double — ดู PT-33) เป็น**แกนอิสระ**ไม่ล้างค่า keyword/category และไม่ถูกล้างโดยการค้นหา/กดหมวดหมู่ — คงอยู่จนกว่าจะกด "กรอง" ใหม่
 - สุ่มลำดับย้ายจาก `shuffle_key` column ไปเป็น `ORDER BY random()` ใน RPC ตรง ๆ (เอฟเฟกต์เดียวกัน)
 - Pull-to-refresh บน grid → เรียก chain เดียวกับ search submit (`buildSearchRefreshChain`) เหมือนเดิม เคารพ keyword/category ปัจจุบัน (price แยกแกนอยู่แล้วไม่ต้อง reset)
-- 🔴 **empty-state UI ลองแล้วไม่สำเร็จ ถอนออกแล้ว** (D-46) — ทั้ง raw-proto `listLength()` condition และ custom-function-derived boolean state ถูก backend ปฏิเสธทั้งคู่ ดู D-46/PT-27 — **ยังไม่ลองรอบ 3**
+- empty-state: typed-condition ทำไม่ได้ (D-46) แต่ `ProductGridSection` (D-68 v2) โชว์ "ไม่พบสินค้า" ใน Dart แล้ว — ดู "ค้างอยู่"
 
 **หน้า Browse อื่น (ยังไม่ทำ):**
 
@@ -84,4 +84,5 @@ View ใหม่ `seller_profile_view` (profile-level, ไม่ผูกกั
 
 ## ❓ ค้างอยู่
 
-- 🆕 (D-46) ไม่มี empty-state UI เมื่อค้นหาแล้วไม่เจอสินค้าเลย (grid ว่างเปล่าเฉย ๆ ) — ลองแก้ 2 วิธีแล้วไม่สำเร็จทั้งคู่ (backend ปฏิเสธ) ดู D-46/PT-27 "ทางที่ยังไม่ลอง" ถ้าจะกลับมาทำ — **D-83/PT-43 เปิดทางใหม่ที่ยืนยันแล้วว่าใช้ได้จริง** (ผูก `visible:` กับ count column จาก query แยก แทนคำนวณจาก list เอง) น่าจะพอร์ตมาใช้กับ `Home`/`search_products` ได้ ถ้า RPC เพิ่ม count คืนมาด้วย — ยังไม่ได้ลอง
+- ✅ empty-state บน `Home` **มีอยู่แล้ว** (ตรวจ 2026-10-11) — `ProductGridSection` (custom widget, D-68 v2) โชว์ "ไม่พบสินค้า" เมื่อ RPC คืน list ว่าง ตัดสินจาก `products.isEmpty` ใน Dart ตรง ๆ จึงไม่ต้องใช้ PT-43/ไม่ต้องเพิ่ม count ใน RPC — **ยังไม่ทดสอบผ่านแอปจริง** (ค้นหาคำที่ไม่มีสินค้า)
+- 🔴 `ProductGridSection` ใช้ `product.firstImageUrl!` ไม่มี fallback — สินค้าไม่มีรูป crash ทั้ง grid (ยังไม่แก้)

@@ -1810,3 +1810,20 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ยืนยันด้วย SQL:** เทียบ seller ที่มี active 1 ชิ้น (=ชิ้นที่จะ exclude) — ไม่ exclude ได้ count=1, exclude แล้วได้ count=0 ตรงตามที่ควรเป๊ะ
 
 **ยังไม่ทำ:** ทดสอบผ่านแอปจริงว่า empty-state ขึ้นถูกต้องแล้ว (pete ยังไม่ได้กดซ้ำ)
+
+## D-85 — ลืมรหัสผ่านด้วย OTP (recovery) บนท่อ D-34 แบบ additive (2026-10-11)
+
+**ตัดสินใจ:** `resetPasswordForEmail` + `verifyOTP(type: recovery)` + `updateUser(password)` — ไม่ใช้ลิงก์รีเซ็ต (ติด Safe Links เดิม D-19, ต้องตั้ง deep link) · ไม่ทำแอดมินตั้งรหัสให้ (ต้องมี service_role Edge Function เพิ่ม) เหตุผล: Send Email Hook ของ D-34 รับ `email_action_type = recovery` อยู่แล้ว ไม่ต้องแก้ DB/RLS/Auth config
+
+**ที่ทำจริง (push `AwbSp22PMAVTHMLLCFEr` ผ่าน `mju_market_v2/dsl/forgot_password.dart`):**
+- App State: `resetEmail`/`resetOtp`/`resetNewPassword`/`resetConfirmPassword` (แยกจาก `email`/`password` ของ SignUp)
+- Custom action 0-arg: `requestPasswordReset` (validate `@mju.ac.th` → `resetPasswordForEmail`) · `resetPasswordWithOtp` (validate รหัสยาว ≥6/ตรงกัน ก่อน verify → `verifyOTP` → `updateUser` → `signOut`)
+- หน้าใหม่: `ForgotPassword` (`forgot-password`) → `ResetPassword` (`reset-password`) → สำเร็จ `goNamed Login` · `Login` เพิ่มปุ่ม `ForgotPasswordButton` ต่อจาก `LoginButton` (ไม่แก้ widget เดิมอื่น)
+- ข้อความหลังขอรหัสเป็นกลาง ไม่บอกว่าอีเมลมีในระบบ
+
+**ข้อจำกัด/หนี้:**
+- 🔴 รหัสไปที่ inbox แอดมิน (D-34) → แอดมินต้องยืนยันตัวตนผู้ขอก่อนส่งต่อ ไม่งั้นยึดบัญชีได้ · self-service จริงเมื่อ verify domain Resend
+- 🔴 Edge Function `send-otp-email` ยังเป็น v8 (ข้อความ "finish signing up" ทุก type) — แก้ให้แยก `recovery` (subject `PASSWORD RESET request`, เตือนให้ตรวจตัวตน) **ยังไม่ deploy** เพราะ deploy ถูกบล็อกสิทธิ์
+- โควตาอีเมล (30/ชม. ทั้งโปรเจกต์) ใช้ร่วมกับ OTP สมัคร · cooldown ต่อผู้ใช้/อายุ OTP/ความยาวรหัสผ่านขั้นต่ำของ Auth ยังไม่ได้ตรวจใน Dashboard (โค้ดใช้ 6)
+- ถ้า `updateUser` พังหลัง `verifyOTP` (รหัสถูกใช้ทิ้งแล้ว) action `signOut` แล้วให้ขอรหัสใหม่
+- **ยังไม่ทดสอบผ่านแอปจริง** (รวมเช็คว่า session ชั่วคราวจาก verify ไม่ทำให้ router เด้งไป Home)

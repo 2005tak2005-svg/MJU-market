@@ -85,4 +85,4 @@ View ใหม่ `seller_profile_view` (profile-level, ไม่ผูกกั
 ## ❓ ค้างอยู่
 
 - ✅ empty-state บน `Home` **มีอยู่แล้ว** (ตรวจ 2026-10-11) — `ProductGridSection` (custom widget, D-68 v2) โชว์ "ไม่พบสินค้า" เมื่อ RPC คืน list ว่าง ตัดสินจาก `products.isEmpty` ใน Dart ตรง ๆ จึงไม่ต้องใช้ PT-43/ไม่ต้องเพิ่ม count ใน RPC — **ยังไม่ทดสอบผ่านแอปจริง** (ค้นหาคำที่ไม่มีสินค้า)
-- 🔴 `ProductGridSection` ใช้ `product.firstImageUrl!` ไม่มี fallback — สินค้าไม่มีรูป crash ทั้ง grid (ยังไม่แก้)
+- ✅ `ProductGridSection` มี fallback icon เมื่อ `firstImageUrl` null/ว่างแล้ว (2026-10-11) — push ผ่าน `dsl/grid_fix.dart` (script เล็กแยก เพราะ `dsl/edit.dart` สะสมเก่าแล้ว compile กับ SDK 0.0.41 ไม่ผ่าน: `FFPostgresQuery.filters`/`CustomWidget` signature เปลี่ยน) — ยังไม่ทดสอบผ่านแอปจริง

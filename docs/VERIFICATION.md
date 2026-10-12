@@ -294,3 +294,11 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 | สคริปต์ `dsl/edit.dart` rerun-safe หลัง retire ครบ (PT-21) | push เปล่าซ้ำผ่าน |
 
 **ยังไม่ทำ:** ทดสอบผ่านแอปจริงโดย pete (คิวอยู่ `STATUS.md` ข้อ 0)
+
+### V-14 · Hardening DB รอบแรก (D-86, 2026-10-12)
+
+- `handle_new_user()` EXECUTE: `{PUBLIC, anon, authenticated, postgres, service_role}` → `{postgres, service_role}` · trigger `on_auth_user_created` ยัง `tgenabled='O'`
+- พิสูจน์ว่า trigger fire ได้โดย role ที่ไม่มี EXECUTE: ตาราง+trigger function จำลอง (revoke จาก PUBLIC/anon/authenticated) แล้ว `SET LOCAL ROLE anon` insert → `note='trigger_ran'` (rollback ทั้งก้อน ไม่มี object ค้าง) · ❌ ทดสอบกับ `auth.users` จริงไม่ได้ (`SET ROLE supabase_auth_admin` ถูกปฏิเสธ) — **ยังไม่ได้ทดสอบสมัครจริงผ่านแอปหลังถอด EXECUTE**
+- `search_products`: `proconfig={search_path=public}` · ในฐานะ user ธรรมดา: `search_products()` ได้ 5 แถว (ปกติ)
+- FK ที่ไม่มี index คงเหลือ = 0 (เดิม 21)
+- advisor security หลังทำ: ไม่มี lint `anon_security_definer_function_executable`/`function_search_path_mutable` · `authenticated_security_definer_function_executable` เหลือ 8

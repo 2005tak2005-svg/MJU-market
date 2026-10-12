@@ -982,6 +982,7 @@ CREATE TRIGGER on_auth_user_created
 5. **`phone` มาจาก `raw_user_meta_data->>'phone'`** (เพิ่ม 2026-08-08 ดู **D-14**) — ส่ง key `phone` ไปพร้อม `full_name` ตอน Sign Up ได้เลย **ไม่ต้อง Update Row ตามหลัง**
 6. **`bio` / `avatar_url` ยังไม่มีใครใส่ให้** — `insert` แตะแค่ `id, email, full_name, role, student_id, phone` สองตัวนี้ต้องแก้ที่หน้า Edit Profile
 7. **`full_name` / `phone` ผ่าน `nullif(trim(...), '')`** — ส่งช่องว่างล้วนมาจะได้ `NULL` ไม่ใช่ `''` เพื่อให้เช็ค "ยังไม่กรอก" ที่เดียวพอ
+8. **EXECUTE เหลือแค่ `postgres`/`service_role`** (ถอด `PUBLIC`/`anon`/`authenticated` แล้ว 2026-10-12, D-86) — trigger ยังทำงานตามปกติเพราะ Postgres ตรวจสิทธิ์ EXECUTE ตอน `CREATE TRIGGER` ไม่ใช่ตอน fire
 
 ### `private.*` — helper สำหรับ RLS
 
@@ -1366,6 +1367,8 @@ REVOKE ALL ON FUNCTION public.search_products(text, bigint, numeric, numeric) FR
 GRANT EXECUTE ON FUNCTION public.search_products(text, bigint, numeric, numeric) TO authenticated;
 ```
 
+> 2026-10-12 (D-86): `ALTER FUNCTION public.search_products(text, bigint, numeric, numeric) SET search_path = public;` (`proconfig = {search_path=public}`) — ไม่เปลี่ยนนิยาม/ผลลัพธ์
+
 - **`search_products`** — `LANGUAGE sql` ธรรมดา ไม่ใช่ SECURITY DEFINER (ไม่ต้อง bypass อะไร — `products_review_view` เป็น `security_invoker=true` อยู่แล้ว กรอง banned-seller/RLS ให้ตามปกติ) `RETURNS SETOF products_review_view` แทน `products` ตรง ๆ (ตาม P-05 note เดิม) เพื่อให้ได้ `category_name`/`seller_name`/`first_image_url`/`can_see_buyer` ฯลฯ ติดมาครบ ไม่ต้อง query ซ้ำฝั่ง FlutterFlow แทนที่ built-in typed-filter ของ D-45–D-48 ทั้งชุด (exact-match only เพราะ `iLike`/`like` ไม่มี null-safe codegen ในระบบ FlutterFlow AI SDK นี้) ทุกพารามิเตอร์ optional (`NULL` = ไม่กรองแกนนั้น) ANDed กันหมด — คำค้นค้นทั้ง `title`/`description` (กว้างกว่า P-05 draft เดิมที่มีแค่ title) `title` มี GIN trigram index อยู่แล้ว (D-46) EXECUTE grant `authenticated` เท่านั้น (revoke `anon`/PUBLIC ออกแล้ว — สอดคล้องกับคำตอบ pete ว่าไม่เปิด browse ก่อน login)
 
 ### L3 mini storefront — `get_seller_profile_header()` (เพิ่ม 2026-09-06, D-84)
@@ -1448,7 +1451,11 @@ GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authen
 
 > 📌 **จำนวนรูปสูงสุด 3 บังคับที่ `products.image_urls` ไม่ใช่ที่ Storage** — policy บน `storage.objects` เห็นทีละไฟล์ นับรวมไม่ได้ ผลคืออัปไฟล์ที่ 4 เข้า bucket ได้ แต่ผูกกับประกาศไม่ได้ (กลายเป็นไฟล์กำพร้า) เหตุผลเต็ม: `DECISIONS.md` **D-12**
 >
-> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## Scheduled Jobs (pg_cron)` ท้ายหมวด Storage
+> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## Index ของ foreign key (เพิ่ม 2026-10-12, D-86)
+
+21 index แบบคอลัมน์เดียว ชื่อ `idx_<ตาราง>_<คอลัมน์>` ครอบทุก FK ใน `public` (advisor `unindexed_foreign_keys` = 0): `"Profile"` (`banned_by`, `faculty_id`) · `advertisement_likes.user_id` · `advertisement_posts.created_by` · `chat_message` (`chat_id`, `user_id`) · `chat_user.user_id` · `notifications` (`ref_product_id`, `user_id`) · `products` (`buyer_id`, `category_id`, `seller_id`) · `reports` (`reported_product_id`, `reported_user_id`) · `reviews` (`reviewee_id`, `reviewer_id`) · `transactions` (`buyer_id`, `chat_id`, `product_id`, `seller_id`) · `wishlist_items.user_id`
+
+## Scheduled Jobs (pg_cron)` ท้ายหมวด Storage
 
 ### bucket `avatars`
 

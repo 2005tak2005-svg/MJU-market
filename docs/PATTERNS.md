@@ -900,3 +900,14 @@ CallCustomAction(fn, outputAs: 'err'),
 **ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` (WidgetState) · 100 ms (`dsl/debounce_fix.dart`): `Login`/`SignUp`/`ConfirmEmail` 7 ช่อง + `Home` `SearchField` (onFieldSubmitted อ่าน `searchQuery`) + `ProfileUser` ชื่อ/bio + `AdminCreatePost` หัวข้อ/เนื้อหา (ปุ่มโพสต์อ่าน Page State ตรง) · ยังเป็น 2000 ms โดยตั้งใจ: `UserDirectory` ช่องค้นหา (กรองสด ไม่มีปุ่มอ่านค่า มีแค่หน่วงตอนพิมพ์)
 
 **แนวสคริปต์:** `dsl/edit.dart` สะสมเก่า compile กับ SDK 0.0.41 ไม่ผ่าน → งานใหม่เขียนไฟล์ standalone (`dsl/grid_fix.dart`, `dsl/forgot_password.dart`) ใช้ `app.state` + `app.customAction` + `app.ensurePage` + `app.editPage` ได้ตามปกติ
+
+## PT-45 — ฟอร์ม insert ต้อง reset ทุก field หลังสำเร็จ ไม่งั้นกดซ้ำ insert ซ้ำ (D-86, 2026-10-12)
+
+ล้างแค่ page state (รูป) ไม่พอ — `TextField`/`DropDown` เก็บค่าใน controller ของ widget เอง ต่อท้ายหลัง insert:
+```dart
+ClearTextField(titleField),            // รับ typed handle ได้ (ไม่ต้องตั้งชื่อ widget)
+ResetFormField(categoryDropdown),      // generate: dropDownValueController?.reset(); dropDownValue = null;
+```
+- `ClearTextField` generate `textControllerN?.clear()` · ช่องที่มี mask (`เบอร์ติดต่อ`) ไม่ต้องเรียก `mask.clear()` เพิ่ม — `mask_text_input_formatter` 2.9.0 รีเซ็ต state เองเมื่อ `oldValue.text` ว่าง
+- guard ต้องเทียบกับ `''` ของ TextField ตรง ๆ ได้ (`text == null || text == ''`) แต่ Dropdown ใช้ trick sentinel ของ PT-37
+- ใช้แล้วที่: `addproduct` `Button_85x7xhe6` · reconstruct chain ทั้งก้อนเพราะ `ensureActions` REPLACE (PT-37)

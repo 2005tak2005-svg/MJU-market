@@ -1827,3 +1827,11 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - โควตาอีเมล (30/ชม. ทั้งโปรเจกต์) ใช้ร่วมกับ OTP สมัคร · cooldown ต่อผู้ใช้/อายุ OTP/ความยาวรหัสผ่านขั้นต่ำของ Auth ยังไม่ได้ตรวจใน Dashboard (โค้ดใช้ 6)
 - ถ้า `updateUser` พังหลัง `verifyOTP` (รหัสถูกใช้ทิ้งแล้ว) action `signOut` แล้วให้ขอรหัสใหม่
 - **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-10-11, บัญชีจริง):** ได้ OTP และเปลี่ยนรหัสผ่านสำเร็จ · ยืนยันเพิ่ม (pete, 2026-10-12): ตั้งรหัสใหม่แล้วเข้าสู่ระบบด้วยรหัสใหม่ได้ปกติ · ยังไม่ได้ยืนยันแยก: กรอก OTP ผิด/หมดอายุ, session ชั่วคราวไม่ทำให้ router เด้งไป Home
+
+## D-86 — Hardening DB รอบแรกจาก advisor: ถอด EXECUTE `handle_new_user`, `search_path` ของ `search_products`, index ให้ FK ทั้งหมด (2026-10-12)
+
+**ตัดสินใจ:** ทำเฉพาะ 3 ข้อที่ความเสี่ยงต่ำและย้อนกลับง่าย (3 migration: `revoke_handle_new_user_direct_execute`, `search_products_set_search_path`, `add_covering_indexes_for_foreign_keys`) · **เลื่อน** การแก้ RLS `auth.uid()` → `(select auth.uid())` 18 policy (แตะ policy ใช้งานจริง ประโยชน์น้อยตอนข้อมูลน้อย) ไว้ก่อนขึ้นใช้จริง
+
+**ผล:** advisor ปิด `anon_security_definer_function_executable` (handle_new_user) + `function_search_path_mutable` (search_products) · `authenticated_security_definer_function_executable` 9→8 · `unindexed_foreign_keys` 21→0 (ตรวจจาก catalog) รายละเอียด `SCHEMA.md` · ผลทดสอบ `VERIFICATION.md` V-14
+
+**ยังค้างจาก advisor (ตั้งใจ/รอตัดสินใจ):** `security_definer_view` 4 ตัว (`public_profiles` = D-01 ห้ามแก้; อีก 3 ตัวต้องตรวจคอลัมน์ที่เปิดเผยแล้วบันทึกว่ายอมรับ) · RPC SECURITY DEFINER 8 ตัวที่ `authenticated` เรียกได้ (ตั้งใจ ต้องไล่ตรวจ guard ภายในทีละตัว) · `extension_in_public` (`pg_trgm`, `pg_net`) · `auth_leaked_password_protection` (Dashboard) · RLS initplan 18 policy · multiple_permissive_policies 8

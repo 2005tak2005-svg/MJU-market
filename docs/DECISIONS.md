@@ -1823,7 +1823,7 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **ข้อจำกัด/หนี้:**
 - 🔴 รหัสไปที่ inbox แอดมิน (D-34) → แอดมินต้องยืนยันตัวตนผู้ขอก่อนส่งต่อ ไม่งั้นยึดบัญชีได้ · self-service จริงเมื่อ verify domain Resend
-- 🔴 Edge Function `send-otp-email` ยังเป็น v8 (ข้อความ "finish signing up" ทุก type) — แก้ให้แยก `recovery` (subject `PASSWORD RESET request`, เตือนให้ตรวจตัวตน) **ยังไม่ deploy** เพราะ deploy ถูกบล็อกสิทธิ์
+- Edge Function `send-otp-email` **v9 deploy แล้ว 2026-10-12** (`verify_jwt=false` คงเดิม): `recovery` → subject `PASSWORD RESET request from <email>` + เตือนแอดมินให้ตรวจตัวตนก่อนส่งต่อรหัส · type อื่นข้อความเดิม · ยังไม่ได้ทดสอบส่งจริงหลัง deploy
 - โควตาอีเมล (30/ชม. ทั้งโปรเจกต์) ใช้ร่วมกับ OTP สมัคร · cooldown ต่อผู้ใช้/อายุ OTP/ความยาวรหัสผ่านขั้นต่ำของ Auth ยังไม่ได้ตรวจใน Dashboard (โค้ดใช้ 6)
 - ถ้า `updateUser` พังหลัง `verifyOTP` (รหัสถูกใช้ทิ้งแล้ว) action `signOut` แล้วให้ขอรหัสใหม่
 - **ทดสอบผ่านแอปจริงแล้ว (pete, 2026-10-11, บัญชีจริง):** ได้ OTP และเปลี่ยนรหัสผ่านสำเร็จ · ยังไม่ได้ยืนยันแยก: เข้าสู่ระบบด้วยรหัสใหม่, กรอก OTP ผิด/หมดอายุ, session ชั่วคราวไม่ทำให้ router เด้งไป Home

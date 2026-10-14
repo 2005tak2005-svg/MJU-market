@@ -1897,3 +1897,13 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **ผลข้างเคียง:** ลงขายราคา 0 (ของฟรี) ไม่ได้อีก · DB ยังไม่มี CHECK `price > 0` (มีแถวเก่า `price=0` เช่น "แมว" อนุมัติแล้ว)
 **ค้าง:** แถว `ba74ee67…` (pending) / `6d0abfe7…` (approved) ยัง `price=0` — ไม่ทราบราคาจริง ต้องให้ผู้ขายแก้หรือแอดมินปฏิเสธ · ยังไม่ได้ทดสอบผ่านแอปจริง
+
+## D-92 — ตัวเลือก "ของแจกฟรี" ในฟอร์มลงขาย แทนการพิมพ์ราคา 0 (2026-10-14)
+
+**ตัดสินใจ:** ของฟรีเลือกผ่านสวิตช์ ไม่ใช่พิมพ์ 0 — ราคา 0 ที่มาจากการพิมพ์/แปลงไม่ได้ยังถูกบล็อกตาม D-91 · ใน DB ของฟรี = `products.price = 0` (ไม่เพิ่มคอลัมน์ ไม่เปลี่ยน schema)
+**สเปค (push แล้ว):**
+- page state `addproduct.isFree` (bool, default false) + `Toggle` `FreeToggle` "ของแจกฟรี (ไม่คิดราคา)" ใต้ `TextField_1egqbjvw` → `SetState isFree`
+- custom function `isPriceValid(rawValue, isFree)`: `isFree` หรือ `parseProductPrice(rawValue) > 0` · `resolveProductPrice(rawValue, isFree)`: `isFree ? 0 : parseProductPrice(rawValue)`
+- เงื่อนไขราคาก่อน insert = `Not(isPriceValid(ช่องราคา, isFree))` → snackbar "กรุณากรอกราคาสินค้าเป็นตัวเลขที่มากกว่า 0 หรือเปิด “ของแจกฟรี”" · `price` ของ insert = `resolveProductPrice(...)` (เปิดสวิตช์แล้วค่าในช่องราคาถูกละเลย)
+- แก้ด้วย raw proto เฉพาะ condition + field `price` (เหตุผลเดียวกับ D-91)
+**ค้าง:** หน้าแสดงสินค้ายังโชว์ `0 บาท` ไม่ใช่ "ฟรี" (`ProductDetails`, การ์ด `Home`/`SellerStorefront`) · สวิตช์ไม่ reset หลังลงขายสำเร็จ · ยังไม่ได้ทดสอบผ่านแอปจริง

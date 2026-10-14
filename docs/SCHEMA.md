@@ -1451,7 +1451,11 @@ GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authen
 
 > 📌 **จำนวนรูปสูงสุด 3 บังคับที่ `products.image_urls` ไม่ใช่ที่ Storage** — policy บน `storage.objects` เห็นทีละไฟล์ นับรวมไม่ได้ ผลคืออัปไฟล์ที่ 4 เข้า bucket ได้ แต่ผูกกับประกาศไม่ได้ (กลายเป็นไฟล์กำพร้า) เหตุผลเต็ม: `DECISIONS.md` **D-12**
 >
-> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## Index ของ foreign key (เพิ่ม 2026-10-12, D-86)
+> ✅ **ไฟล์กำพร้าถูกเก็บกวาดอัตโนมัติทุกวันแล้ว (D-66, ปิดข้อเสนอ P-12)** — ดู `## สิทธิ์ของ view แบบ SECURITY DEFINER (แก้ 2026-10-12, D-87)
+
+`public_profiles` · `public_directory_view` · `seller_profile_view` · `admin_contact_view` (ไม่มี `security_invoker` ตั้งใจ — D-01/D-74) — `anon` **ถอดสิทธิ์ทั้งหมดแล้ว** · `authenticated` เหลือ `SELECT` อย่างเดียว (ถอด INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER) · ทั้ง 4 view ไม่ updatable อยู่แล้ว · ห้ามสร้าง view แบบนี้ใหม่โดยไม่ revoke `anon` ทันที (Supabase default grant ให้ `anon` เต็มทุกตาราง/view ใน `public`)
+
+## Index ของ foreign key (เพิ่ม 2026-10-12, D-86)
 
 21 index แบบคอลัมน์เดียว ชื่อ `idx_<ตาราง>_<คอลัมน์>` ครอบทุก FK ใน `public` (advisor `unindexed_foreign_keys` = 0): `"Profile"` (`banned_by`, `faculty_id`) · `advertisement_likes.user_id` · `advertisement_posts.created_by` · `chat_message` (`chat_id`, `user_id`) · `chat_user.user_id` · `notifications` (`ref_product_id`, `user_id`) · `products` (`buyer_id`, `category_id`, `seller_id`) · `reports` (`reported_product_id`, `reported_user_id`) · `reviews` (`reviewee_id`, `reviewer_id`) · `transactions` (`buyer_id`, `chat_id`, `product_id`, `seller_id`) · `wishlist_items.user_id`
 

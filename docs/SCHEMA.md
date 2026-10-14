@@ -253,20 +253,20 @@ CREATE UNIQUE INDEX reports_unique_pending_per_reporter_user
 | 6 | `body` | text | nullable | – |
 | 7 | `is_read` | boolean | **NOT NULL** | `false` |
 | 8 | `created_at` | timestamptz | **NOT NULL** | `now()` |
+| 9 | `ref_chat_id` | bigint | nullable | – (เพิ่ม 2026-10-14, D-90) |
 
 ```sql
 PRIMARY KEY (id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
+FOREIGN KEY (ref_chat_id) REFERENCES chat(id) ON DELETE CASCADE
 
-CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
-                                   'listing_rejected'::character varying,
-                                   'account_banned'::character varying,
-                                   'account_unbanned'::character varying])::text[])))
+CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message'))  -- notifications_type_check
+CHECK (type <> 'chat_message' OR ref_chat_id IS NOT NULL)                                                   -- notifications_chat_ref_check
 ```
 
-- `ref_product_id` nullable โดยตั้งใจ — เผื่อ `ref_chat_id bigint` เพิ่มทีหลัง (แก้บล็อกเดิมของ P-07 ดู D-23)
-- `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน
+- `ref_product_id` nullable โดยตั้งใจ (แก้บล็อกเดิมของ P-07 ดู D-23) · `ref_chat_id` nullable — ใช้เฉพาะ `type='chat_message'`
+- `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน · `chat_message` เขียนโดย trigger `trg_notify_chat_message` (D-90) — `title` = ชื่อผู้ส่ง, `body` = ข้อความ (ตัด 100 ตัวอักษร) หรือ `📷 ส่งรูปภาพ` · ต่อผู้รับ+ห้องเหลือแถว unread 1 แถว (แถว unread เก่าถูกลบแล้ว INSERT แถวใหม่ทุกข้อความ)
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - อยู่ใน `supabase_realtime` publication (D-60) — ตรวจจาก `pg_publication_tables` 2026-10-14
 
@@ -1266,6 +1266,44 @@ END; $function$;
 - **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น
 - ทั้ง 3 ฟังก์ชันที่เป็น `SECURITY DEFINER`/มี query ภายใน (`is_chat_member`, `find_or_create_chat`, `update_chat_last_message`) pin `search_path = public` กันโจมตีแบบ search_path hijack
 
+### L6 chat notification — `notify_chat_message()` + trigger `trg_notify_chat_message` (เพิ่ม 2026-10-14, D-90)
+
+```sql
+CREATE OR REPLACE FUNCTION public.notify_chat_message() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+DECLARE sender_name text; preview text;
+BEGIN
+  BEGIN
+    IF NEW.chat_id IS NULL THEN RETURN NEW; END IF;
+    SELECT COALESCE(NULLIF(btrim(full_name), ''), 'ผู้ใช้') INTO sender_name
+    FROM public."Profile" WHERE id = NEW.user_id;
+    preview := CASE WHEN NEW.message IS NOT NULL AND btrim(NEW.message) <> ''
+                    THEN left(btrim(NEW.message), 100) ELSE '📷 ส่งรูปภาพ' END;
+    DELETE FROM public.notifications n
+    WHERE n.type = 'chat_message' AND n.ref_chat_id = NEW.chat_id AND n.is_read = false
+      AND n.user_id <> NEW.user_id
+      AND n.user_id IN (SELECT cu.user_id FROM public.chat_user cu WHERE cu.chat_id = NEW.chat_id);
+    INSERT INTO public.notifications (user_id, type, ref_chat_id, title, body)
+    SELECT cu.user_id, 'chat_message', NEW.chat_id, COALESCE(sender_name, 'ผู้ใช้'), preview
+    FROM public.chat_user cu
+    WHERE cu.chat_id = NEW.chat_id AND cu.user_id IS NOT NULL AND cu.user_id <> NEW.user_id;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'notify_chat_message failed: %', SQLERRM;
+  END;
+  RETURN NEW;
+END; $function$;
+
+REVOKE ALL ON FUNCTION public.notify_chat_message() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_notify_chat_message
+  AFTER INSERT ON public.chat_message FOR EACH ROW EXECUTE FUNCTION public.notify_chat_message();  -- tgenabled = 'O'
+```
+
+- ผู้รับ = สมาชิก `chat_user` ของห้องทุกคน **ยกเว้นผู้ส่ง** (ไม่เช็ค `is_banned` ของผู้รับ)
+- exception ภายในถูกกลืนเป็น `WARNING` — แจ้งเตือนพังต้องไม่ทำให้ INSERT ข้อความล้ม
+- trigger-only: ไม่มี EXECUTE ให้ `anon`/`authenticated` (ตรวจแล้ว `has_function_privilege` = false ทั้งคู่)
+- `mark_chat_read` ขยาย: นอกจากตั้ง `chat_user.last_read_at` ยัง `UPDATE notifications SET is_read=true` ของ `type='chat_message'` + `ref_chat_id` ห้องนั้นของ `auth.uid()` เอง (grant เหมือนเดิม)
+
 ### L5 sale — `mark_product_sold()` + trigger `enforce_sale_via_rpc_only` (เพิ่ม 2026-08-23, D-59)
 
 ```sql
@@ -1455,7 +1493,7 @@ GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authen
 
 `public_profiles` · `public_directory_view` · `seller_profile_view` · `admin_contact_view` (ไม่มี `security_invoker` ตั้งใจ — D-01/D-74) — `anon` **ถอดสิทธิ์ทั้งหมดแล้ว** · `authenticated` เหลือ `SELECT` อย่างเดียว (ถอด INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER) · ทั้ง 4 view ไม่ updatable อยู่แล้ว · ห้ามสร้าง view แบบนี้ใหม่โดยไม่ revoke `anon` ทันที (Supabase default grant ให้ `anon` เต็มทุกตาราง/view ใน `public`)
 
-## Index ของ foreign key (เพิ่ม 2026-10-12, D-86)
+## Index ของ foreign key (เพิ่ม 2026-10-12, D-86 · +`notifications.ref_chat_id` 2026-10-14, D-90 = 22)
 
 21 index แบบคอลัมน์เดียว ชื่อ `idx_<ตาราง>_<คอลัมน์>` ครอบทุก FK ใน `public` (advisor `unindexed_foreign_keys` = 0): `"Profile"` (`banned_by`, `faculty_id`) · `advertisement_likes.user_id` · `advertisement_posts.created_by` · `chat_message` (`chat_id`, `user_id`) · `chat_user.user_id` · `notifications` (`ref_product_id`, `user_id`) · `products` (`buyer_id`, `category_id`, `seller_id`) · `reports` (`reported_product_id`, `reported_user_id`) · `reviews` (`reviewee_id`, `reviewer_id`) · `transactions` (`buyer_id`, `chat_id`, `product_id`, `seller_id`) · `wishlist_items.user_id`
 

@@ -1,7 +1,7 @@
 # Layer 6 — Notifications
 
 > schema → `../SCHEMA.md` · ตรวจ → `../checks/L6.sql`
-> **สถานะ: 🟨 ตาราง+RLS+UI ใช้งานจริงแล้ว (D-22/D-23/D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เขียนได้ทางเดียว (reject→insert), ไม่มี trigger อัตโนมัติ · **Realtime บนรายการ `Notifications` ทำแล้ว (D-60, 2026-08-24)** · **avatar แอดมิน + คุยกับแอดมินจากแจ้งเตือน + badge ตาม type ทำแล้ว (D-74, 2026-08-28)** ยังไม่มี unread badge ตัวเลข/push จริงตอนปิดแอป**
+> **สถานะ: 🟨 ตาราง+RLS+UI ใช้งานจริงแล้ว (D-22/D-23/D-26) + จุดแดง unread (D-31, มีบั๊ก stale-state D-32) — เขียนได้ทางเดียว (reject→insert), ไม่มี trigger อัตโนมัติ · **Realtime บนรายการ `Notifications` ทำแล้ว (D-60, 2026-08-24)** · **avatar แอดมิน + คุยกับแอดมินจากแจ้งเตือน + badge ตาม type ทำแล้ว (D-74, 2026-08-28)** ยังไม่มี unread badge ตัวเลข/push จริงตอนปิดแอป · banner ตอนเปิดแอปอยู่ทำแล้ว (D-88)**
 
 ## 🎯 เป้าหมาย
 
@@ -32,6 +32,8 @@
 - ปุ่ม "คุยกับแอดมิน" แยกจากการแตะแถว — โผล่เฉพาะแถว `listing_rejected`/`account_banned` (เลือกสโคปนี้ตามที่ pete ตอบ) เรียก `findOrCreateChatWithAdmin` (ต่อยอดให้ relay memberNames/userIds แล้ว) → Navigate `chatMessages`
 - รายละเอียดกับดักที่เจอ (action ซ้ำ structure ชน validate, `Equals(item[],null)` ไม่เช็ค null จริง) → `PATTERNS.md` PT-39, ตัดสินใจเต็ม → `DECISIONS.md` D-74 — **ยังไม่ทดสอบผ่านแอปจริง**
 
+**Banner ในแอป (D-88, 2026-10-14):** custom action `startInAppNotificationBanner` (main.dart final action, PT-45) subscribe INSERT บน `notifications` ของ user ปัจจุบัน → overlay banner บนทุกหน้า (5 วิ, แตะ→`Notifications`, ไม่เด้งเมื่ออยู่หน้า `/notifications`) — **ยังไม่ทดสอบบนแอปจริง**
+
 **ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon (ตัดสโคปไว้ตอน D-60 — pete สั่งเว้นรอบนี้) · push notification จริงตอนปิดแอป (FCM/OneSignal) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)
 
 ## 🧪 Definition of Done
@@ -40,6 +42,7 @@
 - [x] ผู้ใช้อ่าน notification ของคนอื่นไม่ได้ — ทดสอบ non-admin จริงแล้ว (0 แถวข้ามคน)
 - [ ] badge นับ unread ถูกต้องและอัปเดต live — ยังไม่ทำ (ตัดสโคปไว้)
 - [x] รายการอัปเดตสดระหว่างเปิดหน้าค้างอยู่ (Realtime) — ทำแล้ว (D-60) ยืนยันจาก `generated_code/` — **ยังไม่ทดสอบผ่านแอปจริง**
+- [ ] banner เด้งตอนเปิดแอปอยู่ (D-88) — push แล้ว ยังไม่ทดสอบบนแอปจริง
 - [ ] ปิดแอปแล้วเปิดใหม่ยังเห็นแจ้งเตือนที่พลาดไปแบบ push จริง — ยังไม่ทำ (ต้อง FCM/OneSignal แยกจาก Realtime)
 - [ ] จุดแดง unread หายทันทีตอนแตะ — มีบั๊ก stale-state (D-32) ยังไม่แก้
 - [ ] + DoD ร่วมใน `CLAUDE.md` — ยังไม่เคยทดสอบจุดแดงผ่านแอปจริง

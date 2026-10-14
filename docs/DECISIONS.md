@@ -1859,4 +1859,4 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **ยังไม่ทำ:** แจ้งเตือนจากแชทใหม่ (ต้อง trigger สร้างแถว `notifications` จาก `chat_message` — P-04 เลิกใช้ ต้องออกแบบใหม่ + เพิ่ม `type` ใน CHECK) · badge ตัวเลข unread · FCM
 
-**สถานะ:** push สำเร็จ ยืนยันจาก `generated_code/` ว่า `main.dart` เรียก `actions.startInAppNotificationBanner()` และ theme getter ที่ใช้มีจริง · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter` บนเครื่อง) · **ยังไม่ทดสอบบนแอปจริง**
+**สถานะ:** push สำเร็จ ยืนยันจาก `generated_code/` ว่า `main.dart` เรียก `actions.startInAppNotificationBanner()` และ theme getter ที่ใช้มีจริง · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter` บนเครื่อง) · **pete ทดสอบ 2026-10-14: insert `listing_rejected` ด้วย SQL → banner เด้งบนแอปจริง** · ยังไม่ได้ยืนยัน: แตะ→`Notifications`, ปัดปิด, ไม่เด้งบนหน้า `Notifications`, สลับบัญชี/logout

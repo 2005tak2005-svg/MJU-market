@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-10-14**
+> ✅ **D-89: แตะแถวแจ้งเตือนไม่ navigate ไป `ProductDetails` แล้ว** (mark อ่านแล้วอย่างเดียว; แชทจะ navigate ทีหลังเมื่อมี type นี้) push แล้ว ยืนยันจาก `generated_code/` · ยังไม่ได้ทดสอบบนแอปจริง
 > ✅ **D-88: banner แจ้งเตือนในแอป (L6)** — แถวใหม่ใน `notifications` ของ user ที่ล็อกอินอยู่ → banner เลื่อนลงจากบนทุกหน้า (custom action `startInAppNotificationBanner` เป็น `main.dart` final action, `dsl/in_app_banner.dart`, PT-45) ไม่แตะ DB · ยังไม่มีแจ้งเตือนจากแชท/badge ตัวเลข/FCM · **pete ทดสอบแล้ว banner เด้งจริง (2026-10-14) ยังเหลือเช็คพฤติกรรมย่อยในคิวข้อ 0f**
 > ✅ **D-87: ถอดสิทธิ์ `anon` จาก view SECURITY DEFINER 4 ตัว** — คนไม่ล็อกอินเคยอ่านชื่อ/รูป/bio/คณะของทุกคนได้ผ่าน anon key (ไม่มี email/phone) แก้แล้ว ทดสอบฝั่ง SQL ผ่าน (V-15) · **ยังไม่ได้เปิดหน้า `UserDirectory`/`SellerStorefront`/popup โปรไฟล์ด้วยบัญชีธรรมดา** · ค้าง: `advertisement_likes` `anon` อ่านได้ (รอ pete ตัดสินใจ)
 > ✅ **D-86: hardening DB รอบแรก** — ถอด EXECUTE `handle_new_user` จาก anon/authenticated, `search_path` ของ `search_products`, index ครบทุก FK (21 ตัว) apply แล้ว ผลทดสอบ `VERIFICATION.md` V-14 · **ยังไม่ได้ทดสอบสมัครสมาชิกจริงผ่านแอปหลังถอด EXECUTE** · เลื่อนไว้: RLS `(select auth.uid())` 18 policy

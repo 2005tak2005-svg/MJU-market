@@ -28,7 +28,7 @@
 **รายการต่อแถวปรับใหม่ทั้งชุด (D-74, 2026-08-28)** — เดิมทุกแถวเหมือนกัน (ไอคอนเดียว, แตะแล้ว mark read + Navigate ProductDetails เสมอ) ตอนนี้:
 - avatar วงกลม (รูปแอดมิน จาก `admin_contact_view`, ค่าเดียวใช้ร่วมทุกแถว — ไม่ใช่ per-row)
 - badge ไอคอน 4 สีตาม `type` (approved/rejected/banned/unbanned)
-- แตะแถว → mark `is_read=true` + Navigate `ProductDetails` **เฉพาะ** `listing_approved`/`listing_rejected` (แก้บั๊กเดิม: `account_banned`/`account_unbanned` เคย Navigate ด้วย `productId` เป็น null เสมอ)
+- ~~แตะแถว → Navigate `ProductDetails`~~ **เลิกแล้ว (D-89)** แตะแถว → mark `is_read=true` อย่างเดียวทุก type · (เดิม: Navigate `ProductDetails` **เฉพาะ** `listing_approved`/`listing_rejected` (แก้บั๊กเดิม: `account_banned`/`account_unbanned` เคย Navigate ด้วย `productId` เป็น null เสมอ))
 - ปุ่ม "คุยกับแอดมิน" แยกจากการแตะแถว — โผล่เฉพาะแถว `listing_rejected`/`account_banned` (เลือกสโคปนี้ตามที่ pete ตอบ) เรียก `findOrCreateChatWithAdmin` (ต่อยอดให้ relay memberNames/userIds แล้ว) → Navigate `chatMessages`
 - รายละเอียดกับดักที่เจอ (action ซ้ำ structure ชน validate, `Equals(item[],null)` ไม่เช็ค null จริง) → `PATTERNS.md` PT-39, ตัดสินใจเต็ม → `DECISIONS.md` D-74 — **ยังไม่ทดสอบผ่านแอปจริง**
 

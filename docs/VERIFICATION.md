@@ -308,3 +308,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - **ก่อนแก้** (นับแถวด้วย `SET LOCAL ROLE anon`): `public_profiles=12`, `public_directory_view=11`, `seller_profile_view=12`, `admin_contact_view=1`; ตารางอื่นทั้งหมดเป็น 0 หรือ error ยกเว้น `advertisement_likes=4`
 - **หลังแก้:** `anon` → `permission denied` ทั้ง 4 view · user ธรรมดา (role `authenticated`) ยังอ่านได้ครบ 12/11/12/1
 - ไม่ได้ทดสอบผ่านแอปจริง (หน้าที่ใช้ view เหล่านี้: `UserDirectory`, `SellerStorefront`, popup โปรไฟล์, `Notifications` แอดมิน, ชื่อผู้ขาย/แชท) — ควรเปิดดูแต่ละหน้าสักครั้งด้วยบัญชีธรรมดา
+
+### V-16 · trigger แจ้งเตือนข้อความแชท (D-90, 2026-10-14)
+
+- ทดสอบในทรานแซกชันที่ rollback (DO block + `RAISE EXCEPTION` ท้ายสุด; ตรวจแล้วไม่เหลือข้อมูล: `chat_message` 35 / `notifications` 5 เท่าเดิม) ห้องจริง 1 ห้อง (2 สมาชิก) บทบาท postgres + `set_config('request.jwt.claims')` จำลองผู้รับตอนเรียก `mark_chat_read`
+- ส่ง 1 ข้อความ → ผู้รับมี unread 1 แถว · ส่งอีก 1 → ยัง 1 แถว `body` = ข้อความล่าสุด `title` = ชื่อผู้ส่ง · ส่งรูปล้วน → `body` = `📷 ส่งรูปภาพ` · ผู้ส่งไม่ได้แถวเลย (0) · `mark_chat_read` ในนามผู้รับ → unread = 0
+- `has_function_privilege('anon'|'authenticated', 'notify_chat_message()', 'execute')` = false ทั้งคู่ · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิม: security_definer_view 4, extension_in_public 2, authenticated_security_definer_function_executable 8, leaked password 1)
+- **ไม่ได้ทดสอบ:** RLS ฝั่ง user ธรรมดาอ่านแถว `chat_message` ของตัวเอง/ไม่เห็นของคนอื่น (แถวเขียนด้วย SECURITY DEFINER ผ่าน policy `user_id = auth.uid()` เดิม ไม่ได้แก้ policy) · ห้องที่มี >2 สมาชิก · ผู้ถูกแบนส่ง/รับ · banner บนแอปจริงจากข้อความจริง

@@ -52,3 +52,23 @@ WHERE p.moderation_status = 'rejected'
     SELECT 1 FROM public.notifications n
     WHERE n.type = 'listing_rejected' AND n.ref_product_id = p.id
   );
+
+-- [6.9] (D-90) แจ้งเตือนแชท: คอลัมน์ ref_chat_id + CHECK ครบ — คาดหวัง 1 แถว bigint
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_schema='public' AND table_name='notifications' AND column_name='ref_chat_id';
+
+-- [6.10] trigger เปิดอยู่ — คาดหวัง tgenabled = 'O'
+SELECT tgname, tgenabled FROM pg_trigger
+WHERE tgrelid='public.chat_message'::regclass AND tgname='trg_notify_chat_message';
+
+-- [6.11] ฟังก์ชัน trigger เรียกตรงไม่ได้ — คาดหวัง false ทั้งคู่
+SELECT has_function_privilege('anon','public.notify_chat_message()','execute') AS anon_exec,
+       has_function_privilege('authenticated','public.notify_chat_message()','execute') AS auth_exec;
+
+-- [6.12] แจ้งเตือนแชทที่ผู้รับเป็นผู้ส่งเอง (ไม่ควรมี) — คาดหวัง 0 แถว
+SELECT n.id FROM public.notifications n
+JOIN public.chat_message m ON m.chat_id = n.ref_chat_id AND m.user_id = n.user_id
+WHERE n.type = 'chat_message' AND NOT EXISTS (
+  SELECT 1 FROM public.chat_message m2
+  WHERE m2.chat_id = n.ref_chat_id AND m2.user_id <> n.user_id AND m2.created_at <= n.created_at
+);

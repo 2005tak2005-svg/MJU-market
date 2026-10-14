@@ -34,6 +34,8 @@
 
 **Banner ในแอป (D-88, 2026-10-14):** custom action `startInAppNotificationBanner` (main.dart final action, PT-45) subscribe INSERT บน `notifications` ของ user ปัจจุบัน → overlay banner บนทุกหน้า (5 วิ, แตะ→`Notifications`, ไม่เด้งเมื่ออยู่หน้า `/notifications`) — **ยังไม่ทดสอบบนแอปจริง**
 
+**แจ้งเตือนแชท ฝั่ง DB (D-90, 2026-10-14):** trigger `trg_notify_chat_message` บน `chat_message` → แถว `notifications` type `chat_message` (+`ref_chat_id`) ให้สมาชิกห้องยกเว้นผู้ส่ง · `mark_chat_read` mark แจ้งเตือนห้องนั้นอ่านแล้วด้วย · **ฝั่ง UI ยังไม่ทำ** (แถวบน `Notifications`, banner→เข้าห้อง, banner ไม่เด้งซ้ำในห้องที่เปิดอยู่)
+
 **ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon (ตัดสโคปไว้ตอน D-60 — pete สั่งเว้นรอบนี้) · push notification จริงตอนปิดแอป (FCM/OneSignal) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)
 
 ## 🧪 Definition of Done

@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-10-14**
+> ✅ **D-90: แจ้งเตือนข้อความแชทฝั่ง DB apply แล้ว** — `notifications.ref_chat_id` + type `chat_message` + trigger `trg_notify_chat_message` (ผู้รับ=สมาชิกห้องยกเว้นผู้ส่ง, เหลือ unread 1 แถวต่อห้อง) + `mark_chat_read` ขยาย · ทดสอบใน rollback ผ่าน (V-16) · 🔴 **trigger เปิดแล้ว แต่ UI ยังไม่รองรับ**: ข้อความจริงจะเด้ง banner + โผล่ใน `Notifications` ด้วย avatar แอดมิน/ไม่มี badge/แตะแล้วไม่เข้าห้อง — ฝั่ง FlutterFlow/Dart ยังค้าง (รายละเอียด D-90) · ปิดชั่วคราว: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 > ✅ **D-89: แตะแถวแจ้งเตือนไม่ navigate ไป `ProductDetails` แล้ว** (mark อ่านแล้วอย่างเดียว; แชทจะ navigate ทีหลังเมื่อมี type นี้) push แล้ว ยืนยันจาก `generated_code/` · ยังไม่ได้ทดสอบบนแอปจริง
 > ✅ **D-88: banner แจ้งเตือนในแอป (L6)** — แถวใหม่ใน `notifications` ของ user ที่ล็อกอินอยู่ → banner เลื่อนลงจากบนทุกหน้า (custom action `startInAppNotificationBanner` เป็น `main.dart` final action, `dsl/in_app_banner.dart`, PT-45) ไม่แตะ DB · ยังไม่มีแจ้งเตือนจากแชท/badge ตัวเลข/FCM · **pete ทดสอบแล้ว banner เด้งจริง (2026-10-14) ยังเหลือเช็คพฤติกรรมย่อยในคิวข้อ 0f**
 > ✅ **D-87: ถอดสิทธิ์ `anon` จาก view SECURITY DEFINER 4 ตัว** — คนไม่ล็อกอินเคยอ่านชื่อ/รูป/bio/คณะของทุกคนได้ผ่าน anon key (ไม่มี email/phone) แก้แล้ว ทดสอบฝั่ง SQL ผ่าน (V-15) · **ยังไม่ได้เปิดหน้า `UserDirectory`/`SellerStorefront`/popup โปรไฟล์ด้วยบัญชีธรรมดา** · ค้าง: `advertisement_likes` `anon` อ่านได้ (รอ pete ตัดสินใจ)

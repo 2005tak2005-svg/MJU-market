@@ -1885,3 +1885,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **⚠️ ผลที่เกิดทันที (trigger เปิดใช้งานแล้ว) ก่อนฝั่ง UI ทำ:** ทุกข้อความแชทจริงสร้างแถว + เด้ง banner (ไอคอนกระดิ่ง default, แตะ→`Notifications`) · หน้า `Notifications` แสดงแถวนี้ด้วย avatar แอดมิน (D-74 ใช้รูปแอดมินทุกแถว) ไม่มี badge ประเภท และแตะแล้วแค่ mark อ่าน (D-89 ตัด navigate ไปแล้ว) · ปิดชั่วคราวได้: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 
 **ค้าง (ฝั่ง FlutterFlow/Dart):** (1) แถว `chat_message` บน `Notifications`: avatar/ชื่อผู้ส่ง + badge + แตะ→mark อ่าน+เข้า `chatMessages` (ต้องส่ง `chatId`/`memberNames`/`userIds` — ดึงจาก `chat_summary` ตาม PT-02/`findOrCreateChatWithSeller`) (2) banner: แตะแล้วเข้าห้อง และไม่เด้งเมื่อผู้ใช้อยู่ในห้องนั้นอยู่แล้ว (3) badge ตัวเลข unread
+
+## D-91 — ราคาสินค้าถูกบันทึกเป็น 0: แก้ `parseProductPrice` + บล็อกราคา 0 ก่อน insert (2026-10-14)
+
+**ปัญหา:** ผู้ขายใส่ราคาแล้วแอดมินเห็น 0 บาท — `products.price = 0` ตั้งแต่ตอน insert (แถว "โน็ตบุ๊ค" 2 แถว) ไม่ใช่บั๊กหน้าแอดมิน (แอดมินเห็นราคาที่ `ProductDetails` ซึ่งอ่านจาก DB ตรง ๆ)
+**ต้นเหตุ:** `parseProductPrice` = `double.tryParse(text) ?? 0` — `15,000` / `15000 บาท` / `฿15,000` / เลขไทย parse ไม่ได้ → 0 เงียบ ๆ และตัวตรวจเดิมเช็กแค่ "ช่องราคาไม่ว่าง" (ข้อสรุป "default 0 ไม่ crash" ใน `dsl/edit.dart` ช่วงแก้ addproduct ผิด — ไม่ crash แต่ข้อมูลผิด)
+**แก้ (push แล้ว):**
+- `parseProductPrice`: แปลงเลขไทย→อารบิก, ตัดทุกตัวที่ไม่ใช่ `0-9` และ `.` ก่อน parse (ยังคืน 0 ถ้า parse ไม่ได้)
+- เงื่อนไขราคาใน ON_TAP ของ `Button_85x7xhe6` เปลี่ยนจาก "ช่องว่าง" เป็น `parseProductPrice(ช่องราคา) == 0` → snackbar "กรุณากรอกราคาสินค้าเป็นตัวเลขที่มากกว่า 0" แล้วไม่ insert
+- แก้เฉพาะ condition + snackbar ของ node นั้นด้วย raw proto — **ไม่เขียน chain ใหม่ทั้งเส้น** เพราะตัวตรวจรูป/ชื่อ/รายละเอียด/ราคาว่างถูกเพิ่มผ่าน UI ไม่อยู่ใน `edit.dart` (เขียนทับจะทำให้หาย)
+
+**ผลข้างเคียง:** ลงขายราคา 0 (ของฟรี) ไม่ได้อีก · DB ยังไม่มี CHECK `price > 0` (มีแถวเก่า `price=0` เช่น "แมว" อนุมัติแล้ว)
+**ค้าง:** แถว `ba74ee67…` (pending) / `6d0abfe7…` (approved) ยัง `price=0` — ไม่ทราบราคาจริง ต้องให้ผู้ขายแก้หรือแอดมินปฏิเสธ · ยังไม่ได้ทดสอบผ่านแอปจริง

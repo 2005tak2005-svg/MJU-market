@@ -1860,3 +1860,11 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ยังไม่ทำ:** แจ้งเตือนจากแชทใหม่ (ต้อง trigger สร้างแถว `notifications` จาก `chat_message` — P-04 เลิกใช้ ต้องออกแบบใหม่ + เพิ่ม `type` ใน CHECK) · badge ตัวเลข unread · FCM
 
 **สถานะ:** push สำเร็จ ยืนยันจาก `generated_code/` ว่า `main.dart` เรียก `actions.startInAppNotificationBanner()` และ theme getter ที่ใช้มีจริง · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter` บนเครื่อง) · **pete ทดสอบ 2026-10-14: insert `listing_rejected` ด้วย SQL → banner เด้งบนแอปจริง** · ยังไม่ได้ยืนยัน: แตะ→`Notifications`, ปัดปิด, ไม่เด้งบนหน้า `Notifications`, สลับบัญชี/logout
+
+## D-89 — แตะแถวแจ้งเตือนไม่ navigate ไป `ProductDetails` อีก (2026-10-14)
+
+**ตัดสินใจ (pete):** แจ้งเตือนทุกประเภทที่มีอยู่ (`listing_approved`/`listing_rejected`/`account_banned`/`account_unbanned`) แตะแล้วแค่ mark อ่านแล้ว ไม่ต้องเปิดรายละเอียด · ยกเว้นแจ้งเตือนข้อความแชทที่ต้องแตะแล้วเข้าห้องแชท (ยังไม่มี type นี้ — ทำพร้อม trigger แจ้งเตือนแชท)
+
+**แก้:** ตัด `Navigate(ProductDetails)` ออกจาก ON_TAP ของ `NotificationRow` ด้วย raw-proto splice (ไม่ใช้ `ensureActions` เพราะ Update Row ตัวแรกเป็น `Actions.unsupported`, PT-40) · `dsl/notifications_no_nav.dart` · ปุ่ม "คุยกับแอดมิน" ไม่กระทบ · ยืนยันจาก `generated_code/`: `ProductDetailsWidget` ไม่ถูกอ้างในหน้านี้แล้ว
+
+**ผลข้าง:** supersede D-26 ส่วน Notifications→`ProductDetails` · param `fromNotifications` + ปุ่ม "ติดต่อแอดมิน" บน `ProductDetails` ยังอยู่แต่ไม่มีทางเข้าจากแจ้งเตือน · แถวที่ `ref_product_id` เป็น NULL (เช่นแถวทดสอบ SQL) เคยเปิด `ProductDetails` ว่างสีดำ — ไม่เกิดแล้ว

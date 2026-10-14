@@ -1846,3 +1846,17 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - `advertisement_likes` `anon` อ่านได้ 4 แถว (`user_id` + `post_id`) — policy `SELECT true` จาก D-58 ต้องให้ pete ตัดสินใจว่าตั้งใจเปิดสาธารณะไหม
 - ทุกตาราง/view ใน `public` มีสิทธิ์ `TRUNCATE`/`TRIGGER`/`REFERENCES` ให้ `anon`/`authenticated` (default ของ Supabase, RLS ไม่คุม `TRUNCATE` แต่ PostgREST ไม่เปิดคำสั่งนี้) — ถอดได้ทีละตารางถ้าจะ least privilege เต็มรูปแบบ
 - `seller_profile_view` ไม่กรองผู้ถูกแบน/แอดมิน (ต่างจาก `public_directory_view`) — เปิดเผยแค่ชื่อ/รูป ตรวจแล้วยอมรับ
+
+## D-88 — Banner แจ้งเตือนในแอป (ตอนเปิดแอปอยู่) ผ่าน custom action + overlay (2026-10-14)
+
+**ตัดสินใจ:** ทำ banner เด้งบนทุกหน้าเมื่อมีแถวใหม่ใน `notifications` ของ user ที่ล็อกอินอยู่ · ไม่ทำ push ตอนปิดแอป (FCM) ในรอบนี้ — D-23 ยังมีผล · ไม่แตะ DB (`notifications` อยู่ใน `supabase_realtime` + RLS อ่านเฉพาะของตัวเองอยู่แล้ว)
+
+**ทำไมเป็น custom action ไม่ใช่ binding (กฎข้อ 9):** page-level stream (PT-32) ผูกได้ต่อหน้า ต้องซ้ำทุกหน้า และ pushed route (`chatMessages`, `ProductDetails`) บัง `NavBarPage` — ไม่มีจุดผูกที่ครอบทุกหน้า
+
+**กลไก:** `startInAppNotificationBanner` (0-arg) ลงทะเบียนเป็น `main.dart` final action (`app.finalAction`) รันหลัง `SupaFlow.initialize` ก่อน `runApp` · ติดตาม `onAuthStateChange` เอง (login/logout สลับ channel) · subscribe `postgres_changes` INSERT บน `notifications` filter `user_id=eq.<uid>` · แสดงผ่าน `appNavigatorKey.currentState.overlay` · `dsl/in_app_banner.dart`
+
+**พฤติกรรม:** slide ลงจากบน 5 วิ · แตะ → `Notifications` · ปัดขึ้น/กด ✕ ปิด · แถวใหม่แทน banner เก่า · ไม่เด้งเมื่ออยู่หน้า `/notifications` (รายการสดเองอยู่แล้ว) · สี/ไอคอนตาม `type` (4 ชนิด)
+
+**ยังไม่ทำ:** แจ้งเตือนจากแชทใหม่ (ต้อง trigger สร้างแถว `notifications` จาก `chat_message` — P-04 เลิกใช้ ต้องออกแบบใหม่ + เพิ่ม `type` ใน CHECK) · badge ตัวเลข unread · FCM
+
+**สถานะ:** push สำเร็จ ยืนยันจาก `generated_code/` ว่า `main.dart` เรียก `actions.startInAppNotificationBanner()` และ theme getter ที่ใช้มีจริง · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter` บนเครื่อง) · **ยังไม่ทดสอบบนแอปจริง**

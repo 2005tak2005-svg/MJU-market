@@ -268,7 +268,7 @@ CHECK (((type)::text = ANY ((ARRAY['listing_approved'::character varying,
 - `ref_product_id` nullable โดยตั้งใจ — เผื่อ `ref_chat_id bigint` เพิ่มทีหลัง (แก้บล็อกเดิมของ P-07 ดู D-23)
 - `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
-- ไม่เปิด Realtime
+- อยู่ใน `supabase_realtime` publication (D-60) — ตรวจจาก `pg_publication_tables` 2026-10-14
 
 ### `public.admin_contact_view` (L6, เพิ่ม 2026-08-28, D-74)
 

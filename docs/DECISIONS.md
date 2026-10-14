@@ -1914,3 +1914,13 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **แก้ (push แล้ว):** แทน `Image_nkf1fxb7` ด้วย custom widget `ZoomableImage(imageUrl: Param imageUrl)` — `InteractiveViewer` ซูม/เลื่อน 1x–5x + ดับเบิลแตะสลับ 2.5x, ขนาดเริ่มต้น 94% กว้าง × 78% สูงของจอ (`BoxFit.contain`), `imageUrl` ว่าง/โหลดไม่ได้ → ไอคอน broken-image · ใช้ custom widget เพราะ widget ปกติของ FlutterFlow ซูม pinch ไม่ได้
 **ข้อควรรู้:** FF AI `run` ไม่ dart-compile custom code และเครื่องนี้ไม่มี Flutter SDK → โค้ด `ZoomableImage` ยังไม่ผ่าน analyzer จริง (เทียบ PT-27 ข้อ 5/D-46) · `CustomWidget(...)` ใน SDK ปัจจุบันรับชื่อแบบ positional (`CustomWidget('Name', arguments: …)`)
 **ค้าง:** ยังไม่ทดสอบผ่านแอปจริง (แตะรูปในแชท → เห็นรูป, pinch ซูม, ดับเบิลแตะ) · ตรวจว่า dialog ปิดได้ด้วยการแตะนอกรูป
+
+## D-94 — `Notifications`: ปุ่มแชทสำหรับแถว `chat_message` (ปิด D-90 ค้างข้อ 1 บางส่วน) (2026-10-14)
+
+**ปัญหา:** pete เห็นไอคอนแชทอยู่ที่แถว `listing_rejected`/`account_banned` แต่แถวแชท (`chat_message`) ไม่มีปุ่ม — ปุ่มบนเป็น "คุยกับแอดมิน" ที่ตั้งใจทำไว้ใน D-74 (เฉพาะ 2 type นั้น) ส่วนแถว `chat_message` ไม่เคยมีปุ่ม (D-90 ค้างข้อ 1)
+**ทำ (push แล้ว):**
+- push 1: ลงทะเบียน `notifications.ref_chat_id` (Integer/`int8`) ใน typed SDK (คอลัมน์มีใน DB ตั้งแต่ D-90 แต่ SDK ยังไม่รู้จัก — PT-15 §6) + App State `pendingNotifChatId` (int, default 0) + custom action `openChatFromNotification` (0-arg ตาม PT-09: อ่าน `pendingNotifChatId`, ดึง `member_names`/`user_ids` จาก `chat_summary` ใส่ `pendingChatMemberNames`/`pendingChatUserIds`, คืน chatId หรือ 0 ถ้าไม่ใช่สมาชิกห้อง)
+- push 2: `OpenChatButton` วางต่อท้ายปุ่มเดิมใน `Row_ncregqbc` — `visible: type == 'chat_message'` → `pendingNotifChatId = item.ref_chat_id` → `openChatFromNotification()` → Navigate `chatMessages` (chatId/memberNames/userIds) ถ้า chatId ≠ 0
+- ทำด้วยการ **คัดลอกปุ่ม `IconButton_gfjpoo8f` ที่ระดับ proto** แล้วแก้ (visible, custom action, ชื่อ output, เติม action แรก) เพราะ `ItemRef()` ใช้นอก ListView builder ไม่ได้ (PT-23 §1) และการเขียนทั้งแถวใหม่เสี่ยงทำ action เดิมหาย
+**ไม่ได้ทำ:** ปุ่ม "คุยกับแอดมิน" บนแถว `listing_rejected`/`account_banned` ยังอยู่ — รอ pete ยืนยันว่าจะเอาออกไหม (ถ้าเอาออก ผู้ถูกแบนไม่มีทางทักแอดมินจากหน้านี้)
+**ค้าง:** ยังไม่ทดสอบในแอป · ปุ่มแตะแล้วไม่เข้า `markRead` ของแถว (ปุ่มกินการแตะ) — พึ่ง `mark_chat_read` ตอนเปิดห้อง (D-90) · ค้างอื่นของ D-90: avatar/badge ของแถวแชท, banner แตะเข้าห้อง, badge ตัวเลข unread · custom action ยังไม่ผ่าน analyzer จริง

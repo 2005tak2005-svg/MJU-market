@@ -2,6 +2,7 @@
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
 > อัปเดตล่าสุด: **2026-10-11**
+> ✅ **D-87: ถอดสิทธิ์ `anon` จาก view SECURITY DEFINER 4 ตัว** — คนไม่ล็อกอินเคยอ่านชื่อ/รูป/bio/คณะของทุกคนได้ผ่าน anon key (ไม่มี email/phone) แก้แล้ว ทดสอบฝั่ง SQL ผ่าน (V-15) · **ยังไม่ได้เปิดหน้า `UserDirectory`/`SellerStorefront`/popup โปรไฟล์ด้วยบัญชีธรรมดา** · ค้าง: `advertisement_likes` `anon` อ่านได้ (รอ pete ตัดสินใจ)
 > ✅ **D-86: hardening DB รอบแรก** — ถอด EXECUTE `handle_new_user` จาก anon/authenticated, `search_path` ของ `search_products`, index ครบทุก FK (21 ตัว) apply แล้ว ผลทดสอบ `VERIFICATION.md` V-14 · **ยังไม่ได้ทดสอบสมัครสมาชิกจริงผ่านแอปหลังถอด EXECUTE** · เลื่อนไว้: RLS `(select auth.uid())` 18 policy
 > ✅ **debounce TextField 2000→100 ms บน `Login`/`SignUp`/`ConfirmEmail` (7 ช่อง) + `Home` ค้นหา + `ProfileUser` ชื่อ/bio + `AdminCreatePost` (รวม 12 ช่อง)** — กันกดปุ่มทันทีหลังพิมพ์แล้ว custom action อ่าน App State ได้ค่าเก่า (PT-44) push แล้ว ยังไม่ทดสอบผ่านแอปจริง (พิมพ์ช่องสุดท้ายแล้วกดปุ่ม/Enter ทันที: login, ค้นหา Home, บันทึกชื่อ/bio, โพสต์แอดมิน)
 > ✅ **D-85: ลืมรหัสผ่านด้วย OTP (L1)** — หน้า `ForgotPassword`/`ResetPassword` + custom action `requestPasswordReset`/`resetPasswordWithOtp` + ปุ่มบน `Login` push แล้ว ไม่แตะ DB รายละเอียด `DECISIONS.md` D-85 · **pete ทดสอบกับบัญชีจริงแล้ว: ได้ OTP + เปลี่ยนรหัสผ่านได้** · Edge Function `send-otp-email` v9 deploy แล้ว (แยก `recovery`, 2026-10-12) · เก็บกวาด L3: empty-state `Home` มีแล้วใน `ProductGridSection`, แก้ crash รูปว่าง

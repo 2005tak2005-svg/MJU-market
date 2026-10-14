@@ -1907,3 +1907,10 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - เงื่อนไขราคาก่อน insert = `Not(isPriceValid(ช่องราคา, isFree))` → snackbar "กรุณากรอกราคาสินค้าเป็นตัวเลขที่มากกว่า 0 หรือเปิด “ของแจกฟรี”" · `price` ของ insert = `resolveProductPrice(...)` (เปิดสวิตช์แล้วค่าในช่องราคาถูกละเลย)
 - แก้ด้วย raw proto เฉพาะ condition + field `price` (เหตุผลเดียวกับ D-91)
 **ค้าง:** หน้าแสดงสินค้ายังโชว์ `0 บาท` ไม่ใช่ "ฟรี" (`ProductDetails`, การ์ด `Home`/`SellerStorefront`) · สวิตช์ไม่ reset หลังลงขายสำเร็จ · ยังไม่ได้ทดสอบผ่านแอปจริง
+
+## D-93 — `FullImageViewer` รูปไม่ขึ้น: รูปไม่ได้ผูก param + เพิ่มซูม (2026-10-14)
+
+**ต้นเหตุ:** `Image_nkf1fxb7` มี `pathValue` ว่าง → generated เป็น `imageUrl: ''` ทั้งที่คอมโพเนนต์มี param `imageUrl` (ฝั่งแชทส่ง `messageItem.imageUrl` ถูกแล้ว, ข้อมูลใน `chat_message.image_url` ปกติ) — บั๊ก binding ไม่ใช่ยูไอ
+**แก้ (push แล้ว):** แทน `Image_nkf1fxb7` ด้วย custom widget `ZoomableImage(imageUrl: Param imageUrl)` — `InteractiveViewer` ซูม/เลื่อน 1x–5x + ดับเบิลแตะสลับ 2.5x, ขนาดเริ่มต้น 94% กว้าง × 78% สูงของจอ (`BoxFit.contain`), `imageUrl` ว่าง/โหลดไม่ได้ → ไอคอน broken-image · ใช้ custom widget เพราะ widget ปกติของ FlutterFlow ซูม pinch ไม่ได้
+**ข้อควรรู้:** FF AI `run` ไม่ dart-compile custom code และเครื่องนี้ไม่มี Flutter SDK → โค้ด `ZoomableImage` ยังไม่ผ่าน analyzer จริง (เทียบ PT-27 ข้อ 5/D-46) · `CustomWidget(...)` ใน SDK ปัจจุบันรับชื่อแบบ positional (`CustomWidget('Name', arguments: …)`)
+**ค้าง:** ยังไม่ทดสอบผ่านแอปจริง (แตะรูปในแชท → เห็นรูป, pinch ซูม, ดับเบิลแตะ) · ตรวจว่า dialog ปิดได้ด้วยการแตะนอกรูป

@@ -1868,3 +1868,20 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **แก้:** ตัด `Navigate(ProductDetails)` ออกจาก ON_TAP ของ `NotificationRow` ด้วย raw-proto splice (ไม่ใช้ `ensureActions` เพราะ Update Row ตัวแรกเป็น `Actions.unsupported`, PT-40) · `dsl/notifications_no_nav.dart` · ปุ่ม "คุยกับแอดมิน" ไม่กระทบ · ยืนยันจาก `generated_code/`: `ProductDetailsWidget` ไม่ถูกอ้างในหน้านี้แล้ว
 
 **ผลข้าง:** supersede D-26 ส่วน Notifications→`ProductDetails` · param `fromNotifications` + ปุ่ม "ติดต่อแอดมิน" บน `ProductDetails` ยังอยู่แต่ไม่มีทางเข้าจากแจ้งเตือน · แถวที่ `ref_product_id` เป็น NULL (เช่นแถวทดสอบ SQL) เคยเปิด `ProductDetails` ว่างสีดำ — ไม่เกิดแล้ว
+
+## D-90 — แจ้งเตือนข้อความแชทใหม่ฝั่ง DB: type `chat_message` + trigger (2026-10-14)
+
+**ตัดสินใจ:** ข้อความใหม่ใน `chat_message` สร้างแถว `notifications` ให้สมาชิกห้องทุกคนยกเว้นผู้ส่ง ผ่าน trigger `trg_notify_chat_message` (SECURITY DEFINER, ไม่ผ่าน PostgREST — เหตุผลเดียวกับ `admin_set_user_ban`, PT-18) · เปลี่ยนจากแผนเดิมที่เคยร่าง P-04 (เลิกใช้)
+
+**ออกแบบ (ตัดสินเอง ตาม pete สั่ง "ทำได้เลย"):**
+- เพิ่ม `notifications.ref_chat_id bigint` FK→`chat(id)` ON DELETE CASCADE + index + CHECK `type='chat_message'` ต้องมี `ref_chat_id` · ขยาย `notifications_type_check` เป็น 5 ค่า
+- **ต่อผู้รับ+ห้อง เหลือแถว unread 1 แถว** (ลบ unread เก่าแล้ว INSERT ใหม่ทุกข้อความ) — กันรายการล้นเมื่อแชทถี่ แต่ยังเป็น INSERT ใหม่ทุกครั้งเพื่อให้ banner (Realtime INSERT, D-88) เด้งทุกข้อความ · ไม่ใช้ partial UNIQUE เพราะข้อความพร้อมกันจะชนแล้วทำให้ส่งข้อความล้ม
+- `title` = ชื่อผู้ส่ง · `body` = ข้อความตัด 100 ตัว หรือ `📷 ส่งรูปภาพ`
+- exception ใน trigger ถูกกลืนเป็น `WARNING` — การแจ้งเตือนพังต้องไม่ทำให้ส่งข้อความล้ม (ข้อเสีย: พังเงียบ ดูได้ที่ Postgres logs)
+- `mark_chat_read` ขยายให้ตั้ง `is_read=true` ของแจ้งเตือนแชทห้องนั้นด้วย
+
+**ผลทดสอบ:** `VERIFICATION.md` V-16 · รายละเอียด schema `SCHEMA.md`
+
+**⚠️ ผลที่เกิดทันที (trigger เปิดใช้งานแล้ว) ก่อนฝั่ง UI ทำ:** ทุกข้อความแชทจริงสร้างแถว + เด้ง banner (ไอคอนกระดิ่ง default, แตะ→`Notifications`) · หน้า `Notifications` แสดงแถวนี้ด้วย avatar แอดมิน (D-74 ใช้รูปแอดมินทุกแถว) ไม่มี badge ประเภท และแตะแล้วแค่ mark อ่าน (D-89 ตัด navigate ไปแล้ว) · ปิดชั่วคราวได้: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
+
+**ค้าง (ฝั่ง FlutterFlow/Dart):** (1) แถว `chat_message` บน `Notifications`: avatar/ชื่อผู้ส่ง + badge + แตะ→mark อ่าน+เข้า `chatMessages` (ต้องส่ง `chatId`/`memberNames`/`userIds` — ดึงจาก `chat_summary` ตาม PT-02/`findOrCreateChatWithSeller`) (2) banner: แตะแล้วเข้าห้อง และไม่เด้งเมื่อผู้ใช้อยู่ในห้องนั้นอยู่แล้ว (3) badge ตัวเลข unread

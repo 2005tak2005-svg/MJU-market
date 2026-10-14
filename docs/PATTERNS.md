@@ -900,3 +900,20 @@ CallCustomAction(fn, outputAs: 'err'),
 **ใช้แล้วที่:** `ForgotPassword`, `ResetPassword` (WidgetState) · 100 ms (`dsl/debounce_fix.dart`): `Login`/`SignUp`/`ConfirmEmail` 7 ช่อง + `Home` `SearchField` (onFieldSubmitted อ่าน `searchQuery`) + `ProfileUser` ชื่อ/bio + `AdminCreatePost` หัวข้อ/เนื้อหา (ปุ่มโพสต์อ่าน Page State ตรง) · ยังเป็น 2000 ms โดยตั้งใจ: `UserDirectory` ช่องค้นหา (กรองสด ไม่มีปุ่มอ่านค่า มีแค่หน่วงตอนพิมพ์)
 
 **แนวสคริปต์:** `dsl/edit.dart` สะสมเก่า compile กับ SDK 0.0.41 ไม่ผ่าน → งานใหม่เขียนไฟล์ standalone (`dsl/grid_fix.dart`, `dsl/forgot_password.dart`) ใช้ `app.state` + `app.customAction` + `app.ensurePage` + `app.editPage` ได้ตามปกติ
+
+---
+
+## PT-45 — Overlay ระดับทั้งแอป: custom action เป็น `main.dart` final action + `appNavigatorKey` (D-88, 2026-10-14)
+
+ใช้เมื่อต้องการ UI/listener ที่ครอบทุกหน้า (banner, toast ระดับแอป) ซึ่ง binding ระดับหน้าทำไม่ได้
+
+- `app.customAction('x', code: ...)` **0-arg, ไม่มี `BuildContext`, ไม่ต้องมี `returns`** แล้ว `app.finalAction(handle)` → codegen ใส่ `await actions.x();` ใน `main()` หลัง `SupaFlow.initialize()` ก่อน `runApp` (ใช้ `initialAction` ถ้าต้องรันก่อน init)
+- action ต้องคืนเร็ว (ถูก `await` ใน `main`) — แค่ลงทะเบียน listener แล้วจบ
+- ก่อน `runApp` ยังไม่มี Navigator → หา overlay ตอน event เกิดเท่านั้น: `appNavigatorKey.currentState?.overlay` / `.currentContext` (`import '/flutter_flow/nav/nav.dart'` ได้ทั้ง key และ extension `pushNamed` ของ go_router)
+- state ข้าม event เก็บเป็นตัวแปร top-level ใน `code:` (ตัวแปร `_private` ต่อไฟล์) เช่น channel / entry / timer — กัน subscribe ซ้ำ
+- `Positioned` เป็น root ของ `OverlayEntry` ได้ · ต้องห่อ `Material` เอง (overlay ไม่มี Material ancestor)
+- ตรวจ route ปัจจุบัน: `GoRouter.of(ctx).routerDelegate.currentConfiguration.uri.path` (go_router 12.1.3)
+- `validate`/`run` ไม่ analyze Dart (PT-12) และเครื่องนี้ไม่มี `flutter` → `dart analyze` ใช้ไม่ได้ ต้องอ่านโค้ดที่ generate เทียบ getter/API เอง
+- เป็น one-shot (`app.customAction`) — รันซ้ำ throw duplicate ใช้ `updateCustomAction` แก้ภายหลัง
+
+**ใช้แล้วที่:** `startInAppNotificationBanner` (`dsl/in_app_banner.dart`)

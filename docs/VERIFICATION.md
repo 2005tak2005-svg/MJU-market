@@ -302,3 +302,9 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - `search_products`: `proconfig={search_path=public}` · ในฐานะ user ธรรมดา: `search_products()` ได้ 5 แถว (ปกติ)
 - FK ที่ไม่มี index คงเหลือ = 0 (เดิม 21)
 - advisor security หลังทำ: ไม่มี lint `anon_security_definer_function_executable`/`function_search_path_mutable` · `authenticated_security_definer_function_executable` เหลือ 8
+
+### V-15 · สิทธิ์ `anon` กับ view SECURITY DEFINER (D-87, 2026-10-12)
+
+- **ก่อนแก้** (นับแถวด้วย `SET LOCAL ROLE anon`): `public_profiles=12`, `public_directory_view=11`, `seller_profile_view=12`, `admin_contact_view=1`; ตารางอื่นทั้งหมดเป็น 0 หรือ error ยกเว้น `advertisement_likes=4`
+- **หลังแก้:** `anon` → `permission denied` ทั้ง 4 view · user ธรรมดา (role `authenticated`) ยังอ่านได้ครบ 12/11/12/1
+- ไม่ได้ทดสอบผ่านแอปจริง (หน้าที่ใช้ view เหล่านี้: `UserDirectory`, `SellerStorefront`, popup โปรไฟล์, `Notifications` แอดมิน, ชื่อผู้ขาย/แชท) — ควรเปิดดูแต่ละหน้าสักครั้งด้วยบัญชีธรรมดา

@@ -1835,3 +1835,14 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ผล:** advisor ปิด `anon_security_definer_function_executable` (handle_new_user) + `function_search_path_mutable` (search_products) · `authenticated_security_definer_function_executable` 9→8 · `unindexed_foreign_keys` 21→0 (ตรวจจาก catalog) รายละเอียด `SCHEMA.md` · ผลทดสอบ `VERIFICATION.md` V-14
 
 **ยังค้างจาก advisor (ตั้งใจ/รอตัดสินใจ):** `security_definer_view` 4 ตัว (`public_profiles` = D-01 ห้ามแก้; อีก 3 ตัวต้องตรวจคอลัมน์ที่เปิดเผยแล้วบันทึกว่ายอมรับ) · RPC SECURITY DEFINER 8 ตัวที่ `authenticated` เรียกได้ (ตั้งใจ ต้องไล่ตรวจ guard ภายในทีละตัว) · `extension_in_public` (`pg_trgm`, `pg_net`) · `auth_leaked_password_protection` (Dashboard) · RLS initplan 18 policy · multiple_permissive_policies 8
+
+## D-87 — ถอดสิทธิ์ `anon` จาก view SECURITY DEFINER ทั้ง 4 ตัว (2026-10-12)
+
+**พบ:** `anon` (ใครก็ได้ที่มี anon key ไม่ต้องล็อกอิน) อ่าน `public_profiles`/`public_directory_view`/`seller_profile_view` ได้ครบทุกแถว (12/11/12) + `admin_contact_view` 1 แถว เพราะ view แบบ owner-rights ข้าม RLS และ Supabase ให้ `anon` เต็มสิทธิ์โดย default — ขัดกับที่ตัดสินใจไว้ว่าไม่เปิด browse ก่อนล็อกอิน (D-61) · คอลัมน์ที่เปิด: ชื่อ/รูป/bio/คณะ/ชั้นปี/สถานะผู้ขาย/จำนวนประกาศ/เวลาเป็นสมาชิก — **ไม่มี** email/phone/student_id/role
+
+**ตัดสินใจ:** `REVOKE ALL ... FROM anon` ทั้ง 4 view + ถอดสิทธิ์เขียนของ `authenticated` (view ไม่ updatable อยู่แล้ว ทำเพื่อ least privilege) · หน้าก่อนล็อกอิน (`Login`/`SignUp`/`ConfirmEmail`/`ForgotPassword`/`ResetPassword`) ไม่ query view เหล่านี้ จึงไม่กระทบ · ย้อนกลับ: `GRANT SELECT ON ... TO anon`
+
+**ยังค้าง (ไม่ได้แก้ในรอบนี้):**
+- `advertisement_likes` `anon` อ่านได้ 4 แถว (`user_id` + `post_id`) — policy `SELECT true` จาก D-58 ต้องให้ pete ตัดสินใจว่าตั้งใจเปิดสาธารณะไหม
+- ทุกตาราง/view ใน `public` มีสิทธิ์ `TRUNCATE`/`TRIGGER`/`REFERENCES` ให้ `anon`/`authenticated` (default ของ Supabase, RLS ไม่คุม `TRUNCATE` แต่ PostgREST ไม่เปิดคำสั่งนี้) — ถอดได้ทีละตารางถ้าจะ least privilege เต็มรูปแบบ
+- `seller_profile_view` ไม่กรองผู้ถูกแบน/แอดมิน (ต่างจาก `public_directory_view`) — เปิดเผยแค่ชื่อ/รูป ตรวจแล้วยอมรับ

@@ -1885,3 +1885,13 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **⚠️ ผลที่เกิดทันที (trigger เปิดใช้งานแล้ว) ก่อนฝั่ง UI ทำ:** ทุกข้อความแชทจริงสร้างแถว + เด้ง banner (ไอคอนกระดิ่ง default, แตะ→`Notifications`) · หน้า `Notifications` แสดงแถวนี้ด้วย avatar แอดมิน (D-74 ใช้รูปแอดมินทุกแถว) ไม่มี badge ประเภท และแตะแล้วแค่ mark อ่าน (D-89 ตัด navigate ไปแล้ว) · ปิดชั่วคราวได้: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 
 **ค้าง (ฝั่ง FlutterFlow/Dart):** (1) แถว `chat_message` บน `Notifications`: avatar/ชื่อผู้ส่ง + badge + แตะ→mark อ่าน+เข้า `chatMessages` (ต้องส่ง `chatId`/`memberNames`/`userIds` — ดึงจาก `chat_summary` ตาม PT-02/`findOrCreateChatWithSeller`) (2) banner: แตะแล้วเข้าห้อง และไม่เด้งเมื่อผู้ใช้อยู่ในห้องนั้นอยู่แล้ว (3) badge ตัวเลข unread
+
+## D-91 — แจ้งเตือนผู้ซื้อเมื่อผู้ขายปิดการขายในแชท: type `sale_confirmed` + trigger (2026-10-21)
+
+**ตัดสินใจ:** `INSERT` แถวใหม่ใน `transactions` (ทางเดียวคือ RPC `mark_product_sold`, D-59) สร้างแถว `notifications` ให้ผู้ซื้อ ผ่าน trigger `trg_notify_sale_confirmed` — banner ในแอป (D-88) เด้งบนทุกหน้ารวมห้องแชทที่ผู้ซื้ออยู่ และรายการบน `Notifications` โผล่เอง ไม่แก้ UI/Dart
+
+**ทำไมผูกกับ `transactions` ไม่แก้ RPC:** ไม่ต้องแตะฟังก์ชัน SECURITY DEFINER ที่ล็อกสถานะการขาย · pattern เดียวกับ D-90 (trigger + กลืน exception เป็น `WARNING`)
+
+**ผลทดสอบ:** `VERIFICATION.md` V-17 · schema `SCHEMA.md`
+
+**ยังไม่ทำ:** ไอคอน/สีเฉพาะ `sale_confirmed` บน banner (ตอนนี้ใช้ไอคอนกระดิ่ง default เหมือน `chat_message`) · แตะแจ้งเตือนแล้วไป `ProductDetails` เพื่อให้คะแนนผู้ขาย (D-89 ให้แตะ = mark อ่านอย่างเดียว) · ข้อความ/chip ในห้องแชทฝั่งผู้ซื้อ (`chat_sale_status_view.chat_already_sold` มีอยู่แล้ว)

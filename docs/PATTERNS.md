@@ -917,3 +917,17 @@ CallCustomAction(fn, outputAs: 'err'),
 - เป็น one-shot (`app.customAction`) — รันซ้ำ throw duplicate ใช้ `updateCustomAction` แก้ภายหลัง
 
 **ใช้แล้วที่:** `startInAppNotificationBanner` (`dsl/in_app_banner.dart`)
+
+## PT-46 — จัดโครงสร้างหน้าเดิมใหม่ (ห่อ/ย้ายโหนด) โดย action + query ไม่หาย (Home redesign, 2026-10-21)
+
+ใช้เมื่อต้องห่อ widget เดิมเข้า `Row`/ย้ายลำดับ โดยมี `Actions.unsupported` หรือ `databaseRequest` ที่ typed DSL สร้างใหม่ไม่ได้
+
+- **`app.raw` + `findPage(project, name:)`** แล้วย้ายอ็อบเจ็กต์ `FFNode` เดิมระหว่าง `children` (clear + addAll) — trigger/action ติดไปทั้งก้อน · ตรวจหลัง push: `inspect` → `triggers:` ต้องเท่าเดิม
+- **สร้างโหนดใหม่จาก JSON:** `FFNode()..mergeFromProto3Json(map, ignoreUnknownFields: false)` — ชื่อ field/enum เหมือนผล `inspect --raw` (ลอกจากโหนดจริง เช่น avatar+fallback ของ `ProfileUser`) · ชื่อ field ผิดจะ throw ชัด · ดูรายชื่อ field ของ message ได้ด้วย `msg.info_.fieldInfo.values.map((f) => f.name)` ใน `app.raw` + `--dry-run`
+- 🔴 **โหนดที่ถือ `databaseRequest` ต้องเป็นบรรพบุรุษของทุกตัวที่อ้าง** (validator: `Postgres request node is not an ancestor`) — ถ้าจะให้ widget ใหม่ (avatar) อ่าน query เดียวกับ Text เดิม ให้ย้าย `databaseRequest` ขึ้นไปที่ `Row` ที่ห่อทั้งคู่ + แก้ `nodeKeyRef.key` ในตัวที่อ้าง · `Condition configuration is invalid` ที่โผล่ข้างกันเป็นผลต่อเนื่อง
+- avatar ว่างได้ (Profile 9/13 ไม่มี): 2 โหนดสลับ — `Image` `visible` = `EXISTS_AND_NON_EMPTY`, `Container`+`Icon person` `visible` = `DOES_NOT_EXIST_OR_IS_EMPTY` (ลอกจาก `ProfileUser`)
+- `ListView` แนวนอน: `node.props.listView.axis = FFAxis.FF_AXIS_HORIZONTAL` (typed patch ไม่มี) + การ์ดลูกต้องมีความกว้างคงที่
+- DSL ไม่มี `And`/`Or` → ใช้ `Conditional(a, then: b, orElse: false)` · `EdgeInsets.zero` ไม่มี ใช้ `EdgeInsets.all(0)`
+- **bottom sheet ที่เขียน App State จากช่องกรอก:** component ไม่มี params + `WidgetState(typedHandle, text)` (push แยก — PT-22/PT-44) + ผูกค่าเริ่มต้นช่องกรอกด้วย `props.textField.initialText.textValue.variable` (LOCAL_STATE/APP_STATE) · เรียกด้วย `ShowBottomSheet(ComponentHandle(ComponentDeclaration(...)))`
+
+**ใช้แล้วที่:** `Home` (`dsl/home_r2.dart`, `dsl/price_sheet_a.dart`/`price_sheet_b.dart`)

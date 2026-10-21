@@ -1893,3 +1893,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **แก้:** `ON_TAP` = `selectedCategoryId=0` → `searchKeyword=searchQuery` → `searchCategoryId=0` → `gridRefreshToken+1` (ตรงกับ IME submit ตัด `searchProducts`/`productsList` ที่ไม่มีใครอ่านออก) · สคริปต์ `dsl/search_button_fix.dart` (rerun-safe: `ensureActions` แทนที่ทั้ง trigger) · ยืนยันจาก `inspect` + `generated_code/lib/home/home_widget.dart` · **ยังไม่ทดสอบผ่านแอปจริง**
 
 **ค้าง:** IME submit ยังเรียก `searchProducts` + เขียน `productsList` ซ้ำโดยไม่จำเป็น (D-68) — ตัดได้ทีหลัง
+
+## D-92 — Role guard ที่ `Home` / `HomeAdmin` (2026-10-21)
+
+**ปัญหา:** admin (`mju6577778888@mju.ac.th`, `role='admin'` ถูกต้องใน DB) เข้า `Home` ผู้ใช้ทั่วไป — เช็ค role มีเฉพาะปุ่ม `LoginButton` (`IsCurrentUserAdmin`) แต่ route `/` ของ `nav.dart` ใช้ `loggedIn ? NavBarPage() : LoginWidget()` (NavBarPage เริ่มที่ `Home`) → เปิดแอป/รีเฟรชตอนมี session ค้างไม่ผ่านการเช็ค · `HomeAdmin` ไม่มี guard
+
+**แก้:** ต่อหัว `ON_INIT_STATE` ของทั้งสองหน้าด้วย `IsCurrentUserAdmin` (output `guardIsAdmin`) แล้วแตก If:
+- `Home`: admin → `HomeAdmin` (replaceRoute) · ไม่ใช่ → chain เดิมทั้งก้อน (อยู่ใน false branch)
+- `HomeAdmin`: admin → chain เดิม · ไม่ใช่ → `Home`
+
+`HomeAdmin` ไม่มีลิงก์ไป `Home` จึงไม่เกิด loop · สคริปต์ `dsl/admin_role_guard.dart` (raw proto, rerun-safe: ข้ามถ้า root action เป็น `guardIsAdmin`) · แก้ `nav.dart` ไม่ได้ (generated) · ยืนยันจาก `generated_code/` (`home_widget.dart`, `home_admin_widget.dart`) · **ยังไม่ทดสอบผ่านแอปจริง**
+
+**ข้อจำกัด:** guard รันหลังหน้า render → Home ผู้ใช้อาจแวบก่อนเด้ง admin · ข้อมูลฝั่ง admin ยังกันด้วย RLS (`is_admin()`) เป็นชั้นจริง guard นี้กันแค่หน้าจอ · `isCurrentUserAdmin()` ตอบ `false` เมื่อไม่มี uid

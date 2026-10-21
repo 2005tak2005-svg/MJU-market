@@ -261,12 +261,13 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
 FOREIGN KEY (ref_chat_id) REFERENCES chat(id) ON DELETE CASCADE
 
-CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message'))  -- notifications_type_check
+CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed'))  -- notifications_type_check
 CHECK (type <> 'chat_message' OR ref_chat_id IS NOT NULL)                                                   -- notifications_chat_ref_check
 ```
 
 - `ref_product_id` nullable โดยตั้งใจ (แก้บล็อกเดิมของ P-07 ดู D-23) · `ref_chat_id` nullable — ใช้เฉพาะ `type='chat_message'`
 - `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน · `chat_message` เขียนโดย trigger `trg_notify_chat_message` (D-90) — `title` = ชื่อผู้ส่ง, `body` = ข้อความ (ตัด 100 ตัวอักษร) หรือ `📷 ส่งรูปภาพ` · ต่อผู้รับ+ห้องเหลือแถว unread 1 แถว (แถว unread เก่าถูกลบแล้ว INSERT แถวใหม่ทุกข้อความ)
+- `sale_confirmed` เขียนโดย trigger `trg_notify_sale_confirmed` (D-91) — ผู้รับ = ผู้ซื้อ, `ref_product_id`/`ref_chat_id` = สินค้า/ห้องที่ปิดการขาย, `title` = `ผู้ขายยืนยันการขายแล้ว`, `body` = `<ชื่อผู้ขาย> ปิดการขาย "<ชื่อสินค้า>" ให้คุณแล้ว · ให้คะแนนผู้ขายได้ที่หน้าสินค้า`
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - อยู่ใน `supabase_realtime` publication (D-60) — ตรวจจาก `pg_publication_tables` 2026-10-14
 
@@ -1303,6 +1304,21 @@ CREATE TRIGGER trg_notify_chat_message
 - exception ภายในถูกกลืนเป็น `WARNING` — แจ้งเตือนพังต้องไม่ทำให้ INSERT ข้อความล้ม
 - trigger-only: ไม่มี EXECUTE ให้ `anon`/`authenticated` (ตรวจแล้ว `has_function_privilege` = false ทั้งคู่)
 - `mark_chat_read` ขยาย: นอกจากตั้ง `chat_user.last_read_at` ยัง `UPDATE notifications SET is_read=true` ของ `type='chat_message'` + `ref_chat_id` ห้องนั้นของ `auth.uid()` เอง (grant เหมือนเดิม)
+
+### L6 sale notification — `notify_sale_confirmed()` + trigger `trg_notify_sale_confirmed` (เพิ่ม 2026-10-21, D-91)
+
+```sql
+CREATE OR REPLACE FUNCTION public.notify_sale_confirmed() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+  -- INSERT notifications (user_id=NEW.buyer_id, type='sale_confirmed', ref_product_id, ref_chat_id, title, body)
+  -- exception ทั้งก้อน → RAISE WARNING (แจ้งเตือนพังต้องไม่ทำให้ mark_product_sold ล้ม)
+REVOKE ALL ON FUNCTION public.notify_sale_confirmed() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_notify_sale_confirmed
+  AFTER INSERT ON public.transactions FOR EACH ROW EXECUTE FUNCTION public.notify_sale_confirmed();  -- tgenabled = 'O'
+```
+
+- ผูกกับ `transactions` ไม่ใช่ RPC — `mark_product_sold` ไม่ถูกแก้ · ผู้รับมีแค่ผู้ซื้อ (`buyer_id` NULL → ข้าม) ผู้ขายไม่ได้แถว
+- ปิดชั่วคราวได้: `ALTER TABLE public.transactions DISABLE TRIGGER trg_notify_sale_confirmed;`
 
 ### L5 sale — `mark_product_sold()` + trigger `enforce_sale_via_rpc_only` (เพิ่ม 2026-08-23, D-59)
 

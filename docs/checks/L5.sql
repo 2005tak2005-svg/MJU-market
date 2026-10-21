@@ -39,3 +39,16 @@ GROUP BY 1 HAVING count(*) > 1;
 
 -- [5.7] chat_sale_status_view ตอบถูกทั้ง 2 คอลัมน์ไหม (แทนคีย์จริงก่อนรัน)
 -- SELECT * FROM chat_sale_status_view WHERE chat_id = <CHAT_ID>;
+
+-- [5.8] (D-93) แถวการ์ดสินค้าต้องผ่านกติกา trigger: สินค้า approved, ผู้ส่ง ≠ เจ้าของสินค้า, เจ้าของสินค้าอยู่ในห้อง — ต้องคืน 0 แถว
+SELECT cm.id, cm.chat_id, cm.product_id
+FROM public.chat_message cm
+JOIN public.products p ON p.id = cm.product_id
+WHERE cm.product_id IS NOT NULL
+  AND (p.seller_id = cm.user_id
+       OR NOT EXISTS (SELECT 1 FROM public.chat_user cu WHERE cu.chat_id = cm.chat_id AND cu.user_id = p.seller_id));
+
+-- [5.9] (D-93) ห้องที่มีการ์ด: chat_already_sold ต้องตรงกับสถานะสินค้าที่อ้างถึงล่าสุด (แทน <CHAT_ID> ก่อนรัน · ดูผลในนามผู้ใช้ที่เป็นสมาชิกห้อง)
+-- SELECT s.chat_id, s.inquiry_product_id, s.chat_already_sold, p.status
+-- FROM public.chat_sale_status_view s JOIN public.products p ON p.id = s.inquiry_product_id
+-- WHERE s.chat_id = <CHAT_ID>;   -- chat_already_sold ต้อง = (p.status = 'sold')

@@ -315,3 +315,12 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - ส่ง 1 ข้อความ → ผู้รับมี unread 1 แถว · ส่งอีก 1 → ยัง 1 แถว `body` = ข้อความล่าสุด `title` = ชื่อผู้ส่ง · ส่งรูปล้วน → `body` = `📷 ส่งรูปภาพ` · ผู้ส่งไม่ได้แถวเลย (0) · `mark_chat_read` ในนามผู้รับ → unread = 0
 - `has_function_privilege('anon'|'authenticated', 'notify_chat_message()', 'execute')` = false ทั้งคู่ · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิม: security_definer_view 4, extension_in_public 2, authenticated_security_definer_function_executable 8, leaked password 1)
 - **ไม่ได้ทดสอบ:** RLS ฝั่ง user ธรรมดาอ่านแถว `chat_message` ของตัวเอง/ไม่เห็นของคนอื่น (แถวเขียนด้วย SECURITY DEFINER ผ่าน policy `user_id = auth.uid()` เดิม ไม่ได้แก้ policy) · ห้องที่มี >2 สมาชิก · ผู้ถูกแบนส่ง/รับ · banner บนแอปจริงจากข้อความจริง
+
+### V-17 · แชทผูกสินค้า (`post_product_inquiry` + view ใหม่) (D-93, 2026-10-21)
+
+- ทดสอบแบบ impersonate (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) ใน DO block ที่ `RAISE EXCEPTION` ท้ายสุดเพื่อ rollback · ตรวจหลังรัน: การ์ด 0, `transactions` ห้อง 11 = 1, สินค้า `available` เท่าเดิม
+- **`post_product_inquiry`** (ผู้ซื้อ = ปิติเทพ, แชท 10): ส่งครั้งแรก `true` · `chat_message.message` = `สนใจสินค้า: <title>` · `chat.last_message` ตามด้วย · ส่งซ้ำสินค้าเดิม `false` · สินค้าของผู้ขายที่ไม่อยู่ในห้อง → error `ผู้ขายสินค้านี้ไม่ได้อยู่ในแชทนี้` · สินค้าของตัวเอง → error `ผู้ขายสอบถามสินค้าของตัวเองไม่ได้` · ห้องที่ไม่ใช่สมาชิก → error
+- **บัญชีถูกแบน** (Bowieeee) ส่งการ์ดไม่ได้ — ถูก `chat_message_block_banned_insert` บล็อก
+- **เคสที่รายงาน** (แชท 11 ปิติเทพ↔สุชานันท์ มีการขายเก่า 1 รายการ): ก่อนมีการ์ด `chat_already_sold=true` (กติกาเดิม ห้องไม่เคยมีการ์ด) → ผู้ซื้อส่งการ์ดสินค้าใหม่ → `chat_already_sold=false`, `inquiry_product_title` ถูก → `chat_messages_view` แถวการ์ด: `has_message=false`, `product_title`/`product_price`(350)/รูป/`product_status`/`sender_name` ครบ → `chat_summary.last_product_title` ถูก → ผู้ขาย `mark_product_sold` ครั้งที่ 2 ในห้องเดิมสำเร็จ (`transactions` ห้อง = 2, `chat_already_sold=true`)
+- `get_advisors(security)` ไม่มี finding ใหม่
+- **ไม่ได้ทดสอบ:** UI ในแอปจริง (การ์ดในฟองข้อความ ทั้งฝั่งเรา/ฝั่งเขา, แตะการ์ด → `ProductDetails`, บรรทัด "สนใจ:" ใน `chatList`, ปุ่ม "แชทกับผู้ขาย" ส่งการ์ดอัตโนมัติ) · ห้องที่สินค้าในการ์ดถูกลบ/ซ่อน (ออกแบบให้กลับเป็นข้อความธรรมดา ยังไม่ได้เห็นจริง)

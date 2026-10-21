@@ -1905,3 +1905,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 `HomeAdmin` ไม่มีลิงก์ไป `Home` จึงไม่เกิด loop · สคริปต์ `dsl/admin_role_guard.dart` (raw proto, rerun-safe: ข้ามถ้า root action เป็น `guardIsAdmin`) · แก้ `nav.dart` ไม่ได้ (generated) · ยืนยันจาก `generated_code/` (`home_widget.dart`, `home_admin_widget.dart`) · **ยังไม่ทดสอบผ่านแอปจริง**
 
 **ข้อจำกัด:** guard รันหลังหน้า render → Home ผู้ใช้อาจแวบก่อนเด้ง admin · ข้อมูลฝั่ง admin ยังกันด้วย RLS (`is_admin()`) เป็นชั้นจริง guard นี้กันแค่หน้าจอ · `isCurrentUserAdmin()` ตอบ `false` เมื่อไม่มี uid
+
+## D-93 — แชทผูกสินค้า: การ์ดสินค้าในห้อง + แบนเนอร์ขายแล้วต่อสินค้า (2026-10-21)
+
+**ปัญหา:** (1) `chat` เป็น 1 ห้องต่อคู่ผู้ใช้ ไม่ผูกสินค้า — ผู้ขายไม่รู้ว่าผู้ซื้อทักมาจากสินค้าไหน (2) `chat_sale_status_view.chat_already_sold` = มี `transactions` ในห้อง → คู่เดิมคุยสินค้าใหม่แล้วแบนเนอร์ "ขายแล้วในแชทนี้" ค้างถาวร และถ้า `can_show_picker` ถูกล็อกด้วยเงื่อนไขเดียวกัน ผู้ขายปิดการขายชิ้นที่ 2 ไม่ได้
+
+**ตัดสินใจ: ไม่แยกห้องตามสินค้า** (ห้องต่อคู่เหมือนเดิม, `find_or_create_chat` ไม่เปลี่ยน) — ผูกบริบทสินค้าที่ "ข้อความ" แทน:
+- `chat_message.product_id` (nullable FK, ON DELETE SET NULL) = ข้อความการ์ดสินค้า · ส่งผ่าน RPC `post_product_inquiry` (SECURITY INVOKER, ข้ามถ้าการ์ดล่าสุดของห้องเป็นสินค้าเดิม) · trigger `guard_chat_message_product` บังคับกติกา (สินค้า approved / ผู้ส่งไม่ใช่เจ้าของ / เจ้าของอยู่ในห้อง) และเติม `message` = `สนใจสินค้า: <title>` → `last_message` + แจ้งเตือน D-90 ได้ผลเองไม่ต้องแก้
+- `chat_already_sold` = สถานะสินค้าที่อ้างถึงล่าสุดในห้อง (ห้องที่ไม่เคยมีการ์ดใช้กติกาเดิม) · `can_show_picker` ตัดเงื่อนไข "ห้องเคยขาย" ออก (ขายซ้ำรายชิ้นกันที่ `mark_product_sold` อยู่แล้ว) — **ผล:** picker โผล่ทุกครั้งที่ผู้ขายมีของ approved ที่ยังไม่ขาย แม้สินค้าที่คุยอยู่ขายไปแล้ว
+- UI: ปุ่ม "แชทกับผู้ขาย" (custom action `findOrCreateChatWithSeller`) เรียก RPC หลังเปิดห้อง (กลืน error — ผู้ถูกแบนในห้องเดิมยังเข้าห้องได้) · การ์ด (รูป/ชื่อ/ราคา/"ขายแล้ว", แตะ → `ProductDetails`) ในฟองข้อความทั้ง 2 ฝั่งของ `chatMessages` · บรรทัด "สนใจ: …" ใน `chatList` · ข้อความแบนเนอร์เปลี่ยนเป็น "สินค้าที่สอบถามล่าสุดขายแล้ว"
+- view คืนคอลัมน์การ์ดแบบ non-null (COALESCE) และ `has_product` = เห็นสินค้าได้จริง — สินค้าที่ถูกซ่อน/ลบ แถวจะกลับเป็นข้อความธรรมดา (FlutterFlow ใช้ `field!`)
+
+**ข้อจำกัด:** การ์ดส่งเมื่อผู้ซื้อกด "แชทกับผู้ขาย" จากหน้าสินค้าเท่านั้น (เปิดห้องจาก `chatList`/แจ้งเตือนไม่ส่ง) · ห้องเก่าไม่มีการ์ดย้อนหลัง · ผู้ขายยังเลือกสินค้าที่จะปิดการขายจาก picker เดิม (ไม่ได้ preselect สินค้าในการ์ด) · สคริปต์ `dsl/chat_product_step1.dart`, `step2a/2b/2c`, `step3a/3b` · ผลทดสอบ DB `VERIFICATION.md` V-17 · UI **ยังไม่ทดสอบผ่านแอปจริง**

@@ -30,6 +30,10 @@
 
 **🔴 เจอบั๊ก build-breaking ระหว่างตรวจปิด layer:** `getOtherUsers`/`senderLabel` เข้าถึง `.length`/`[i]` บน `List<String>?` โดยไม่ guard null — `dart analyze` ไม่ผ่านทั้งโปรเจกต์ (custom function ทุกตัวอยู่ไฟล์เดียวกัน) แก้แล้วด้วย `?? []` (commit `jpfa1sqLhlVEuJ0SccWn`) ยืนยันด้วย `dart analyze` จริงซ้ำหลังแก้ — **ผ่านแล้ว**
 
+## 🛍️ การ์ดสินค้าในห้อง (D-93, 2026-10-21)
+
+ห้องยังเป็น 1 ห้องต่อคู่ผู้ใช้ — บริบท "สนใจสินค้าไหน" อยู่ที่ข้อความการ์ด (`chat_message.product_id`) ที่ปุ่ม "แชทกับผู้ขาย" ส่งให้อัตโนมัติ (RPC `post_product_inquiry`, ข้ามถ้าการ์ดล่าสุดเป็นสินค้าเดิม) · `chatMessages` โชว์การ์ด (รูป/ชื่อ/ราคา/ขายแล้ว, แตะ → `ProductDetails`) · `chatList` โชว์ "สนใจ: …" จาก `chat_summary.last_product_label` · รายละเอียด `../DECISIONS.md` D-93, `../SCHEMA.md`
+
 ## ❓ ที่เคยค้าง — ตอนนี้ตอบแล้ว
 
 - **"array contains บน `chat_summary.user_ids` รองรับไหม"** — ไม่ต้องตอบ เพราะไม่ต้องใช้เลย: RLS ที่ `chat`/`chat_user` กรองให้เหลือแค่ห้องของ user คนนั้นอยู่แล้ว query `chat_summary` แบบไม่มี filter เลยก็ปลอดภัย

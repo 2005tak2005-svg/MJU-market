@@ -1885,3 +1885,11 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **⚠️ ผลที่เกิดทันที (trigger เปิดใช้งานแล้ว) ก่อนฝั่ง UI ทำ:** ทุกข้อความแชทจริงสร้างแถว + เด้ง banner (ไอคอนกระดิ่ง default, แตะ→`Notifications`) · หน้า `Notifications` แสดงแถวนี้ด้วย avatar แอดมิน (D-74 ใช้รูปแอดมินทุกแถว) ไม่มี badge ประเภท และแตะแล้วแค่ mark อ่าน (D-89 ตัด navigate ไปแล้ว) · ปิดชั่วคราวได้: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 
 **ค้าง (ฝั่ง FlutterFlow/Dart):** (1) แถว `chat_message` บน `Notifications`: avatar/ชื่อผู้ส่ง + badge + แตะ→mark อ่าน+เข้า `chatMessages` (ต้องส่ง `chatId`/`memberNames`/`userIds` — ดึงจาก `chat_summary` ตาม PT-02/`findOrCreateChatWithSeller`) (2) banner: แตะแล้วเข้าห้อง และไม่เด้งเมื่อผู้ใช้อยู่ในห้องนั้นอยู่แล้ว (3) badge ตัวเลข unread
+
+## D-91 — ปุ่ม "ค้นหา" บน `Home` เขียน `searchKeyword` (2026-10-21)
+
+**ปัญหา:** กดปุ่ม "ค้นหา" (`Button_ym795py5`) แล้วกริดไม่กรอง — `ON_TAP` ยังเป็น chain ก่อน D-62 (query `products_review_view` ด้วย `title = searchQuery` แล้วเขียน `productsList`) แต่ `ProductGridSection` (D-68 v2) อ่านเฉพาะ App State `searchKeyword`/`searchCategoryId` + `gridRefreshToken` · D-62 ระบุว่าปุ่มเปลี่ยนมาใช้ RPC แล้ว ซึ่งไม่ตรงของจริง · IME submit ไม่เสีย
+
+**แก้:** `ON_TAP` = `selectedCategoryId=0` → `searchKeyword=searchQuery` → `searchCategoryId=0` → `gridRefreshToken+1` (ตรงกับ IME submit ตัด `searchProducts`/`productsList` ที่ไม่มีใครอ่านออก) · สคริปต์ `dsl/search_button_fix.dart` (rerun-safe: `ensureActions` แทนที่ทั้ง trigger) · ยืนยันจาก `inspect` + `generated_code/lib/home/home_widget.dart` · **ยังไม่ทดสอบผ่านแอปจริง**
+
+**ค้าง:** IME submit ยังเรียก `searchProducts` + เขียน `productsList` ซ้ำโดยไม่จำเป็น (D-68) — ตัดได้ทีหลัง

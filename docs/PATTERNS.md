@@ -934,4 +934,6 @@ CallCustomAction(fn, outputAs: 'err'),
 - **รูป asset:** `assets_upload` (ไฟล์ต้องอยู่ใน workspace) คืน `storage_path` → raw `Image` `type: FF_IMAGE_TYPE_ASSET` + `pathValue.inputValue = storage_path` → codegen `Image.asset('assets/images/<ชื่อไฟล์>')` · ห้ามเขียน path แบบ bundle เอง
 - โหนดที่เพิ่งสร้างด้วย raw ปรับต่อด้วย `page.update(page.findByKey('<key>'), ...)` ได้ใน push ถัดไป (เช่น `textAlign`) — enum ที่ไม่รู้ชื่อใน JSON ให้ใช้ typed patch แทนเดา
 
-**ใช้แล้วที่:** `Home` (`dsl/home_r2.dart`, `dsl/price_sheet_a.dart`/`price_sheet_b.dart`, `dsl/home_r4.dart`/`home_r4b.dart`)
+- 🔴 **dialog ให้อยู่กลางจอ:** `ShowDialog` เริ่มต้น codegen เป็น `showAlignedDialog(isGlobal: false)` = ยึดตำแหน่ง widget ที่กด (ถ้า widget อยู่ในแถบเลื่อน/ใกล้ขอบ dialog จะเลื่อนตามและหลุดกลางจอ) → ตั้ง `alertDialog.customDialog.isGlobal = true` (raw) แล้ว codegen เปลี่ยนเป็น `showDialog(Dialog(insetPadding: zero, alignment: center))` · พารามิเตอร์ `imageUrl` ของ `FullImageViewer` ผูกจากตัวแปรของรูปได้ในระดับ raw (คัดลอก `parameterPasses` จากแชท; key param `tmy0lfsd`) แม้ typed DSL ทำไม่ได้ (PT-25)
+
+**ใช้แล้วที่:** `Home` (`dsl/home_r2.dart`, `dsl/price_sheet_a.dart`/`price_sheet_b.dart`, `dsl/home_r4.dart`/`home_r4b.dart`, `dsl/dialog_center_fix.dart`)

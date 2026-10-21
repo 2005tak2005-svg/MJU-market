@@ -229,7 +229,6 @@ FOREIGN KEY (reporter_id)         REFERENCES "Profile"(id) ON UPDATE CASCADE ON 
 FOREIGN KEY (reported_product_id) REFERENCES products(id)  ON DELETE SET NULL   -- เปลี่ยนจาก CASCADE (D-24) — ลบสินค้าไม่ลบประวัติ report
 FOREIGN KEY (reported_user_id)    REFERENCES "Profile"(id) ON DELETE SET NULL   -- D-65, pattern เดียวกับ reported_product_id
 CHECK (status IN ('pending', 'resolved'))                                       -- เพิ่ม (D-24)
-CHECK (reported_product_id IS NOT NULL OR reported_user_id IS NOT NULL)         -- reports_target_required, D-65 — ต้องมีเป้าหมายอย่างน้อย 1 อย่าง
 CHECK (reported_user_id IS NULL OR reported_user_id <> reporter_id)             -- reports_no_self_report, D-65 — กันรีพอร์ตตัวเองที่ระดับ DB
 CREATE UNIQUE INDEX reports_unique_pending_per_reporter_product
   ON reports (reporter_id, reported_product_id) WHERE status = 'pending'        -- กันรายงานซ้ำ (D-24)
@@ -239,7 +238,8 @@ CREATE UNIQUE INDEX reports_unique_pending_per_reporter_user
 
 - ใช้จริงแล้ว 3 ทาง: user รายงานสินค้าเอง (`status='pending'`), user รายงานผู้ใช้ (`status='pending'`, D-65), admin log ตอน reject (`status='resolved'`, เขียนที่ 3 ต่อจาก update `products` + insert `notifications` ใน `RejectProductSheet`)
 - `reported_product_id` เป็น NULL ได้จริงหลังลบสินค้า (`ON DELETE SET NULL`) — แถว report ยังอยู่ (`reports_admin_view` ใช้ `LEFT JOIN` รองรับอยู่แล้ว)
-- `reported_user_id` เป็น NULL ได้เช่นกันหลังลบโปรไฟล์ (`ON DELETE SET NULL`) — เมื่อเป็น NULL ทั้งคู่กับ `reported_product_id`, CHECK `reports_target_required` ยังผ่านอยู่ (constraint เช็คตอน insert/update เท่านั้น ไม่ retroactive กับแถวเก่าที่ FK เพิ่งเซ็ต NULL ทีหลัง)
+- `reported_user_id` เป็น NULL ได้เช่นกันหลังลบโปรไฟล์ (`ON DELETE SET NULL`)
+- 🔴 **ห้ามกลับไปใช้ CHECK `reports_target_required`** — เดิมเป็น `CHECK (reported_product_id IS NOT NULL OR reported_user_id IS NOT NULL)` แต่ FK `SET NULL` เป็น UPDATE ที่โดน CHECK ด้วย ลบสินค้า/โปรไฟล์ที่ถูกรายงานจึงล้มทั้งคำสั่ง (23514) — drop แล้ว 2026-10-21 ใช้ trigger `reports_require_target` (BEFORE INSERT, `search_path=public`) บังคับว่า insert ต้องมี product หรือ user อย่างน้อย 1 อย่างแทน ยืนยันโดยทดสอบ rollback: admin ลบสินค้าที่ถูกรายงานได้ รายงานครบ 9 แถว · insert ไม่มีเป้าหมายถูกปฏิเสธ
 
 ### `public.notifications` (L6, เพิ่ม 2026-08-14)
 

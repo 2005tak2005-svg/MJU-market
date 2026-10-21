@@ -1,7 +1,8 @@
 # STATUS.md — สถานะโปรเจกต์ + จุดเริ่ม session
 
 > 📍 **เปิดไฟล์นี้เป็นไฟล์แรกของทุก session**
-> อัปเดตล่าสุด: **2026-10-14**
+> อัปเดตล่าสุด: **2026-10-21**
+> ✅ **ปรับขนาดการ์ด `ProductGridSection` (Home)**: ความสูงการ์ด = ความกว้างการ์ด + 84px (`mainAxisExtent` ใน `LayoutBuilder`), รูป thumbnail ยืดเต็มพื้นที่เหลือ (แทน `height: 120` + `childAspectRatio: 0.68`) · ไม่มี schema/พฤติกรรมเปลี่ยน · push แล้ว (`dsl/grid_resize.dart`) · ยังไม่ได้ดูบนแอปจริง
 > ✅ **D-90: แจ้งเตือนข้อความแชทฝั่ง DB apply แล้ว** — `notifications.ref_chat_id` + type `chat_message` + trigger `trg_notify_chat_message` (ผู้รับ=สมาชิกห้องยกเว้นผู้ส่ง, เหลือ unread 1 แถวต่อห้อง) + `mark_chat_read` ขยาย · ทดสอบใน rollback ผ่าน (V-16) · 🔴 **trigger เปิดแล้ว แต่ UI ยังไม่รองรับ**: ข้อความจริงจะเด้ง banner + โผล่ใน `Notifications` ด้วย avatar แอดมิน/ไม่มี badge/แตะแล้วไม่เข้าห้อง — ฝั่ง FlutterFlow/Dart ยังค้าง (รายละเอียด D-90) · ปิดชั่วคราว: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 > ✅ **D-89: แตะแถวแจ้งเตือนไม่ navigate ไป `ProductDetails` แล้ว** (mark อ่านแล้วอย่างเดียว; แชทจะ navigate ทีหลังเมื่อมี type นี้) push แล้ว ยืนยันจาก `generated_code/` · ยังไม่ได้ทดสอบบนแอปจริง
 > ✅ **D-88: banner แจ้งเตือนในแอป (L6)** — แถวใหม่ใน `notifications` ของ user ที่ล็อกอินอยู่ → banner เลื่อนลงจากบนทุกหน้า (custom action `startInAppNotificationBanner` เป็น `main.dart` final action, `dsl/in_app_banner.dart`, PT-45) ไม่แตะ DB · ยังไม่มีแจ้งเตือนจากแชท/badge ตัวเลข/FCM · **pete ทดสอบแล้ว banner เด้งจริง (2026-10-14) ยังเหลือเช็คพฤติกรรมย่อยในคิวข้อ 0f**

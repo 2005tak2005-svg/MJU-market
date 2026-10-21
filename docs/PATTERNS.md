@@ -930,4 +930,8 @@ CallCustomAction(fn, outputAs: 'err'),
 - DSL ไม่มี `And`/`Or` → ใช้ `Conditional(a, then: b, orElse: false)` · `EdgeInsets.zero` ไม่มี ใช้ `EdgeInsets.all(0)`
 - **bottom sheet ที่เขียน App State จากช่องกรอก:** component ไม่มี params + `WidgetState(typedHandle, text)` (push แยก — PT-22/PT-44) + ผูกค่าเริ่มต้นช่องกรอกด้วย `props.textField.initialText.textValue.variable` (LOCAL_STATE/APP_STATE) · เรียกด้วย `ShowBottomSheet(ComponentHandle(ComponentDeclaration(...)))`
 
-**ใช้แล้วที่:** `Home` (`dsl/home_r2.dart`, `dsl/price_sheet_a.dart`/`price_sheet_b.dart`)
+- **เปลี่ยนชนิดโหนดที่มี action (Button → Container ฯลฯ):** `toProto3Json()` ของโหนดเดิม → ลอก `triggerActions` + `props.visibility` → `replaceAll('"<oldKey>"', '"<newKey>"')` (action ใน chain ชี้ `nodeKeyRef` กลับ key ของเจ้าของ) → `mergeFromProto3Json` ลงโหนดใหม่ · ชื่อ widget ซ้ำกับของเก่าได้ถ้าของเก่าถูกถอดออก
+- **รูป asset:** `assets_upload` (ไฟล์ต้องอยู่ใน workspace) คืน `storage_path` → raw `Image` `type: FF_IMAGE_TYPE_ASSET` + `pathValue.inputValue = storage_path` → codegen `Image.asset('assets/images/<ชื่อไฟล์>')` · ห้ามเขียน path แบบ bundle เอง
+- โหนดที่เพิ่งสร้างด้วย raw ปรับต่อด้วย `page.update(page.findByKey('<key>'), ...)` ได้ใน push ถัดไป (เช่น `textAlign`) — enum ที่ไม่รู้ชื่อใน JSON ให้ใช้ typed patch แทนเดา
+
+**ใช้แล้วที่:** `Home` (`dsl/home_r2.dart`, `dsl/price_sheet_a.dart`/`price_sheet_b.dart`, `dsl/home_r4.dart`/`home_r4b.dart`)

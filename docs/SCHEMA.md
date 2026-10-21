@@ -200,13 +200,18 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 | 4 | `user_id` | uuid | **NOT NULL** | – (ผู้ส่ง) |
 | 5 | `message` | text | nullable (เปลี่ยนจาก NOT NULL, D-29) | – |
 | 6 | `image_url` | text | nullable | – |
+| 7 | `product_id` | uuid | nullable | – (D-93: ข้อความ "การ์ดสินค้า" = ผู้ซื้อสอบถามสินค้านี้) |
 
 ```sql
 PRIMARY KEY (id)
 FOREIGN KEY (chat_id) REFERENCES chat(id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id)
+FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL   -- D-93
 CHECK (message IS NOT NULL OR image_url IS NOT NULL)  -- chat_message_has_content, D-29
+-- index: chat_message_product_id_idx (product_id) · chat_message_chat_product_idx (chat_id, created_at DESC) WHERE product_id IS NOT NULL
 ```
+
+- D-93: แถวที่ `product_id IS NOT NULL` = การ์ดสินค้า สร้างผ่าน RPC `post_product_inquiry` (ด้านล่าง) · trigger `trg_guard_chat_message_product` (BEFORE INSERT) บังคับ: สินค้าต้อง `approved`, ผู้ส่งไม่ใช่เจ้าของสินค้า, เจ้าของสินค้าต้องเป็นสมาชิกห้อง · เติม `message` = `สนใจสินค้า: <title>` ให้ถ้าว่าง (ทำให้ `chat.last_message` + แจ้งเตือน D-90 ใช้ได้โดยไม่แก้) · ล้าง `image_url`
 
 ฝั่ง FlutterFlow ผูก `image_url` แล้ว (ส่งรูปได้จริง, D-41) — ดู `layers/L4-chat.md`
 
@@ -515,7 +520,16 @@ CREATE VIEW public.chat_summary WITH (security_invoker = true) AS
              WHERE cu2.chat_id = c.id AND cu2.user_id = auth.uid()),
           '-infinity'::timestamptz)
     ) AS is_unread,                                    -- เพิ่ม 2026-08-17, D-31 — คำนวณต่อ auth.uid() ของผู้เรียกเอง
-    array_agg(COALESCE(p.avatar_url, '') ORDER BY p.full_name) AS member_avatar_urls  -- เพิ่ม 2026-08-28, D-73
+    array_agg(COALESCE(p.avatar_url, '') ORDER BY p.full_name) AS member_avatar_urls,  -- เพิ่ม 2026-08-28, D-73
+    -- D-93 (2026-10-21): สินค้าที่ถูกอ้างถึงล่าสุดในห้อง (ผ่าน products_review_view → สินค้าที่มองไม่เห็นไม่นับ)
+    (SELECT pv.id    FROM chat_message cm2 JOIN products_review_view pv ON pv.id = cm2.product_id
+      WHERE cm2.chat_id = c.id AND cm2.product_id IS NOT NULL ORDER BY cm2.created_at DESC, cm2.id DESC LIMIT 1) AS last_product_id,
+    (SELECT pv.title FROM chat_message cm2 JOIN products_review_view pv ON pv.id = cm2.product_id
+      WHERE cm2.chat_id = c.id AND cm2.product_id IS NOT NULL ORDER BY cm2.created_at DESC, cm2.id DESC LIMIT 1) AS last_product_title,
+    COALESCE((SELECT 'สนใจ: ' || pv.title FROM chat_message cm2 JOIN products_review_view pv ON pv.id = cm2.product_id
+      WHERE cm2.chat_id = c.id AND cm2.product_id IS NOT NULL ORDER BY cm2.created_at DESC, cm2.id DESC LIMIT 1), '') AS last_product_label,
+    EXISTS (SELECT 1 FROM chat_message cm2 JOIN products_review_view pv ON pv.id = cm2.product_id
+      WHERE cm2.chat_id = c.id AND cm2.product_id IS NOT NULL) AS has_last_product
    FROM chat c
      JOIN chat_user cu ON cu.chat_id = c.id
      JOIN public_profiles p ON p.id = cu.user_id
@@ -535,10 +549,20 @@ CREATE VIEW public.chat_messages_view WITH (security_invoker = true) AS
     cm.message,
     cm.created_at,
     cm.image_url,
-    (cm.message IS NOT NULL) AS has_message,
-    (cm.image_url IS NOT NULL) AS has_image
+    (cm.message IS NOT NULL AND (cm.product_id IS NULL OR pv.id IS NULL)) AS has_message,  -- D-93: แถวการ์ดที่เห็นสินค้าได้ ไม่โชว์เป็นข้อความ
+    (cm.image_url IS NOT NULL) AS has_image,
+    -- D-93 (2026-10-21) การ์ดสินค้า — ทุกคอลัมน์ non-null (COALESCE) เพราะ FlutterFlow ใช้ `field!` · has_product = เห็นสินค้านั้นได้จริง
+    cm.product_id,
+    COALESCE(pv.title, '') AS product_title,
+    pv.price AS product_price,
+    COALESCE(pv.first_image_url, '') AS product_image_url,
+    pv.status AS product_status,
+    (pv.id IS NOT NULL) AS has_product,
+    COALESCE('฿' || to_char(pv.price, 'FM999,999,990'), '') AS product_price_text,
+    COALESCE(pv.status::text = 'sold', false) AS product_is_sold
    FROM chat_message cm
-     JOIN public_profiles p ON p.id = cm.user_id;
+     JOIN public_profiles p ON p.id = cm.user_id
+     LEFT JOIN products_review_view pv ON pv.id = cm.product_id;
 
 -- reloptions: security_invoker=true
 CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
@@ -642,14 +666,23 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
 -- reloptions: security_invoker=true   (L5, เพิ่ม 2026-08-23, D-59)
 CREATE VIEW public.chat_sale_status_view WITH (security_invoker = true) AS
  SELECT c.id AS chat_id,
-    (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id)) AS chat_already_sold,
-    (NOT (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id))
-     AND NOT private.is_banned()
+    -- D-93 (2026-10-21): ดูจากสินค้าที่ถูกอ้างถึงล่าสุดในห้อง · ห้องที่ไม่เคยมีการ์ด → กติกาเดิม (มี transaction ในห้อง)
+    CASE WHEN li.product_id IS NOT NULL THEN li.status::text = 'sold'
+         ELSE EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id) END AS chat_already_sold,
+    -- D-93: ไม่ล็อกด้วย "ห้องเคยขายแล้ว" อีก (mark_product_sold กันขายซ้ำรายชิ้นอยู่แล้ว)
+    ((NOT private.is_banned())
      AND (EXISTS (SELECT 1 FROM products p
             WHERE p.seller_id = auth.uid()
               AND p.moderation_status::text = 'approved'::text
-              AND p.status::text <> 'sold'::text))) AS can_show_picker
-   FROM chat c;
+              AND p.status::text <> 'sold'::text))) AS can_show_picker,
+    li.product_id AS inquiry_product_id,
+    li.title AS inquiry_product_title
+   FROM chat c
+     LEFT JOIN LATERAL (
+        SELECT cm.product_id, pv.status, pv.title
+        FROM chat_message cm JOIN products_review_view pv ON pv.id = cm.product_id
+        WHERE cm.chat_id = c.id AND cm.product_id IS NOT NULL
+        ORDER BY cm.created_at DESC, cm.id DESC LIMIT 1) li ON true;
 
 -- reloptions: security_invoker=true   (L8, เพิ่ม 2026-08-21, D-52)
 CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
@@ -1265,6 +1298,34 @@ END; $function$;
 - **`update_chat_last_message`** — trigger-only ไม่มี EXECUTE grant ให้ role ไหนเลย (เรียกผ่าน trigger ไม่ต้องมี grant)
 - **`get_my_chats()`** — ไม่มี parameter, `SECURITY INVOKER` (default) พึ่ง RLS ของ `chat`/`chat_user` กรองให้ทั้งหมด — **ยังไม่มีใครเรียกใช้จริง** ฝั่ง FlutterFlow ผูก `chat_summary` ตรง ๆ แบบไม่มี filter แทน (RLS กรองให้แล้ว ไม่ต้อง array-contains) EXECUTE grant `authenticated` เท่านั้น
 - ทั้ง 3 ฟังก์ชันที่เป็น `SECURITY DEFINER`/มี query ภายใน (`is_chat_member`, `find_or_create_chat`, `update_chat_last_message`) pin `search_path = public` กันโจมตีแบบ search_path hijack
+
+### L4/L5 chat product inquiry — `post_product_inquiry()` + trigger `trg_guard_chat_message_product` (เพิ่ม 2026-10-21, D-93)
+
+```sql
+-- SECURITY INVOKER (ผ่าน RLS ของ chat_message: สมาชิกห้อง + ban policy) · EXECUTE: authenticated เท่านั้น
+CREATE OR REPLACE FUNCTION public.post_product_inquiry(target_chat_id bigint, target_product_id uuid)
+ RETURNS boolean LANGUAGE plpgsql SET search_path TO 'public'
+AS $function$
+DECLARE last_pid uuid;
+BEGIN
+  SELECT cm.product_id INTO last_pid FROM public.chat_message cm
+  WHERE cm.chat_id = target_chat_id AND cm.product_id IS NOT NULL
+  ORDER BY cm.created_at DESC, cm.id DESC LIMIT 1;
+  IF last_pid IS NOT DISTINCT FROM target_product_id THEN RETURN false; END IF;   -- การ์ดล่าสุดเป็นสินค้าเดิม → ไม่ส่งซ้ำ
+  INSERT INTO public.chat_message (chat_id, user_id, product_id) VALUES (target_chat_id, auth.uid(), target_product_id);
+  RETURN true;
+END; $function$;
+
+-- BEFORE INSERT ON chat_message · SECURITY DEFINER, search_path '' · REVOKE ALL FROM PUBLIC
+-- ถ้า NEW.product_id IS NOT NULL: สินค้าต้อง moderation_status='approved' · seller ≠ NEW.user_id · seller เป็นสมาชิก chat_user ของห้อง
+-- เติม NEW.message = 'สนใจสินค้า: ' || title ถ้าว่าง · NEW.image_url := NULL
+CREATE TRIGGER trg_guard_chat_message_product BEFORE INSERT ON public.chat_message
+  FOR EACH ROW EXECUTE FUNCTION private.guard_chat_message_product();
+```
+
+- `chat` ยังเป็น 1 ห้องต่อคู่ผู้ใช้ — ไม่แยกห้องตามสินค้า (`find_or_create_chat` ไม่เปลี่ยน) · "ผู้ซื้อสนใจสินค้าไหน" อยู่ที่การ์ดในไทม์ไลน์
+- ผู้ถูกแบนส่งการ์ดไม่ได้ (policy `chat_message_block_banned_insert`) · `mark_product_sold` ไม่เปลี่ยน
+- ผลทดสอบ: `VERIFICATION.md` V-17
 
 ### L6 chat notification — `notify_chat_message()` + trigger `trg_notify_chat_message` (เพิ่ม 2026-10-14, D-90)
 

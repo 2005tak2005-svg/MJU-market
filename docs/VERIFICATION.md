@@ -315,3 +315,11 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - ส่ง 1 ข้อความ → ผู้รับมี unread 1 แถว · ส่งอีก 1 → ยัง 1 แถว `body` = ข้อความล่าสุด `title` = ชื่อผู้ส่ง · ส่งรูปล้วน → `body` = `📷 ส่งรูปภาพ` · ผู้ส่งไม่ได้แถวเลย (0) · `mark_chat_read` ในนามผู้รับ → unread = 0
 - `has_function_privilege('anon'|'authenticated', 'notify_chat_message()', 'execute')` = false ทั้งคู่ · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิม: security_definer_view 4, extension_in_public 2, authenticated_security_definer_function_executable 8, leaked password 1)
 - **ไม่ได้ทดสอบ:** RLS ฝั่ง user ธรรมดาอ่านแถว `chat_message` ของตัวเอง/ไม่เห็นของคนอื่น (แถวเขียนด้วย SECURITY DEFINER ผ่าน policy `user_id = auth.uid()` เดิม ไม่ได้แก้ policy) · ห้องที่มี >2 สมาชิก · ผู้ถูกแบนส่ง/รับ · banner บนแอปจริงจากข้อความจริง
+
+### V-17 · trigger แจ้งเตือนผู้ซื้อเมื่อปิดการขาย (D-91, 2026-10-21)
+
+- ทดสอบในทรานแซกชันที่ rollback (DO block + `RAISE EXCEPTION`; ตรวจแล้ว `notifications` 19 / `transactions` 3 / `products.status='sold'` 3 เท่าเดิม) ผู้ขายไม่ถูกแบน + ห้องจริง 2 สมาชิก: `set_config('request.jwt.claims')` เป็นผู้ขายแล้วเรียก `mark_product_sold`
+- ผู้ซื้อได้แถว `sale_confirmed` 1 แถว (`is_read=false`, `ref_chat_id` = ห้องที่ขาย, `body` อ่านได้ถูกต้อง) · ผู้ขายได้ 0 แถว
+- ผู้ขายที่ถูกแบนเรียก RPC → ถูกปฏิเสธเหมือนเดิม (ไม่เกี่ยวกับ trigger)
+- `proacl` ของ `notify_sale_confirmed` = `{postgres, service_role}` · `notifications_type_check` มี 6 ค่า
+- **ไม่ได้ทดสอบ:** ผ่านแอปจริง (banner เด้งที่ฝั่งผู้ซื้อขณะอยู่ในห้องแชท / หน้าอื่น, รายการบน `Notifications`) · `buyer_id` NULL · `get_advisors`

@@ -7,6 +7,8 @@
 
 ผู้ใช้รีพอร์ตสินค้า/ผู้ใช้ที่ไม่เหมาะสมได้ และให้คะแนนผู้ขายหลังธุรกรรมเสร็จได้
 
+> **รีวิวย้อนหลัง (D-95, 2026-10-22):** รีวิวได้เมื่อไหร่ก็ได้หลังซื้อ (ไม่มีเวลาจำกัด) · ทางกลับไปให้ดาว = หน้า `MyPurchases` (`my_purchases_view`) จาก `ProfileUser` → "การซื้อของฉัน" หรือปุ่มดาวในแจ้งเตือน `sale_confirmed` → แตะแถว → `ProductDetails` (ปุ่มให้คะแนนเดิม) · รีวิวแล้ว trigger ปิดแจ้งเตือนนั้นให้
+
 ## 🧩 Supabase — `reports` ทำแล้ว (D-24/D-65), `reviews` ทำแล้ว (D-64)
 
 `reports` (`reporter_id`/`reported_product_id`/`reported_user_id`/`reason`/`status`/`is_read`) + RLS จริง (insert ทุก authenticated, select เจ้าของ+admin) + CHECK `status` + CHECK ต้องมีเป้าหมายอย่างน้อย 1 อย่าง + CHECK กันรีพอร์ตตัวเอง (D-65) + unique partial index กันรายงานซ้ำตอนยัง pending (ทั้งสินค้าและผู้ใช้แยกกัน) + FK ทั้งคู่เป็น `ON DELETE SET NULL` — รายละเอียดคอลัมน์เต็ม `../SCHEMA.md`

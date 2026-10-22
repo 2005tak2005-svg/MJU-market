@@ -1917,3 +1917,15 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - view คืนคอลัมน์การ์ดแบบ non-null (COALESCE) และ `has_product` = เห็นสินค้าได้จริง — สินค้าที่ถูกซ่อน/ลบ แถวจะกลับเป็นข้อความธรรมดา (FlutterFlow ใช้ `field!`)
 
 **ข้อจำกัด:** การ์ดส่งเมื่อผู้ซื้อกด "แชทกับผู้ขาย" จากหน้าสินค้าเท่านั้น (เปิดห้องจาก `chatList`/แจ้งเตือนไม่ส่ง) · ห้องเก่าไม่มีการ์ดย้อนหลัง · ผู้ขายยังเลือกสินค้าที่จะปิดการขายจาก picker เดิม (ไม่ได้ preselect สินค้าในการ์ด) · สคริปต์ `dsl/chat_product_step1.dart`, `step2a/2b/2c`, `step3a/3b` · ผลทดสอบ DB `VERIFICATION.md` V-17 · UI **ยังไม่ทดสอบผ่านแอปจริง**
+
+## D-95 — การซื้อของฉัน (`MyPurchases`) + แจ้งเตือนให้คะแนนผู้ขาย (2026-10-22)
+
+**ปัญหา:** ปุ่ม "ให้คะแนนผู้ขาย" มีที่เดียวคือ `ProductDetails` ของสินค้าที่ขายแล้ว แต่สินค้า `sold` ถูกซ่อนจาก Home/ค้นหา/หน้าร้าน → ผู้ซื้อที่ลืมรีวิวกลับไปหน้านั้นไม่ได้ (ยกเว้นเคยบันทึกไว้ใน wishlist หรือมีการ์ดในแชท D-93) · ไม่มีเวลาจำกัดการรีวิวทั้งใน RLS และ view (ไม่เปลี่ยน — รีวิวย้อนหลังได้เสมอ)
+
+**ตัดสินใจ:** (1) view `my_purchases_view` + หน้า `MyPurchases` (route `/my-purchases`) ลิสต์การซื้อใหม่สุดก่อน แสดง "ให้คะแนนแล้ว n/5" / "ยังไม่ได้ให้คะแนน — แตะเพื่อให้คะแนน" แตะแถว → `ProductDetails` (ใช้ UI รีวิวเดิม ไม่สร้าง UI รีวิวซ้ำ) · ทางเข้า: แถว "การซื้อของฉัน" ใต้ "Edit Profile" บน `ProfileUser` + ปุ่มดาวในแถวแจ้งเตือนที่ `type='sale_confirmed'` (2) **แจ้งเตือนผู้ซื้อตอนปิดการขาย ใช้ของเดิม** `sale_confirmed` + `trg_notify_sale_confirmed` (มีอยู่แล้วใน DB — สร้างโดยเซสชันอื่น บันทึกเป็น "D-91" บน branch `worktree-admin-delete-docs`) ไม่สร้างซ้ำ · เพิ่ม trigger `trg_mark_sale_notification_read` (AFTER INSERT บน `reviews`) ให้รีวิวแล้วแจ้งเตือนนั้นถูก mark อ่านเอง
+
+**รายละเอียดที่ควรรู้:** view คืนค่า non-null (COALESCE) · `can_rate` = ยังไม่รีวิว **และ** เห็นสินค้าได้ (สินค้าถูกลบ/ซ่อน → "ให้คะแนนไม่ได้ (ไม่พบสินค้า)") · เรียงด้วย `sort_key` (= −epoch ของเวลาซื้อ) เพราะ `PostgresOrderBy(ascending:false)` ไม่ถูก generate (PT-27 §3) · สคริปต์ `dsl/purchases_step1.dart`…`step3b.dart` · ผลทดสอบ DB `VERIFICATION.md` V-18 · UI **ยังไม่ทดสอบผ่านแอปจริง**
+
+**ข้อจำกัด:** ไม่มี empty-state เมื่อยังไม่เคยซื้อ (หน้าว่าง) · ไม่มี pull-to-refresh (เปิดหน้าใหม่ = โหลดใหม่) · ข้อความแจ้งเตือน `sale_confirmed` ยังเขียนว่า "ให้คะแนนผู้ขายได้ที่หน้าสินค้า" (ฟังก์ชันของเซสชันอื่น ไม่ได้แก้) · ไม่ backfill แจ้งเตือนให้การขายเก่าที่ยังไม่รีวิว (ดูได้จากหน้า `MyPurchases`) · banner D-88 ยังใช้ไอคอน default ของ type นี้
+
+**⚠️ เลข D/V ชนข้าม branch:** `worktree-home-ui-redesign` ใช้ D-91…D-93 + V-17 แต่ `worktree-admin-delete-docs` ใช้ D-91 + V-17 (คนละเรื่อง) และ `worktree-fix-price-guard` ใช้ D-91…D-94 → ต้องเรียงเลขใหม่ตอน merge · เรื่องนี้ใช้ D-95/V-18 (ยังไม่มี branch ไหนใช้)

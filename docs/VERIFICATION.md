@@ -324,3 +324,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - **เคสที่รายงาน** (แชท 11 ปิติเทพ↔สุชานันท์ มีการขายเก่า 1 รายการ): ก่อนมีการ์ด `chat_already_sold=true` (กติกาเดิม ห้องไม่เคยมีการ์ด) → ผู้ซื้อส่งการ์ดสินค้าใหม่ → `chat_already_sold=false`, `inquiry_product_title` ถูก → `chat_messages_view` แถวการ์ด: `has_message=false`, `product_title`/`product_price`(350)/รูป/`product_status`/`sender_name` ครบ → `chat_summary.last_product_title` ถูก → ผู้ขาย `mark_product_sold` ครั้งที่ 2 ในห้องเดิมสำเร็จ (`transactions` ห้อง = 2, `chat_already_sold=true`)
 - `get_advisors(security)` ไม่มี finding ใหม่
 - **ไม่ได้ทดสอบ:** UI ในแอปจริง (การ์ดในฟองข้อความ ทั้งฝั่งเรา/ฝั่งเขา, แตะการ์ด → `ProductDetails`, บรรทัด "สนใจ:" ใน `chatList`, ปุ่ม "แชทกับผู้ขาย" ส่งการ์ดอัตโนมัติ) · ห้องที่สินค้าในการ์ดถูกลบ/ซ่อน (ออกแบบให้กลับเป็นข้อความธรรมดา ยังไม่ได้เห็นจริง)
+
+### V-18 · การซื้อของฉัน (`my_purchases_view` + trigger ปิดแจ้งเตือนเมื่อรีวิว) (D-95, 2026-10-22)
+
+- impersonate (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) ใน DO block ที่ `RAISE EXCEPTION` ท้ายสุดเพื่อ rollback · ตรวจหลังรัน: `reviews` = 1 เท่าเดิม, แจ้งเตือน `sale_confirmed` ยัง `is_read=false`
+- ผู้ซื้อจริง (น้องมิ้น): เห็น 1 แถว (ASUS TUF…, ฿19,900, ผู้ขาย ปิยพงษ์ ผาคำ, `can_rate=true`, `review_status_text` ถูก, มีรูป) · insert รีวิวเป็นผู้ซื้อ → แจ้งเตือน `sale_confirmed` ของสินค้านั้นเปลี่ยนเป็น `is_read=true` · user อื่นที่ไม่ใช่ผู้ซื้อ เห็น 0 แถว
+- `has_table_privilege('anon', 'my_purchases_view', 'select')` = false · `authenticated` = true
+- **ไม่ได้ทดสอบ:** UI ในแอปจริง (หน้า `MyPurchases`, แถวใน `ProfileUser`, ปุ่มดาวในแจ้งเตือน, แตะแถว → ให้คะแนนบน `ProductDetails`) · สินค้าที่ถูกลบ/เจ้าของถูกแบน (`can_rate=false`) ยังไม่เห็นจริง · คอลัมน์ `sort_key` เพิ่มทีหลังและยังไม่ได้รันซ้ำชุดทดสอบ · `get_advisors` ยังไม่ได้รันหลัง migration นี้

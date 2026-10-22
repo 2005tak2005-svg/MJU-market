@@ -44,3 +44,18 @@ SELECT id FROM public.reports WHERE reported_product_id IS NULL;
 -- [7.9] ⭐ กันรายงานซ้ำ (D-24) — insert ซ้ำ (reporter_id, reported_product_id) เดิมตอน status ยัง 'pending' ต้อง error unique_violation
 -- [7.10] ⭐ CHECK status (D-24) — insert status นอกเหนือ 'pending'/'resolved' ต้อง error check_violation
 -- [7.11] ลบ products แถวที่มี report อยู่ — reports แถวนั้นต้องยังอยู่ (reported_product_id เป็น NULL แทนที่จะหายไปทั้งแถว)
+
+-- [7.12] (D-95) my_purchases_view: ในนามผู้ซื้อ — has_reviewed ต้องตรงกับ reviews จริงทุกแถว (impersonate ผู้ซื้อก่อนรัน)
+-- SELECT v.transaction_id, v.has_reviewed,
+--        EXISTS (SELECT 1 FROM reviews r WHERE r.transaction_id = v.transaction_id AND r.reviewer_id = auth.uid()) AS reviews_says
+-- FROM my_purchases_view v;   -- has_reviewed ต้อง = reviews_says ทุกแถว
+
+-- [7.13] (D-95) anon ต้องอ่าน my_purchases_view ไม่ได้ — ต้องคืน false
+SELECT has_table_privilege('anon', 'public.my_purchases_view', 'select') AS anon_can_select;
+
+-- [7.14] (D-95) รีวิวแล้วแต่แจ้งเตือน sale_confirmed ของสินค้านั้นยัง unread — ต้องคืน 0 แถว
+SELECT n.id, n.user_id, n.ref_product_id
+FROM public.notifications n
+JOIN public.transactions t ON t.product_id = n.ref_product_id AND t.buyer_id = n.user_id
+JOIN public.reviews r ON r.transaction_id = t.id AND r.reviewer_id = n.user_id
+WHERE n.type = 'sale_confirmed' AND n.is_read = false;

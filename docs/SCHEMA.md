@@ -396,6 +396,31 @@ CONSTRAINT reviews_one_per_transaction_reviewer UNIQUE (transaction_id, reviewer
 - ผูกกับ `transactions` โดยตรง (ต่างจาก draft P-08 เดิมที่ผูกแค่ `product_id`) — RLS insert เช็คว่า `reviewer_id`/`reviewee_id` ตรงกับ `buyer_id`/`seller_id` ของ `transaction_id` นั้นจริง กันคนที่ไม่เคยซื้อสินค้านั้นจริง insert ไม่ได้เลยที่ระดับ DB
 - **ไม่มี UPDATE/DELETE policy เลย = immutable ตลอดไป** (pete ยืนยันแล้ว)
 - ไม่มี consumer เป็นตัว table เองในฝั่ง FlutterFlow — การ insert ทำผ่าน custom action `submitSellerReview` เรียก Supabase ตรง (ไม่ผ่าน typed `PostgresCreate`) เพราะต้องหา `transaction_id`/`seller_id` เองก่อน insert — รายละเอียด D-64
+- trigger `trg_mark_sale_notification_read` (AFTER INSERT, เพิ่ม 2026-10-22, D-95) → `private.mark_sale_notification_read()` (SECURITY DEFINER, `search_path ''`, REVOKE FROM PUBLIC, พังแล้วกลืนเป็น WARNING): ตั้ง `notifications.is_read = true` ของแถว `type='sale_confirmed'` ที่ `user_id = reviewer_id` และ `ref_product_id` = สินค้าของธุรกรรมนั้น
+
+### `public.my_purchases_view` (L7, เพิ่ม 2026-10-22, D-95)
+
+การซื้อของฉัน — `security_invoker = true`, `WHERE t.buyer_id = auth.uid()` · GRANT SELECT เฉพาะ `authenticated` (REVOKE `PUBLIC`/`anon`) · ทุกคอลัมน์ non-null ยกเว้น `product_id`/`seller_id` (FlutterFlow ใช้ `field!`)
+
+```sql
+CREATE VIEW public.my_purchases_view WITH (security_invoker = true) AS
+ SELECT t.id AS transaction_id, t.product_id, t.created_at AS purchased_at, t.price,
+    ('฿' || to_char(t.price, 'FM999,999,990')) AS price_text,
+    COALESCE(pv.title, 'สินค้านี้ไม่มีอยู่แล้ว') AS product_title,
+    COALESCE(pv.first_image_url, '') AS product_image_url,
+    t.seller_id, COALESCE(sp.full_name, 'ผู้ขาย') AS seller_name,
+    (r.id IS NOT NULL) AS has_reviewed, COALESCE(r.rating, 0) AS my_rating,
+    (r.id IS NULL AND pv.id IS NOT NULL) AS can_rate,           -- ต้องเห็นสินค้าได้ (ปุ่มให้คะแนนอยู่ที่ ProductDetails)
+    CASE WHEN r.id IS NOT NULL THEN 'ให้คะแนนแล้ว ' || r.rating || '/5'
+         WHEN pv.id IS NOT NULL THEN 'ยังไม่ได้ให้คะแนน — แตะเพื่อให้คะแนน'
+         ELSE 'ให้คะแนนไม่ได้ (ไม่พบสินค้า)' END AS review_status_text,
+    (- extract(epoch FROM t.created_at))::double precision AS sort_key   -- ASC = ใหม่สุดก่อน (SDK ไม่ generate ascending:false)
+   FROM transactions t
+     LEFT JOIN products_review_view pv ON pv.id = t.product_id
+     LEFT JOIN public_profiles sp ON sp.id = t.seller_id
+     LEFT JOIN reviews r ON r.transaction_id = t.id AND r.reviewer_id = auth.uid()
+  WHERE t.buyer_id = auth.uid();
+```
 
 ### `public.storage_cleanup_config` (L1/L2, เพิ่ม 2026-08-25, D-66, ปิดข้อเสนอ P-12)
 

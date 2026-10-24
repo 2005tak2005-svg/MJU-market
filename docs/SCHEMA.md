@@ -1304,6 +1304,45 @@ CREATE TRIGGER trg_notify_chat_message
 - trigger-only: ไม่มี EXECUTE ให้ `anon`/`authenticated` (ตรวจแล้ว `has_function_privilege` = false ทั้งคู่)
 - `mark_chat_read` ขยาย: นอกจากตั้ง `chat_user.last_read_at` ยัง `UPDATE notifications SET is_read=true` ของ `type='chat_message'` + `ref_chat_id` ห้องนั้นของ `auth.uid()` เอง (grant เหมือนเดิม)
 
+### L6 แจ้งเตือนนอกแอป (prototype) — `private.push_notification_to_ntfy()` + trigger `trg_push_notification_ntfy` (เพิ่ม 2026-10-24, D-96)
+
+```sql
+CREATE OR REPLACE FUNCTION private.push_notification_to_ntfy() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE recipient text;
+BEGIN
+  BEGIN
+    SELECT COALESCE(NULLIF(btrim(p.full_name), ''), p.email, 'ผู้ใช้') INTO recipient
+    FROM public."Profile" p WHERE p.id = NEW.user_id;
+    PERFORM net.http_post(
+      url  := 'https://ntfy.sh/',
+      body := jsonb_build_object(
+        'topic',   '<topic — ดูใน function body จริง>',
+        'title',   NEW.title,
+        'message', COALESCE(NULLIF(btrim(NEW.body), ''), '-') || E'\nถึง: ' || COALESCE(recipient, 'ผู้ใช้'),
+        'tags',    jsonb_build_array(CASE NEW.type
+                     WHEN 'chat_message' THEN 'speech_balloon'   WHEN 'listing_approved' THEN 'white_check_mark'
+                     WHEN 'listing_rejected' THEN 'x'            WHEN 'account_banned' THEN 'no_entry'
+                     WHEN 'account_unbanned' THEN 'unlock'       WHEN 'sale_confirmed' THEN 'handshake'
+                     ELSE 'bell' END)));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'push_notification_to_ntfy failed: %', SQLERRM;
+  END;
+  RETURN NEW;
+END; $$;
+
+REVOKE ALL ON FUNCTION private.push_notification_to_ntfy() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER trg_push_notification_ntfy
+  AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION private.push_notification_to_ntfy();  -- tgenabled = 'O'
+```
+
+- ทุกแถวใหม่ใน `notifications` (ทุก type, ทุกผู้รับ) → POST เข้า **ntfy topic กลางเดียว** (`ntfy.sh` public server) · ไม่มี Edge Function
+- topic ไม่เขียนในเอกสาร — เป็นสิทธิ์อ่าน (ใครรู้ชื่อก็ subscribe ได้) ดูจาก `pg_get_functiondef('private.push_notification_to_ntfy()'::regprocedure)`
+- `net.http_post` เป็น async (queue → ส่งหลัง commit) · INSERT ที่ rollback ไม่ส่ง · ผลส่งดูที่ `net._http_response`
+- trigger-only: `has_function_privilege` ของ `anon`/`authenticated` = false ทั้งคู่
+- ปิด: `ALTER TABLE public.notifications DISABLE TRIGGER trg_push_notification_ntfy;`
+
 ### L5 sale — `mark_product_sold()` + trigger `enforce_sale_via_rpc_only` (เพิ่ม 2026-08-23, D-59)
 
 ```sql

@@ -36,13 +36,17 @@
 
 **แจ้งเตือนแชท ฝั่ง DB (D-90, 2026-10-14):** trigger `trg_notify_chat_message` บน `chat_message` → แถว `notifications` type `chat_message` (+`ref_chat_id`) ให้สมาชิกห้องยกเว้นผู้ส่ง · `mark_chat_read` mark แจ้งเตือนห้องนั้นอ่านแล้วด้วย · **ฝั่ง UI ยังไม่ทำ** (แถวบน `Notifications`, banner→เข้าห้อง, banner ไม่เด้งซ้ำในห้องที่เปิดอยู่)
 
-**ยังไม่ทำ:** badge นับ unread ที่ระดับ App State/bell icon (ตัดสโคปไว้ตอน D-60 — pete สั่งเว้นรอบนี้) · push notification จริงตอนปิดแอป (FCM/OneSignal) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)
+**ตัวเลข unread บนกระดิ่ง `Home` (2026-10-24):** custom widget `NotificationUnreadBadge` (PT-36 fetch เอง, `.stream()` Realtime) ซ้อนบนกระดิ่งใน `Stack_bellbdg1` · ปุ่มจริง `IconButton_bellbtn1` (แทนคีย์ `IconButton_3gsou322`) · จุดแดง D-31 ไม่มีบน `Home` แล้ว — **ยังไม่ทดสอบบนแอปจริง**
+
+**แจ้งเตือนนอกแอป (D-96, 2026-10-24):** trigger `trg_push_notification_ntfy` → ntfy topic กลาง (prototype)
+
+**ยังไม่ทำ:** push notification จริงต่อผู้ใช้ตอนปิดแอป (FCM) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)
 
 ## 🧪 Definition of Done
 
 - [x] เหตุการณ์จริง (reject) สร้าง notification ให้ถูกคน — ยืนยันจาก DB (`db-verifier`)
 - [x] ผู้ใช้อ่าน notification ของคนอื่นไม่ได้ — ทดสอบ non-admin จริงแล้ว (0 แถวข้ามคน)
-- [ ] badge นับ unread ถูกต้องและอัปเดต live — ยังไม่ทำ (ตัดสโคปไว้)
+- [ ] badge นับ unread ถูกต้องและอัปเดต live — push แล้ว (2026-10-24) ยังไม่ทดสอบบนแอปจริง
 - [x] รายการอัปเดตสดระหว่างเปิดหน้าค้างอยู่ (Realtime) — ทำแล้ว (D-60) ยืนยันจาก `generated_code/` — **ยังไม่ทดสอบผ่านแอปจริง**
 - [ ] banner เด้งตอนเปิดแอปอยู่ (D-88) — push แล้ว ยังไม่ทดสอบบนแอปจริง
 - [ ] ปิดแอปแล้วเปิดใหม่ยังเห็นแจ้งเตือนที่พลาดไปแบบ push จริง — ยังไม่ทำ (ต้อง FCM/OneSignal แยกจาก Realtime)

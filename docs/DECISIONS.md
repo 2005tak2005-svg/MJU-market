@@ -1903,3 +1903,16 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - anonymous publish ติด rate limit ต่อ IP ของ ntfy.sh · แชทถี่ = 1 push ต่อข้อความต่อผู้รับ
 
 **ปิด:** `ALTER TABLE public.notifications DISABLE TRIGGER trg_push_notification_ntfy;` · schema `SCHEMA.md` · ผลทดสอบ V-19
+
+## D-97 — ป้าย "เพิ่งลงประกาศ" / "คณะเดียวกัน" บนการ์ด `Home` แทนหัวใจ wishlist (2026-10-24)
+
+**ตัดสินใจ (pete):** ป้ายมุมซ้ายบนของรูปใน `ProductGridSection` · "เพิ่งลง" = ภายใน 24 ชม. · "คณะเดียวกัน" ขึ้นเฉพาะเมื่อทั้งผู้ดูและผู้ขายเลือกคณะแล้วและตรงกัน · เอาหัวใจออกจาก grid (ยังมีบน `ProductDetails` — `WishlistToggleButton` เดิม)
+
+**ออกแบบ:**
+- คำนวณที่ DB: `products_review_view.is_new_listing` / `is_same_faculty` (ต่อท้าย view) — เวลาใช้นาฬิกา server ไม่พึ่งเครื่องผู้ใช้ · ไหลผ่าน `search_products` (`SELECT *`) อัตโนมัติ
+- `private.is_same_faculty(seller)` SECURITY DEFINER คืน boolean อย่างเดียว — `"Profile"` RLS ซ่อน `faculty_id` ของคนอื่น และไม่เปิดเผยคณะเพิ่มจากที่ `public_profiles` เปิดอยู่แล้ว · สินค้าของตัวเอง = false
+- widget อ่าน `product.data['is_new_listing'|'is_same_faculty']` — ไม่ต้อง register คอลัมน์ใน typed schema ของ FlutterFlow
+
+**ข้อจำกัด:** นับจาก `created_at` (ตอนลงประกาศ) ไม่ใช่ตอนอนุมัติ — อนุมัติช้า ป้ายอยู่สั้นลง · ณ วันที่ทำ มี `faculty_id` แค่ 1/14 บัญชี และ `faculties` ยังเป็น "คณะ A–D" (ค้าง D-56) · เฉพาะ `Home`
+
+**ผลทดสอบ:** V-20

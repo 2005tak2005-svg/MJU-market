@@ -322,3 +322,14 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - จำลองแอดมินที่ล็อกอิน (`SET LOCAL ROLE authenticated` + jwt `sub` = แอดมิน) INSERT `listing_approved` หาตัวเอง แล้ว COMMIT → ntfy ได้ `title` เดิม + `ถึง: <ชื่อผู้รับ>` + tag `white_check_mark` · response 200 · ลบแถวทดสอบแล้ว (เหลือ 0)
 - `has_function_privilege('anon'|'authenticated', 'private.push_notification_to_ntfy()', 'EXECUTE')` = false ทั้งคู่ · `tgenabled = 'O'` · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิมตาม V-16)
 - **ไม่ได้ทดสอบ:** push เด้งบนมือถือจริง (รอ pete subscribe) · path จริงอื่น ๆ: ข้อความแชท, reject, ban, ปิดการขาย
+
+### V-20 · ป้ายเพิ่งลงประกาศ / คณะเดียวกัน (D-97, 2026-10-24)
+
+- DO block + `RAISE EXCEPTION` (rollback) ในนาม user ธรรมดา (`SET LOCAL ROLE authenticated` + jwt) เรียก `search_products()`:
+  - ผู้ดูไม่มีคณะ → `is_same_faculty` false ทุกแถว (7)
+  - ผู้ดูคณะ 2 → ผู้ขายคณะ 2 = true · สินค้าของตัวเอง = false · ผู้ขายไม่มีคณะ = false
+  - `created_at` = 23 ชม.ก่อน → `is_new_listing` true · ชิ้นอื่น false
+- หลัง apply ในนาม user ธรรมดา: `search_products` 7 แถว · `chat_summary` 6 / `chat_messages_view` 26 / `my_purchases_view` 0 query ได้ปกติ (view ที่อ้าง `products_review_view`)
+- `has_function_privilege` `private.is_same_faculty(uuid)`: anon false · authenticated/service_role true · `get_advisors(security)` ไม่มี finding ใหม่
+- FlutterFlow: `generated_code/` มี `_listingBadge` + `product.data['is_new_listing'|'is_same_faculty']` · ไม่มี `wishlist_items` ใน `ProductGridSection` แล้ว · ไม่ได้รัน Dart analyzer (ไม่มี `flutter`; parse ผ่าน `dart format`)
+- **ไม่ได้ทดสอบ:** หน้าตาป้ายบนแอปจริง

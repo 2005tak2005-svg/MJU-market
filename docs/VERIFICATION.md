@@ -315,3 +315,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - ส่ง 1 ข้อความ → ผู้รับมี unread 1 แถว · ส่งอีก 1 → ยัง 1 แถว `body` = ข้อความล่าสุด `title` = ชื่อผู้ส่ง · ส่งรูปล้วน → `body` = `📷 ส่งรูปภาพ` · ผู้ส่งไม่ได้แถวเลย (0) · `mark_chat_read` ในนามผู้รับ → unread = 0
 - `has_function_privilege('anon'|'authenticated', 'notify_chat_message()', 'execute')` = false ทั้งคู่ · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิม: security_definer_view 4, extension_in_public 2, authenticated_security_definer_function_executable 8, leaked password 1)
 - **ไม่ได้ทดสอบ:** RLS ฝั่ง user ธรรมดาอ่านแถว `chat_message` ของตัวเอง/ไม่เห็นของคนอื่น (แถวเขียนด้วย SECURITY DEFINER ผ่าน policy `user_id = auth.uid()` เดิม ไม่ได้แก้ policy) · ห้องที่มี >2 สมาชิก · ผู้ถูกแบนส่ง/รับ · banner บนแอปจริงจากข้อความจริง
+
+### V-19 · trigger ส่งแจ้งเตือนเข้า ntfy (D-96, 2026-10-24)
+
+- `net.http_post` ตรงจาก SQL → `net._http_response` 200 · `GET ntfy.sh/<topic>/json?poll=1` ได้ข้อความภาษาไทยครบ
+- จำลองแอดมินที่ล็อกอิน (`SET LOCAL ROLE authenticated` + jwt `sub` = แอดมิน) INSERT `listing_approved` หาตัวเอง แล้ว COMMIT → ntfy ได้ `title` เดิม + `ถึง: <ชื่อผู้รับ>` + tag `white_check_mark` · response 200 · ลบแถวทดสอบแล้ว (เหลือ 0)
+- `has_function_privilege('anon'|'authenticated', 'private.push_notification_to_ntfy()', 'EXECUTE')` = false ทั้งคู่ · `tgenabled = 'O'` · `get_advisors(security)` ไม่มี finding ใหม่ (ชุดเดิมตาม V-16)
+- **ไม่ได้ทดสอบ:** push เด้งบนมือถือจริง (รอ pete subscribe) · path จริงอื่น ๆ: ข้อความแชท, reject, ban, ปิดการขาย

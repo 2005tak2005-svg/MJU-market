@@ -1885,3 +1885,21 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **⚠️ ผลที่เกิดทันที (trigger เปิดใช้งานแล้ว) ก่อนฝั่ง UI ทำ:** ทุกข้อความแชทจริงสร้างแถว + เด้ง banner (ไอคอนกระดิ่ง default, แตะ→`Notifications`) · หน้า `Notifications` แสดงแถวนี้ด้วย avatar แอดมิน (D-74 ใช้รูปแอดมินทุกแถว) ไม่มี badge ประเภท และแตะแล้วแค่ mark อ่าน (D-89 ตัด navigate ไปแล้ว) · ปิดชั่วคราวได้: `ALTER TABLE public.chat_message DISABLE TRIGGER trg_notify_chat_message;`
 
 **ค้าง (ฝั่ง FlutterFlow/Dart):** (1) แถว `chat_message` บน `Notifications`: avatar/ชื่อผู้ส่ง + badge + แตะ→mark อ่าน+เข้า `chatMessages` (ต้องส่ง `chatId`/`memberNames`/`userIds` — ดึงจาก `chat_summary` ตาม PT-02/`findOrCreateChatWithSeller`) (2) banner: แตะแล้วเข้าห้อง และไม่เด้งเมื่อผู้ใช้อยู่ในห้องนั้นอยู่แล้ว (3) badge ตัวเลข unread
+
+## D-96 — แจ้งเตือนนอกแอป (prototype): ส่งต่อทุกแถว `notifications` เข้า ntfy topic กลาง (2026-10-24)
+
+**ตัดสินใจ (pete เลือก ntfy):** trigger `trg_push_notification_ntfy` บน `notifications` (AFTER INSERT) → `net.http_post` ตรงไป `https://ntfy.sh/` · เด้งเป็น push ของมือถือผ่านแอป ntfy · แบบเดียวกับ OTP เข้า inbox แอดมิน (D-34) คือทุกคนใช้ปลายทางกลางเดียว ใส่ `ถึง: <ชื่อผู้รับ>` ท้ายข้อความ
+
+**เหตุผล:** แจ้งเตือนทุก type ลงตาราง `notifications` ที่เดียวอยู่แล้ว จึงต่อตรงนี้จุดเดียวได้ครบทุก type · ฟรี ไม่ต้องสมัครบัญชี · FCM ต้องใช้ Firebase + device token + บัญชี Apple Developer สำหรับ iOS — เกินระดับ prototype
+
+**ออกแบบ:**
+- ไม่มี Edge Function — ไม่มี endpoint ขาเข้าให้ต้องป้องกัน และไม่ต้องเพิ่ม secret
+- topic สุ่ม (`mju-market-<hex 16 ตัว>`) อยู่ใน function body เท่านั้น ไม่เขียนลงเอกสาร
+- ข้อความ = `title`/`body` เดิมของแถว + emoji ตาม `type` (ntfy `tags`) · exception ถูกกลืนเป็น `WARNING` ตามแบบ D-90
+
+**ข้อจำกัด / 🔴 ก่อน production:**
+- `ntfy.sh` เป็น public server — ใครรู้ topic ก็อ่านได้ทุกแจ้งเตือน รวมเนื้อหาแชท (ตัด 100 ตัวอักษร) · ข้อความเก็บบนเซิร์ฟเวอร์ 12 ชม.
+- ไม่แยกผู้รับ — ทุกคนที่ subscribe เห็นของทุกคน · production ต้องเปลี่ยนเป็น FCM ต่อผู้ใช้ (หรือ topic ต่อผู้ใช้ + ntfy access control)
+- anonymous publish ติด rate limit ต่อ IP ของ ntfy.sh · แชทถี่ = 1 push ต่อข้อความต่อผู้รับ
+
+**ปิด:** `ALTER TABLE public.notifications DISABLE TRIGGER trg_push_notification_ntfy;` · schema `SCHEMA.md` · ผลทดสอบ V-19

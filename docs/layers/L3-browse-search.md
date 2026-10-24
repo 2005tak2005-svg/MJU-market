@@ -53,7 +53,7 @@
 
 ตาราง `wishlist_items` (junction, RLS select/insert/delete เฉพาะแถวตัวเอง — ส่วนตัว ไม่มี public count) + `products_review_view.saved_by_me` (`EXISTS`) — pattern เดียวกับ `advertisement_likes` (D-58), รายละเอียด `PATTERNS.md` PT-42
 
-- Heart icon บน `ProductGridSection` (การ์ดหน้า `Home`) — toggle local ไม่ refetch
+- ~~Heart icon บน `ProductGridSection`~~ **เอาออกแล้ว (D-97)** — ที่มุมนั้นเป็นป้ายแทน
 - Heart icon บน `ProductDetails` (custom widget `WishlistToggleButton`, self-fetch สถานะเอง)
 - หน้าใหม่ `MyWishlist` (route `my-wishlist`) — filter `saved_by_me = true` แบบเดียวกับที่ `Mypost` filter `seller_id`, ปุ่มลบออกในแถว, pull-to-refresh
 - ทางเข้าใหม่: ปุ่มไอคอนบน `Home` header ต่อจากกระดิ่งแจ้งเตือน
@@ -69,6 +69,12 @@
 - Badge: icon+label บน `ProductDetails` (ข้างชื่อผู้ขาย) และ icon บน `ProductGridSection` (การ์ดหน้า Home ต่อท้ายแถวดาว)
 
 รายละเอียด `DECISIONS.md` D-82 — ยังไม่ทดสอบผ่านแอปจริง (badge ยังไม่เคยเห็นค่า TRUE จริงเพราะข้อมูลทดสอบไม่มีรีวิวคร่อม threshold)
+
+## 🏷️ ป้าย "เพิ่งลงประกาศ" / "คณะเดียวกัน" บนการ์ด `Home` (D-97, 2026-10-24)
+
+- มุมซ้ายบนของรูปใน `ProductGridSection` ซ้อนแนวตั้ง "เพิ่งลงประกาศ" (`primary`) อยู่บน "คณะเดียวกัน" (`success`)
+- ค่ามาจาก `products_review_view.is_new_listing` (≤24 ชม.) / `is_same_faculty` — ไม่มีคณะฝั่งใดฝั่งหนึ่ง = ไม่ขึ้น · สินค้าของตัวเองไม่ขึ้น "คณะเดียวกัน"
+- เฉพาะ `Home` — `SellerStorefront`/`MyWishlist`/`Mypost` ยังไม่มี · ยังไม่ทดสอบบนแอปจริง
 
 ### Seller header + empty state + sold section (D-83, 2026-09-06)
 

@@ -584,7 +584,9 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
       SELECT 1 FROM wishlist_items wi
       WHERE wi.product_id = p.id AND wi.user_id = auth.uid()
     )) AS saved_by_me,
-    COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller  -- D-82: badge ผู้ขายน่าเชื่อถือ
+    COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller,  -- D-82: badge ผู้ขายน่าเชื่อถือ
+    p.created_at > now() - interval '24 hours' AS is_new_listing,      -- D-97: ป้าย "เพิ่งลงประกาศ"
+    private.is_same_faculty(p.seller_id) AS is_same_faculty            -- D-97: ป้าย "คณะเดียวกัน"
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
@@ -728,6 +730,8 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `seller_avg_rating`/`seller_review_count`/`my_transaction_id`/`can_rate_seller` (L7, เพิ่ม 2026-08-24, D-64) — คะแนนเฉลี่ย+จำนวนรีวิวของผู้ขาย (LEFT JOIN subquery `GROUP BY reviewee_id`, pattern เดียวกับ `advertisement_posts_view.like_count`/D-58) และธุรกรรม+สิทธิ์ให้คะแนนของผู้เรียกเองบนสินค้านี้ (`can_rate_seller` คอมพิวต์ครั้งเดียวเหมือน `can_see_buyer`/`can_show_picker` — status ขายแล้ว + ผู้เรียกคือผู้ซื้อจริง + ยังไม่เคยรีวิวธุรกรรมนี้) ฝั่ง FlutterFlow ผูกปุ่ม "ให้คะแนนผู้ขาย" บน `ProductDetails` เข้ากับ `can_rate_seller` ตรง ๆ ผ่าน `productField()`/`nodeKeyRef` เดิม (D-44/D-59)
 >
 > 📌 `is_trusted_seller` (เพิ่ม 2026-09-03, D-82) — badge "ผู้ขายน่าเชื่อถือ" คอมพิวต์จาก `rv.avg_rating >= 4.5 AND rv.review_count >= 3` (`COALESCE(..., false)` กัน NULL ตอนผู้ขายยังไม่มีรีวิวเลย) ตาม pattern PT-24 §1 เพราะ `visible:` ใน FlutterFlow DSL ไม่มี comparator ตัวเลข (`>=` ทำที่ SQL เท่านั้น) — ผูก `visible:` ตรง ๆ ทั้งบน `ProductDetails` และการ์ดหน้า `Home`
+>
+> 📌 `is_new_listing` / `is_same_faculty` (เพิ่ม 2026-10-24, D-97) — ป้ายบนการ์ด `Home` (`ProductGridSection` อ่านผ่าน `product.data[...]`, ยังไม่ register ใน typed schema ของ FlutterFlow) · `is_new_listing` = `created_at` ภายใน 24 ชม. (เวลาที่ลงประกาศ ไม่ใช่เวลาอนุมัติ — `products` ไม่มีคอลัมน์นั้น) · `is_same_faculty` = `private.is_same_faculty(seller_id)`: true เฉพาะเมื่อผู้เรียกกับผู้ขายมี `faculty_id` ทั้งคู่ ตรงกัน และไม่ใช่คนเดียวกัน · ต่อท้ายคอลัมน์เดิม (`CREATE OR REPLACE VIEW`) view ที่อ้างต่อ 4 ตัวไม่กระทบ
 >
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
 >
@@ -1083,6 +1087,25 @@ $function$;
 - 🔴 **`COALESCE(..., false)` จำเป็น** — มีบัญชี `auth.users` ที่ไม่มีแถว `"Profile"` จริง (D-32) ถ้าคืน NULL จะโดนบล็อกทั้งที่ไม่ได้ถูกแบน
 - 🔴 `is_user_banned` ต้อง **SECURITY DEFINER** เพราะ `"Profile"` RLS ซ่อนแถวคนอื่น — ถ้าเป็น invoker จะคืน NULL แล้วซ่อนประกาศไม่สำเร็จ
 - grant: `authenticated` + `service_role` (ตรงกับ `private.is_admin()` เป๊ะ) — `anon` ไม่ได้
+
+### `private.is_same_faculty(target uuid)` (L3, เพิ่ม 2026-10-24, D-97)
+
+```sql
+CREATE FUNCTION private.is_same_faculty(target uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
+AS $$
+  SELECT COALESCE((
+    SELECT me.faculty_id = them.faculty_id
+    FROM public."Profile" me, public."Profile" them
+    WHERE me.id = auth.uid() AND them.id = target AND them.id <> me.id
+      AND me.faculty_id IS NOT NULL AND them.faculty_id IS NOT NULL
+  ), false);
+$$;
+```
+
+- SECURITY DEFINER เหตุผลเดียวกับ `is_user_banned` (`"Profile"` RLS ซ่อนแถวคนอื่น และ `public_profiles` มีแค่ชื่อคณะ ไม่มี `faculty_id`) · คืนแค่ boolean ไม่เปิดเผย `faculty_id`
+- grant: `authenticated` + `service_role` — `anon` ไม่ได้ (ตรวจ `has_function_privilege` แล้ว)
+- ใช้ใน `products_review_view.is_same_faculty`
 
 ### `private.enforce_ban_admin_only()` + trigger `enforce_ban_admin_only` (L8, เพิ่ม 2026-08-21, D-52)
 

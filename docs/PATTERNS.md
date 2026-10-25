@@ -942,3 +942,15 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 **อย่าเก็บตัวนับที่ถี่ ๆ บนตารางที่อยู่ใน `supabase_realtime`** (เช่น `products`) — ทุก UPDATE ยิง event ให้ทุก subscriber · ใช้ตารางล็อกแยก + view ที่คำนวณ (ข้อ 1 ของ PT-42 ใช้ได้กับ aggregate)
 
 **ใช้แล้วที่:** `MyPost` `viewCount` (D-99)
+
+---
+
+## PT-48 — เปิดคอมโพเนนต์เป็นป๊อบอัพจากเหตุการณ์ realtime ทั่วแอป (ไม่ผูกกับหน้า) (D-101, 2026-10-25)
+
+1. คอมโพเนนต์ไม่มี parameter อ่านจาก App State (PT-09) · ฝั่งที่เปิดคือ custom action ที่รัน global อยู่แล้ว (PT-45 `startInAppNotificationBanner`): ดึงข้อมูลจาก RPC → ตั้งฟิลด์ `FFAppState()` → `showAlignedDialog(context: appNavigatorKey.currentContext, builder: (_) => Material(color: Colors.transparent, child: XxxWidget()))` — รูปเดียวกับที่หน้า Home เปิด `BannedNoticeDialog`
+2. custom action import คอมโพเนนต์ได้ตรง ๆ: `import '/components/<snake_name>_widget.dart'` (ไฟล์ flat ใน `components/` ไม่มีโฟลเดอร์ย่อย) · class `<Name>Widget`
+3. กับดักคอมไพล์ (validate/push ไม่จับ — ไม่มี analyzer): (ก) `showAlignedDialog` มาจาก `package:aligned_dialog/aligned_dialog.dart` ต้อง import เอง (ข) `int.clamp()` คืน `num` — ใช้เป็นตัวคูณสตริง/ดัชนีไม่ได้ ต้อง `.toInt()` (ค) หลังแพตช์โค้ด action ให้ `dart format --output=none <ไฟล์ใน generated_code>` เช็ค syntax (ไม่ครอบคลุม type/import)
+4. แพตช์โค้ด action ที่เก็บอยู่: ดึง `findCustomAction(...).code` มาแก้ด้วย `replaceFirst` + assert ว่าพบ anchor แล้ว `updateCustomAction` — เก็บไว้ rerun-safe ด้วยการเช็คสตริงที่เพิ่ม
+5. คอมโพเนนต์ที่อ้าง App State ที่เพิ่งประกาศ: ต้อง push ประกาศ state ก่อน → `refresh-workspace` → ค่อยเขียนคอมโพเนนต์ด้วย `AppState(ff.AppState.x)` (ใช้ชื่อ string ดิบ compile ไม่ผ่าน)
+
+**ใช้แล้วที่:** `ReviewReceivedCard` (D-101)

@@ -966,3 +966,12 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 5. **เสริมที่ DB เสมอ:** CHECK "ไม่ NULL" ไม่พอ ต้อง `btrim(col) <> ''` ด้วย (`''` ไม่ใช่ NULL)
 
 **ใช้แล้วที่:** `chatMessages` `AttachImageButton` (D-102) — เช็คทุกครั้งที่มี `UploadData` ตามด้วย insert/update (เช่น `addproduct` รูปสินค้า, อวาตาร์ `ProfileUser`)
+
+## PT-50 — refresh หน้าที่มี query ระดับ Scaffold + กับดัก `update().padding` บน Row (D-103, 2026-10-25)
+
+1. **หน้าที่ผูก query ที่ Scaffold (เช่น `HomeAdmin` + `admin_dashboard_stats`)** refresh ได้ด้วย `RefreshDatabaseRequest(ff.Pages.<page>.widgets.byKey('<Scaffold key>').single)` — ผ่านเมื่อ query เป็นแถวเดียวไม่ stream · ใส่เป็นขั้น**สุดท้าย**ของ `ON_PULL_TO_REFRESH` เพราะ codegen ตั้ง `requestCompleter = null` → `FutureBuilder` แสดง spinner ทั้งหน้าชั่วขณะ · action ก่อนหน้า (query รายการ → `SetState`) ต้องใช้ `outputAs` ชื่อใหม่ไม่ซ้ำ onLoad (PT-27 §2)
+2. **การ์ดเรียงใน Row บนจอแคบ:** `Expanded` ผสมกับการ์ดที่ไม่ใช่ `Expanded` ทำให้ตัวที่ขยายถูกบีบ → ปลดทุกใบเป็นความกว้างคงที่ + `Row.scrollable` · ตั้งผ่าน `mutateNode`: `node.props.expanded = FFExpanded(expandedType: FFExpanded_ExpandedType.UNEXPANDED)`, `node.props.row = node.props.row.deepCopy()..scrollable = true` (proto ที่ถึงจาก `mutateNode` เป็น frozen — แก้ฟิลด์ตรง ๆ จะ error "read-only message" ต้องสร้างใหม่/`deepCopy()` แล้วกำหนดคืน)
+3. 🔴 **`page.update(sel, (p) => p.padding(...))` บน `Row` ทำ padding กลายเป็น `FF_PADDING_ALL 0`** (ค่าเดิมหายด้วย) — ใช้ `mutateNode` ตั้ง `node.props.padding = FFPadding()..mergeFromProto3Json({'type':'FF_PADDING_ONLY','leftValue':{'inputValue':16},...}, ignoreUnknownFields:false)` แทน · ตรวจผลจาก `inspect --node <key> --dsl` ว่า padding ตรงที่ตั้ง · `update().size(width:, height:)` บน Container ใช้ได้ปกติ
+4. `responsiveVisibility` ของ widget ในการ์ดเทมเพลต (เช่นไอคอนนำหน้า `phoneHidden: true`) ต้องดูก่อนคำนวณความกว้างจอแคบ — `inspect --node <key> --raw`
+
+**ใช้แล้วที่:** `HomeAdmin` (`dsl/admin_home_layout.dart`, D-103)

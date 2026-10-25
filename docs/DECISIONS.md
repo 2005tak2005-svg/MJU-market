@@ -1978,8 +1978,8 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **แก้ 2 ชั้น:**
 - UI: ครอบ chain หลัง capture ด้วย `If(pending ไม่ว่าง)` → `If(pending ≠ lastSentChatImageUrl)` → `SetState(lastSent ← pending)` → [insert เดิม ...] · เพิ่ม page state `lastSentChatImageUrl` · ย้าย node เดิมเข้าไปทั้งก้อน ไม่เขียนใหม่ (UploadData มี bucket/path ที่ DSL ไม่ครอบคลุม จึงไม่แตะ) · ใช้ได้เพราะ URL อัปโหลดแต่ละครั้งไม่ซ้ำ
-- DB (ตัวกันสุดท้าย ครอบทุกทางเข้า): `chat_message_has_content` ต้องมี `message` หรือ `image_url` ที่ไม่ว่าง/ไม่ใช่ช่องว่างล้วน · `NOT VALID` (แถวเก่าไม่ถูกแตะ)
+- DB (ตัวกันสุดท้าย ครอบทุกทางเข้า): `chat_message_has_content` ต้องมี `message` หรือ `image_url` ที่ไม่ว่าง/ไม่ใช่ช่องว่างล้วน · เพิ่มเป็น `NOT VALID` ก่อน แล้ว `VALIDATE` หลังลบแถวว่างเก่า (pete สั่งลบ 2026-10-25)
 
-**ข้อจำกัด:** แถวว่างเก่า 6 แถว (id 53, 56, 89–92) ยังเห็นเป็น bubble ว่างในแชทเดิม — ไม่ลบเอง รอ pete สั่ง · ข้อความตัวอักษรไม่เคยมีบั๊กนี้ (ปุ่มส่งมี `If` ข้อความไม่ว่างอยู่แล้ว)
+**ข้อมูลเดิม:** ลบแถวว่าง 6 แถว (id 53, 56, 89–92; ห้อง 13 และ 22) แล้วตาม pete — `chat.last_message` ของสองห้องมาจากข้อความจริงอยู่แล้ว ไม่กระทบ · **ข้อจำกัด:** ข้อความตัวอักษรไม่เคยมีบั๊กนี้ (ปุ่มส่งมี `If` ข้อความไม่ว่างอยู่แล้ว)
 
 **ผลทดสอบ:** V-25 · pattern PT-49

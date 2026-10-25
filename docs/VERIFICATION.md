@@ -368,3 +368,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - FlutterFlow: `generated_code/` มี `components/review_received_card_widget.dart` อ่าน `FFAppState().reviewCard*` (รูป/ความเห็น/ปุ่มดูสินค้า ซ่อนด้วย `if`), ปิดด้วย `context.pop()`, ดูสินค้า → `ProductDetailsWidget.routeName` พร้อม `productId` · `start_in_app_notification_banner.dart` แตก `review_received` → `_showReviewCard` → `showAlignedDialog(... ReviewReceivedCardWidget())` พร้อม import `aligned_dialog` และ `final int rating`
 - `dart format` อ่านทั้งสองไฟล์ผ่าน (ไม่มี syntax error) · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter`) — จุดเสี่ยงคอมไพล์ที่ตรวจด้วยตา: import ของ `showAlignedDialog`, `int.clamp` คืน `num` (แก้แล้ว)
 - **ไม่ได้ทดสอบ:** แอปจริง (การ์ดเด้งเมื่อผู้ซื้อให้ดาวขณะผู้ขายเปิดแอป, ปุ่มดูสินค้า/ปิด, ไม่ crash เมื่อไม่มีรูป/ความเห็น)
+
+### V-25 · กันข้อความแชทว่าง (D-102, 2026-10-25)
+
+- DO block + `RAISE EXCEPTION` (rollback): INSERT `image_url=''` → **ปฏิเสธ** · `message='   '` → **ปฏิเสธ** · `message='', image_url=''` → **ปฏิเสธ** · ข้อความจริง → รับ · รูปจริง (URL) → รับ · จำนวนแจ้งเตือน `chat_message` ไม่เปลี่ยนหลัง INSERT ที่ถูกปฏิเสธ (trigger แจ้งเตือนไม่ถูกยิง)
+- ข้อมูลก่อนแก้: `message` NULL + `image_url=''` 6 แถว (id 53, 56 เมื่อ 2026-10-14; 89–92 เมื่อ 2026-10-25) — คงอยู่ (NOT VALID)
+- FlutterFlow `generated_code/lib/chat_messages/chat_messages_widget.dart`: หลัง `_model.pendingChatImageUrl = _model.uploadedFileUrl_chatImageUpload` → `if (pending != null && pending != '')` → `if (!(pending == lastSentChatImageUrl))` → `lastSentChatImageUrl = pending` → `ChatMessageTable().insert` → refetch → `pending = ''` · ไล่ตามโค้ด: ยกเลิกครั้งแรก = ไม่ insert · ส่งรูปใหม่ = insert · ยกเลิกหลังเคยส่ง = ไม่ insert (URL เท่า lastSent)
+- **ไม่ได้ทดสอบ:** แอปจริง (ยกเลิกเลือกรูป, ส่งรูป, ยกเลิกหลังส่งรูป, ส่งรูปที่สองต่อเนื่อง) · Dart analyzer (ไม่มี `flutter`)

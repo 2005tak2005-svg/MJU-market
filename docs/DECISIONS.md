@@ -1969,3 +1969,17 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อจำกัด:** เด้งเฉพาะตอนผู้ขายเปิดแอปอยู่ (ปิดแอป/ออฟไลน์ เห็นแค่แถวใน `Notifications`) · แตะแถวเดิมใน `Notifications` ไม่เปิดการ์ดซ้ำ · รีวิวก่อนหน้า (ไม่มี `ref_review_id`) ไม่เด้งการ์ด · ถ้าการ์ดพัง (RPC ล้ม) เงียบ ไม่เด้ง banner สำรอง
 
 **ผลทดสอบ:** V-24 · pattern PT-48
+
+## D-102 — ห้ามส่งข้อความว่างเมื่อยกเลิกเลือกรูปในห้องแชท (2026-10-25)
+
+**บั๊ก (pete):** กดไอคอนรูปแล้วปัดออกโดยไม่เลือกรูป → ระบบส่งข้อความว่าง (bubble ไม่มีรูป ไม่มีข้อความ) · ในฐานข้อมูล: `message` NULL + `image_url = ''` 6 แถว
+
+**สาเหตุ (ยืนยันจาก `generated_code/` + ข้อมูลจริง):** chain ของ `AttachImageButton` = `UploadData` → `SetState(pendingChatImageUrl ← URL ที่อัปโหลด)` → `insert` → ... ตัว `UploadData` generate เป็น `if (selectedMedia != null)` แต่ขั้นถัดไปอยู่นอก `if` รันเสมอ · ยกเลิก = URL ว่าง `''` · CHECK เดิม `image_url IS NOT NULL` ผ่าน `''` · **บั๊กที่ซ่อนอยู่:** `uploadedFileUrl_chatImageUpload` ใน model ค้างค่าเดิมหลังส่งสำเร็จ → ยกเลิกหลังเคยส่งรูปแล้ว = ส่งรูปเดิมซ้ำ
+
+**แก้ 2 ชั้น:**
+- UI: ครอบ chain หลัง capture ด้วย `If(pending ไม่ว่าง)` → `If(pending ≠ lastSentChatImageUrl)` → `SetState(lastSent ← pending)` → [insert เดิม ...] · เพิ่ม page state `lastSentChatImageUrl` · ย้าย node เดิมเข้าไปทั้งก้อน ไม่เขียนใหม่ (UploadData มี bucket/path ที่ DSL ไม่ครอบคลุม จึงไม่แตะ) · ใช้ได้เพราะ URL อัปโหลดแต่ละครั้งไม่ซ้ำ
+- DB (ตัวกันสุดท้าย ครอบทุกทางเข้า): `chat_message_has_content` ต้องมี `message` หรือ `image_url` ที่ไม่ว่าง/ไม่ใช่ช่องว่างล้วน · `NOT VALID` (แถวเก่าไม่ถูกแตะ)
+
+**ข้อจำกัด:** แถวว่างเก่า 6 แถว (id 53, 56, 89–92) ยังเห็นเป็น bubble ว่างในแชทเดิม — ไม่ลบเอง รอ pete สั่ง · ข้อความตัวอักษรไม่เคยมีบั๊กนี้ (ปุ่มส่งมี `If` ข้อความไม่ว่างอยู่แล้ว)
+
+**ผลทดสอบ:** V-25 · pattern PT-49

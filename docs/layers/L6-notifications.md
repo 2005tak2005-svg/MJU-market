@@ -38,6 +38,8 @@
 
 **ตัวเลข unread บนกระดิ่ง `Home` (2026-10-24):** custom widget `NotificationUnreadBadge` (PT-36 fetch เอง, `.stream()` Realtime) ซ้อนบนกระดิ่งใน `Stack_bellbdg1` · ปุ่มจริง `IconButton_bellbtn1` (แทนคีย์ `IconButton_3gsou322`) · จุดแดง D-31 ไม่มีบน `Home` แล้ว — **ยังไม่ทดสอบบนแอปจริง**
 
+**การ์ดป๊อบอัพรีวิว (D-101, 2026-10-25):** คอมโพเนนต์ `ReviewReceivedCard` เด้งแทน banner เมื่อ `review_received` เข้ามาสดขณะผู้ขายเปิดแอป (ดาว/ผู้รีวิว/สินค้า/ความเห็น/ปุ่มดูสินค้า) · ข้อมูลจาก RPC `get_review_card` ผ่าน `notifications.ref_review_id` · เปิดจาก `startInAppNotificationBanner` (PT-48) — **ยังไม่ทดสอบบนแอปจริง**
+
 **แจ้งเตือนผู้ขายเมื่อได้รับรีวิว (D-100, 2026-10-25):** type `review_received` (category `system`) — trigger `trg_notify_review_received` บน `reviews` · body ระบุชื่อผู้รีวิว ดาว และชื่อสินค้า · ไม่มีไอคอน/ปุ่มเฉพาะ type นี้ — **ยังไม่ทดสอบบนแอปจริง**
 
 **แจ้งเตือนยอดเข้าดูครบ 10 (D-99, 2026-10-25):** type `product_popular` (category `system`) — trigger `trg_notify_product_popular` บน `product_views` แจ้งเจ้าของครั้งเดียวต่อสินค้า · แถวแสดง title/body ปกติ ไม่มีไอคอน/ปุ่มเฉพาะ type นี้ · banner ใช้กระดิ่งสีหลัก — **ยังไม่ทดสอบบนแอปจริง**

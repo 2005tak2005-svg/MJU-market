@@ -254,6 +254,7 @@ CREATE UNIQUE INDEX reports_unique_pending_per_reporter_user
 | 7 | `is_read` | boolean | **NOT NULL** | `false` |
 | 8 | `created_at` | timestamptz | **NOT NULL** | `now()` |
 | 9 | `ref_chat_id` | bigint | nullable | – (เพิ่ม 2026-10-14, D-90) |
+| 10 | `category` | text | **NOT NULL** | `'system'` (เพิ่ม 2026-10-25, D-98) |
 
 ```sql
 PRIMARY KEY (id)
@@ -261,12 +262,14 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
 FOREIGN KEY (ref_chat_id) REFERENCES chat(id) ON DELETE CASCADE
 
-CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message'))  -- notifications_type_check
+CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed'))  -- notifications_type_check
+CHECK (category IN ('user','admin','system'))                                                              -- notifications_category_check (D-98)
 CHECK (type <> 'chat_message' OR ref_chat_id IS NOT NULL)                                                   -- notifications_chat_ref_check
 ```
 
 - `ref_product_id` nullable โดยตั้งใจ (แก้บล็อกเดิมของ P-07 ดู D-23) · `ref_chat_id` nullable — ใช้เฉพาะ `type='chat_message'`
 - `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน · `chat_message` เขียนโดย trigger `trg_notify_chat_message` (D-90) — `title` = ชื่อผู้ส่ง, `body` = ข้อความ (ตัด 100 ตัวอักษร) หรือ `📷 ส่งรูปภาพ` · ต่อผู้รับ+ห้องเหลือแถว unread 1 แถว (แถว unread เก่าถูกลบแล้ว INSERT แถวใหม่ทุกข้อความ)
+- `category` (D-98): `user` = แชทที่ผู้ส่งเป็น user · `admin` = แชทที่ผู้ส่ง `role='admin'` · `system` = ทุก type อื่น (เป็น DEFAULT — ตัวเขียนเดิมไม่ต้องแก้) · ตั้งค่าเฉพาะใน `notify_chat_message()` · ใช้กรองหน้า `Notifications` · `sale_confirmed` เขียนโดย migration `notify_buyer_sale_confirmed` (D-95)
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - อยู่ใน `supabase_realtime` publication (D-60) — ตรวจจาก `pg_publication_tables` 2026-10-14
 

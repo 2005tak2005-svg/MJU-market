@@ -38,6 +38,8 @@
 
 **ตัวเลข unread บนกระดิ่ง `Home` (2026-10-24):** custom widget `NotificationUnreadBadge` (PT-36 fetch เอง, `.stream()` Realtime) ซ้อนบนกระดิ่งใน `Stack_bellbdg1` · ปุ่มจริง `IconButton_bellbtn1` (แทนคีย์ `IconButton_3gsou322`) · จุดแดง D-31 ไม่มีบน `Home` แล้ว — **ยังไม่ทดสอบบนแอปจริง**
 
+**ตัวกรองประเภท (D-98, 2026-10-25):** ชิป 4 อัน (ทั้งหมด / ข้อความผู้ใช้ / ข้อความแอดมิน / ระบบ) เหนือ `NotificationsList` · `notifications.category` (`user`/`admin`/`system`) ตั้งใน `notify_chat_message()` · App State `notifFilter` รีเซ็ตเป็นทั้งหมดทุกครั้งที่เข้าหน้า · onInit/`ON_DATA_CHANGE`/แตะแถวดึงผ่าน custom action `loadMyNotifications` ตัวเดียว (PT-46) · ยังไม่มี empty-state/ตัวเลข unread ต่อชิป — **ยังไม่ทดสอบบนแอปจริง**
+
 **แจ้งเตือนนอกแอป (D-96, 2026-10-24):** trigger `trg_push_notification_ntfy` → ntfy topic กลาง (prototype)
 
 **ยังไม่ทำ:** push notification จริงต่อผู้ใช้ตอนปิดแอป (FCM) · thumbnail สินค้าในแถว approved/rejected (ตัดสโคปไว้ตอน D-74)

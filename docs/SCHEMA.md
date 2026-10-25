@@ -206,10 +206,10 @@ PRIMARY KEY (id)
 FOREIGN KEY (chat_id) REFERENCES chat(id)
 FOREIGN KEY (user_id) REFERENCES "Profile"(id)
 CHECK ((message IS NOT NULL AND btrim(message) <> '')
-       OR (image_url IS NOT NULL AND btrim(image_url) <> ''))  -- chat_message_has_content, D-29 · เข้มขึ้น 2026-10-25 (D-102) · NOT VALID
+       OR (image_url IS NOT NULL AND btrim(image_url) <> ''))  -- chat_message_has_content, D-29 · เข้มขึ้น 2026-10-25 (D-102) · validated
 ```
 
-- 🔴 `chat_message_has_content` เป็น **NOT VALID** (D-102): บังคับกับแถวใหม่/แถวที่ถูกแก้ · แถวเก่า 6 แถวที่ `message` NULL + `image_url = ''` (เกิดจากบั๊กยกเลิกเลือกรูป, id 53, 56, 89–92) ยังอยู่ → bubble ว่างในแชทเดิม · ถ้าลบ/แก้แล้วค่อย `VALIDATE CONSTRAINT`
+- `chat_message_has_content` ห้ามค่าว่าง/ช่องว่างล้วน (D-102) · ลบแถวว่างเก่า 6 แถวแล้ว (id 53, 56, 89–92) และ `VALIDATE CONSTRAINT` ผ่านกับทั้งตาราง (2026-10-25)
 
 ฝั่ง FlutterFlow ผูก `image_url` แล้ว (ส่งรูปได้จริง, D-41) — ดู `layers/L4-chat.md`
 

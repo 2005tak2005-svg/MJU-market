@@ -1955,3 +1955,17 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อจำกัด:** ไม่ backfill รีวิวเก่า · ไม่แสดงข้อความรีวิว (`comment`) ในแจ้งเตือน · แถวไม่มีไอคอน/ปุ่มพาไปสินค้า (D-89) banner ใช้กระดิ่งสีหลัก
 
 **ผลทดสอบ:** V-23
+
+## D-101 — การ์ดป๊อบอัพ "ได้รับรีวิวใหม่" ถึงผู้ขาย (2026-10-25)
+
+**ตัดสินใจ (pete):** แจ้งเตือนรีวิว (D-100) ให้เด้งเป็นการ์ดป๊อบอัพ (คอมโพเนนต์) แทน banner · แถวในหน้า `Notifications` ยังอยู่ตามเดิม
+
+**ออกแบบ:**
+- คอมโพเนนต์ `ReviewReceivedCard` (ไม่มี parameter อ่านจาก App State `reviewCard*` 7 ตัว ตาม PT-09 — รูปแบบเดียวกับ `BannedNoticeDialog`): ดาว ★/☆ · ชื่อผู้รีวิว · รูป/ชื่อสินค้า · คะแนนเฉลี่ยของผู้ขาย · ความเห็น (ซ่อนถ้าว่าง) · ปุ่ม "ปิด" / "ดูสินค้า"
+- ข้อมูลมีโครงสร้างจาก RPC `get_review_card` (คืนเฉพาะผู้ถูกรีวิว) ผ่าน `notifications.ref_review_id` — ไม่แกะข้อความ `body`
+- เปิดจาก `startInAppNotificationBanner` (realtime INSERT ของผู้ใช้ที่ล็อกอิน, PT-45): `type='review_received'` → ดึงการ์ด → ตั้ง App State → `showAlignedDialog` (เหมือนหน้า Home เปิด `BannedNoticeDialog`) แทน banner · เด้งทุกหน้ารวม `Notifications`
+- custom action import คอมโพเนนต์โดยตรง (`/components/review_received_card_widget.dart`) ได้ · ต้อง `import 'package:aligned_dialog/aligned_dialog.dart'` เองเพราะ `showAlignedDialog` ไม่ได้มากับ header ของ action (PT-48)
+
+**ข้อจำกัด:** เด้งเฉพาะตอนผู้ขายเปิดแอปอยู่ (ปิดแอป/ออฟไลน์ เห็นแค่แถวใน `Notifications`) · แตะแถวเดิมใน `Notifications` ไม่เปิดการ์ดซ้ำ · รีวิวก่อนหน้า (ไม่มี `ref_review_id`) ไม่เด้งการ์ด · ถ้าการ์ดพัง (RPC ล้ม) เงียบ ไม่เด้ง banner สำรอง
+
+**ผลทดสอบ:** V-24 · pattern PT-48

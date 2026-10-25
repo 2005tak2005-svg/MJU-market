@@ -361,3 +361,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - หลัง rollback: `reviews` ยัง 2 แถว · `review_received` 0 แถว · `trg_notify_review_received` และ `trg_push_notification_ntfy` `tgenabled='O'` · `has_function_privilege` ของ `notify_review_received` anon/authenticated = false
 - (ผู้ซื้อที่ถูกแบนถูก `reviews_block_banned_insert` กันตามเดิม — ไม่เกี่ยวกับ trigger)
 - **ไม่ได้ทดสอบ:** แอปจริง (ผู้ซื้อให้ดาวแล้วผู้ขายเห็นแถว/banner) · ntfy ของ type นี้ (ทดสอบใน rollback ไม่ส่งจริง)
+
+### V-24 · การ์ดป๊อบอัพรีวิวถึงผู้ขาย (D-101, 2026-10-25)
+
+- DO block + `RAISE EXCEPTION` (rollback): ผู้ซื้อ INSERT รีวิวผ่าน RLS → `notifications.ref_review_id` = id รีวิว · ผู้ขายเรียก `get_review_card` ได้ 1 แถว (ชื่อผู้รีวิว, 5 ดาว, ความเห็น, ชื่อสินค้า, มีรูป, ค่าเฉลี่ย/จำนวนรีวิว) · **ผู้ซื้อและผู้ใช้อื่นเรียก → 0 แถว**
+- FlutterFlow: `generated_code/` มี `components/review_received_card_widget.dart` อ่าน `FFAppState().reviewCard*` (รูป/ความเห็น/ปุ่มดูสินค้า ซ่อนด้วย `if`), ปิดด้วย `context.pop()`, ดูสินค้า → `ProductDetailsWidget.routeName` พร้อม `productId` · `start_in_app_notification_banner.dart` แตก `review_received` → `_showReviewCard` → `showAlignedDialog(... ReviewReceivedCardWidget())` พร้อม import `aligned_dialog` และ `final int rating`
+- `dart format` อ่านทั้งสองไฟล์ผ่าน (ไม่มี syntax error) · **ไม่ได้รัน Dart analyzer** (ไม่มี `flutter`) — จุดเสี่ยงคอมไพล์ที่ตรวจด้วยตา: import ของ `showAlignedDialog`, `int.clamp` คืน `num` (แก้แล้ว)
+- **ไม่ได้ทดสอบ:** แอปจริง (การ์ดเด้งเมื่อผู้ซื้อให้ดาวขณะผู้ขายเปิดแอป, ปุ่มดูสินค้า/ปิด, ไม่ crash เมื่อไม่มีรูป/ความเห็น)

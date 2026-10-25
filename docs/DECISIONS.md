@@ -1996,3 +1996,12 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - **หัวตาราง สินค้ารอตรวจสอบ (ตามมา, `dsl/admin_pending_header.dart`):** หัวเดิม 4 คอลัมน์ (ผู้ขาย/วันที่ลงขาย/สถานะ/รายละเอียด) ไม่มีข้อมูลรองรับในแถว → แทนด้วย 2 คอลัมน์ "สินค้า / ผู้ขาย" (Expanded) + "ตรวจสอบ" (กว้าง 92 = ปุ่ม 40+12+40 จัดกลาง) · padding ซ้าย/ขวา 24 ให้ตรงขอบในของแถว (12+12) · one-shot: `ensureReplaced` เปลี่ยนคีย์ `Row_4s8gmwfj` → `Row_pendhdr001`
 
 **ทางที่ไม่เลือก:** แปลง Row เป็น `Wrap` (ต้องย้าย/ลบ widget + ไอคอน/ตัวเลขในการ์ดต้องย่อ ความเสี่ยง key drift สูงกว่า) · pattern PT-50
+
+## D-104 — หน้าโหลดตอนเปิดแอป: โลโก้ MJU Market กลางจอ (2026-10-25)
+
+**เดิม:** ระหว่าง `appStateNotifier.loading` (≥1 วินาทีหลังเปิดแอป จนรู้สถานะล็อกอิน) แสดง spinner มาตรฐานของ FlutterFlow ไม่มีโลโก้
+
+**ทำ:** ตั้ง `appSettings.splashImage` (ผ่าน `app.raw`, `dsl/splash_logo.dart`) — รูป `mju_logo_splash.png` 200×248 `contain` กลางจอ · พื้น `#F6F2FF` (= `primaryBackground` โหมดสว่าง) · ขั้นต่ำ 1500 ms (เดิม 1000) · codegen ใช้ค่านี้แทน spinner ใน `nav.dart` ยืนยันแล้ว
+- **รูป:** ไฟล์ต้นฉบับของ pete เป็น PNG พื้นขาวทึบ (ไม่มี alpha) → ไดคัท: flood fill พื้นขาวด้านนอกให้โปร่งใส, ขอบ anti-alias คำนวณ alpha จากความเข้ม (ไม่มีขอบขาวเหลือ), **ไส้ถุง/ตา/ลูกตาคงสีขาวทึบ** เพราะเป็นส่วนของโลโก้ · ย่อเหลือสูง 960px · อัปโหลดเป็น asset ของโปรเจกต์ (`flutterflow ai assets upload`) · ไฟล์โปร่งใสเต็มขนาดอยู่ที่ `~/Downloads/mju_logo_transparent.png`
+
+**ข้อจำกัด:** พื้น splash เป็นสีเดียว (สว่าง) ไม่สลับตามโหมดมืด · `appIconPath` (ไอคอนแอป) ยังไม่ได้ตั้ง — ไม่อยู่ในที่ขอ · ยังไม่ได้ดูบนเครื่องจริง (รูปถูกใส่ bundle ตอน FF build ไม่อยู่ใน export)

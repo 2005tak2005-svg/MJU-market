@@ -1916,3 +1916,17 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อจำกัด:** นับจาก `created_at` (ตอนลงประกาศ) ไม่ใช่ตอนอนุมัติ — อนุมัติช้า ป้ายอยู่สั้นลง · ณ วันที่ทำ มี `faculty_id` แค่ 1/14 บัญชี และ `faculties` ยังเป็น "คณะ A–D" (ค้าง D-56) · เฉพาะ `Home`
 
 **ผลทดสอบ:** V-20
+
+## D-98 — ตัวกรองประเภทแจ้งเตือนบน `Notifications` (ผู้ใช้ / แอดมิน / ระบบ) (2026-10-25)
+
+**ตัดสินใจ (pete):** ชิป 4 อัน เลือกได้ทีละอัน · ค่าเริ่มต้น = ทั้งหมด · "ข้อความแอดมิน" = แชทที่แอดมินเป็นผู้ส่งเท่านั้น (reject/ban/ปลดแบน/ขายแล้วอยู่ใน "ระบบ")
+
+**ออกแบบ:**
+- DB: `notifications.category` (`user`/`admin`/`system`, DEFAULT `system`) — `notify_chat_message()` ตั้งตาม `role` ผู้ส่ง · backfill แชทเดิม · เลือกคอลัมน์ ไม่ใช้ view เพราะ Realtime ต้องชี้ base table (D-29)
+- UI: App State `notifFilter` (`''`/`user`/`admin`/`system`) · ชิปเป็นปุ่มคู่ selected/unselected ตามแบบ `MyPost` (D-37) · body = `Column[NotifFilterChips, Expanded(NotificationsList)]`
+- ดึงรายการผ่าน custom action 0-arg `loadMyNotifications` (PT-09/PT-33) ที่อ่าน `notifFilter` — **จุดเดียวแทน query ไม่กรอง 3 จุดเดิม** (onInit, ON_DATA_CHANGE, แตะแถว) ไม่งั้น Realtime/แตะแถวจะรีเซ็ตตัวกรอง และแบบ "query ต่อกิ่ง" ชน limit output 5 ตัวต่อ widget (PT-31) · onInit รีเซ็ต `notifFilter=''` ทุกครั้งที่เข้าหน้า
+- ไม่กระทบ: RLS, banner (D-88), ตัวเลขกระดิ่ง, ntfy (D-96)
+
+**ข้อจำกัด:** ยังไม่มี empty-state เมื่อกรองแล้วไม่มีแถว (PT-43) · ตัวเลข unread ต่อชิปไม่มี · action จำกัด 50 แถว เท่า query เดิม
+
+**ผลทดสอบ:** V-21 · pattern PT-46

@@ -333,3 +333,11 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - `has_function_privilege` `private.is_same_faculty(uuid)`: anon false · authenticated/service_role true · `get_advisors(security)` ไม่มี finding ใหม่
 - FlutterFlow: `generated_code/` มี `_listingBadge` + `product.data['is_new_listing'|'is_same_faculty']` · ไม่มี `wishlist_items` ใน `ProductGridSection` แล้ว · ไม่ได้รัน Dart analyzer (ไม่มี `flutter`; parse ผ่าน `dart format`)
 - **ไม่ได้ทดสอบ:** หน้าตาป้ายบนแอปจริง
+
+### V-21 · ตัวกรองประเภทแจ้งเตือน (D-98, 2026-10-25)
+
+- หลัง migration: `chat_message` → admin 3 / user 13 (ตรง join ก่อน apply) · type อื่น = `system` ทั้งหมด · `fn_updated` true · `trg_notify_chat_message` เปิด
+- DO block + `RAISE EXCEPTION` (rollback): ส่งข้อความในห้องแอดมิน–ผู้ใช้ จากผู้ใช้ → แถวของแอดมิน `category=user` · จากแอดมิน → แถวของผู้ใช้ `category=admin`
+- ในนาม user ธรรมดา (`SET LOCAL ROLE authenticated` + jwt): เห็น 9 แถว = user 3 / admin 3 / system 3 · แถวของคนอื่น 0
+- FlutterFlow: `generated_code/` — onInit `notifFilter = ''` → `loadMyNotifications`; ON_DATA_CHANGE และแตะแถวเรียก `loadMyNotifications` (ไม่มี `NotificationsTable().queryRows` เหลือ); ชิป 8 ปุ่ม `if (FFAppState().notifFilter == …)`; body `Column` → `Expanded(ListView.separated)`
+- **ไม่ได้ทดสอบ:** แอปจริง (กดชิป, ตัวกรองคงอยู่เมื่อมีแจ้งเตือนใหม่/แตะแถว, รีเซ็ตเมื่อเข้าหน้าใหม่) · Dart analyzer (ไม่มี `flutter`)

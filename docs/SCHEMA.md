@@ -262,13 +262,14 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
 FOREIGN KEY (ref_chat_id) REFERENCES chat(id) ON DELETE CASCADE
 
-CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed'))  -- notifications_type_check
+CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed','product_popular'))  -- notifications_type_check
 CHECK (category IN ('user','admin','system'))                                                              -- notifications_category_check (D-98)
 CHECK (type <> 'chat_message' OR ref_chat_id IS NOT NULL)                                                   -- notifications_chat_ref_check
 ```
 
 - `ref_product_id` nullable โดยตั้งใจ (แก้บล็อกเดิมของ P-07 ดู D-23) · `ref_chat_id` nullable — ใช้เฉพาะ `type='chat_message'`
 - `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน · `chat_message` เขียนโดย trigger `trg_notify_chat_message` (D-90) — `title` = ชื่อผู้ส่ง, `body` = ข้อความ (ตัด 100 ตัวอักษร) หรือ `📷 ส่งรูปภาพ` · ต่อผู้รับ+ห้องเหลือแถว unread 1 แถว (แถว unread เก่าถูกลบแล้ว INSERT แถวใหม่ทุกข้อความ)
+- `product_popular` (D-99): trigger `trg_notify_product_popular` ส่งให้เจ้าของเมื่อ `product_views` ของสินค้าครบ 10 · `ref_product_id` = สินค้านั้น · unique partial index `notifications_product_popular_once (ref_product_id) WHERE type='product_popular'` กันแจ้งซ้ำ/กดพร้อมกัน
 - `category` (D-98): `user` = แชทที่ผู้ส่งเป็น user · `admin` = แชทที่ผู้ส่ง `role='admin'` · `system` = ทุก type อื่น (เป็น DEFAULT — ตัวเขียนเดิมไม่ต้องแก้) · ตั้งค่าเฉพาะใน `notify_chat_message()` · ใช้กรองหน้า `Notifications` · `sale_confirmed` เขียนโดย migration `notify_buyer_sale_confirmed` (D-95)
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
 - อยู่ใน `supabase_realtime` publication (D-60) — ตรวจจาก `pg_publication_tables` 2026-10-14
@@ -342,6 +343,28 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 - โครงเดียวกับ `advertisement_likes` (D-58) เป๊ะ — composite PK กันบันทึกซ้ำในตัว ไม่ต้อง UNIQUE เพิ่ม · insert/delete เท่านั้น ไม่มี UPDATE policy (บันทึก/เอาออกเป็น toggle)
 - 🔴 **ต่างจาก `advertisement_likes` ตรง RLS `SELECT`**: จำกัดแค่แถวของตัวเอง (`user_id = auth.uid()`) ไม่ใช่ `SELECT true` — wishlist เป็นข้อมูลส่วนตัว ไม่มี public count แบบ `like_count` (ตัดสินใจแล้ว, D-81) ยังใช้ `EXISTS(...auth.uid())` ผูกกับ `products_review_view.saved_by_me` ได้ปกติเพราะ view เป็น `security_invoker=true` และ subquery ต้องการแค่เห็นแถวของผู้เรียกเอง
 - ไม่มี RESTRICTIVE ban policy (เหมือน `advertisement_likes`) — ผู้ถูกแบนยังบันทึก/เอาออกจาก wishlist ของตัวเองได้ ไม่กระทบใคร (D-81)
+
+### `public.product_views` (L2/L6, เพิ่ม 2026-10-25, D-99)
+
+| # | คอลัมน์ | ชนิด | null? | default |
+|---|---|---|---|---|
+| 1 | `id` | bigint | NOT NULL | identity ALWAYS |
+| 2 | `product_id` | uuid | **NOT NULL** | – |
+| 3 | `viewer_id` | uuid | **NOT NULL** | – |
+| 4 | `viewed_at` | timestamptz | **NOT NULL** | `now()` |
+
+```sql
+PRIMARY KEY (id)
+FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+FOREIGN KEY (viewer_id) REFERENCES "Profile"(id) ON DELETE CASCADE
+INDEX product_views_product_idx (product_id)
+INDEX product_views_dedupe_idx (product_id, viewer_id, viewed_at DESC)
+INDEX product_views_viewer_idx (viewer_id)
+```
+
+- 1 แถว = 1 การเข้าดู (ผู้ใช้คนเดิมดูสินค้าเดิมซ้ำใน 30 นาทีนับครั้งเดียว) · **RLS เปิดแต่ไม่มี policy และ revoke สิทธิ์ `anon`/`authenticated` ทั้งหมด** — เขียนได้ทาง `record_product_view` เท่านั้น อ่านทาง `products_review_view.view_count` เท่านั้น
+- ไม่เก็บตัวนับบน `products` เพราะ `products` อยู่ใน `supabase_realtime` — ทุกครั้งที่นับจะยิง event ให้ทุกเครื่องที่ subscribe
+- advisor: `rls_enabled_no_policy` (INFO) ตั้งใจ
 
 ### `public.transactions` (L5, เพิ่ม 2026-08-23, D-59)
 
@@ -589,7 +612,8 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     )) AS saved_by_me,
     COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller,  -- D-82: badge ผู้ขายน่าเชื่อถือ
     p.created_at > now() - interval '24 hours' AS is_new_listing,      -- D-97: ป้าย "เพิ่งลงประกาศ"
-    private.is_same_faculty(p.seller_id) AS is_same_faculty            -- D-97: ป้าย "คณะเดียวกัน"
+    private.is_same_faculty(p.seller_id) AS is_same_faculty,           -- D-97: ป้าย "คณะเดียวกัน"
+    private.product_view_count(p.id, p.seller_id) AS view_count       -- D-99: ยอดเข้าดู (เจ้าของ/แอดมินเห็นเลขจริง คนอื่น 0)
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id
@@ -735,6 +759,7 @@ CREATE VIEW public.reports_admin_view WITH (security_invoker = true) AS
 > 📌 `is_trusted_seller` (เพิ่ม 2026-09-03, D-82) — badge "ผู้ขายน่าเชื่อถือ" คอมพิวต์จาก `rv.avg_rating >= 4.5 AND rv.review_count >= 3` (`COALESCE(..., false)` กัน NULL ตอนผู้ขายยังไม่มีรีวิวเลย) ตาม pattern PT-24 §1 เพราะ `visible:` ใน FlutterFlow DSL ไม่มี comparator ตัวเลข (`>=` ทำที่ SQL เท่านั้น) — ผูก `visible:` ตรง ๆ ทั้งบน `ProductDetails` และการ์ดหน้า `Home`
 >
 > 📌 `is_new_listing` / `is_same_faculty` (เพิ่ม 2026-10-24, D-97) — ป้ายบนการ์ด `Home` (`ProductGridSection` อ่านผ่าน `product.data[...]`, ยังไม่ register ใน typed schema ของ FlutterFlow) · `is_new_listing` = `created_at` ภายใน 24 ชม. (เวลาที่ลงประกาศ ไม่ใช่เวลาอนุมัติ — `products` ไม่มีคอลัมน์นั้น) · `is_same_faculty` = `private.is_same_faculty(seller_id)`: true เฉพาะเมื่อผู้เรียกกับผู้ขายมี `faculty_id` ทั้งคู่ ตรงกัน และไม่ใช่คนเดียวกัน · ต่อท้ายคอลัมน์เดิม (`CREATE OR REPLACE VIEW`) view ที่อ้างต่อ 4 ตัวไม่กระทบ
+> 📌 `view_count` (เพิ่ม 2026-10-25, D-99) — `integer` ต่อท้ายคอลัมน์เดิม · เลขจริงเฉพาะเจ้าของสินค้า/แอดมิน คนอื่น = 0 (ฟังก์ชัน `private.product_view_count` SECURITY DEFINER) · register ใน typed schema ของ FlutterFlow แล้ว (`MyPostRow` อ่านผ่าน `item['view_count']`) · `WITH (security_invoker = true)` คงเดิม
 >
 > 📌 `first_image_url` (`image_urls[1]`, เพิ่ม 2026-08-18, D-38) — FlutterFlow AI DSL ไม่มี list-index operator (`item['image_urls'][0]` เขียนไม่ได้) จึงดึงรูปแรกที่ SQL แทน ใช้กับ `Home` grid layout · เป็น NULL ถ้าประกาศไม่มีรูปเลย · **`Home` ยัง force-unwrap `first_image_url!` ตรง ๆ ไม่มี fallback (ยังไม่ทดสอบเคสไม่มีรูปผ่านแอปจริง — เสี่ยง crash)**
 >
@@ -837,6 +862,7 @@ RLS `ENABLE` ครบทั้ง 15 ตาราง จำนวน policy ต
 | `storage_cleanup_config` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (แก้ผ่าน SQL ตรงด้วย `service_role` เท่านั้น) (D-66) |
 | `storage_cleanup_log` | 1 | select: admin เท่านั้น · ไม่มี INSERT/UPDATE/DELETE policy (เขียนได้ทาง Edge Function `service_role` เท่านั้น) (D-66) |
 | `wishlist_items` | 3 | select/insert/delete: เฉพาะแถวของตัวเองเท่านั้น (ต่างจาก `advertisement_likes` ที่ select เป็น "ทุกคน" — wishlist ส่วนตัว) ไม่มี RESTRICTIVE ban policy (D-81) |
+| `product_views` | 0 | RLS เปิด ไม่มี policy · ไม่มีสิทธิ์ตรงสำหรับ `anon`/`authenticated` — เขียนผ่าน `record_product_view` อ่านผ่าน view เท่านั้น (D-99) |
 
 **ค่าจริงจาก `pg_policies`** — PERMISSIVE ทั้งหมด **ยกเว้น 5 ตัวของ D-52 ที่เป็น `RESTRICTIVE`**
 
@@ -1109,6 +1135,22 @@ $$;
 - SECURITY DEFINER เหตุผลเดียวกับ `is_user_banned` (`"Profile"` RLS ซ่อนแถวคนอื่น และ `public_profiles` มีแค่ชื่อคณะ ไม่มี `faculty_id`) · คืนแค่ boolean ไม่เปิดเผย `faculty_id`
 - grant: `authenticated` + `service_role` — `anon` ไม่ได้ (ตรวจ `has_function_privilege` แล้ว)
 - ใช้ใน `products_review_view.is_same_faculty`
+
+### `private.product_view_count(p_id uuid, p_seller uuid)` (L2, เพิ่ม 2026-10-25, D-99)
+
+- `LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''` · คืน `count(*)` ของ `product_views` ถ้า `p_seller = auth.uid()` หรือ `private.is_admin()` มิฉะนั้น `0`
+- grant: `authenticated` + `service_role` — `anon` ไม่ได้ · ใช้ใน `products_review_view.view_count`
+
+### `public.record_product_view(p_product_id uuid)` (L2, เพิ่ม 2026-10-25, D-99)
+
+- `LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''` · คืน void · เรียกจาก custom action `recordProductView` (`ProductDetails` onLoad)
+- **ไม่นับเมื่อ:** ไม่ได้ล็อกอิน · สินค้าไม่ใช่ `approved` · ผู้ดูคือเจ้าของสินค้า · ผู้ดูเป็นแอดมิน (`private.is_admin()`) หรือถูกแบน (`private.is_banned()`) · ผู้ดูคนเดิมดูสินค้าเดิมภายใน 30 นาที
+- grant: `authenticated` + `service_role` — `anon` ไม่ได้ · advisor `authenticated_security_definer_function_executable` (WARN) ตั้งใจ ตรวจสิทธิ์ใน body เอง
+
+### `private.notify_product_popular()` + trigger `trg_notify_product_popular` (L6, เพิ่ม 2026-10-25, D-99)
+
+- `AFTER INSERT ON product_views FOR EACH ROW` · `SECURITY DEFINER` · ถ้ายอดของสินค้านั้น `>= 10` INSERT `notifications` (`type='product_popular'`, `user_id` = เจ้าของ, `title` "ประกาศของคุณมีคนสนใจ", `body` ชื่อสินค้า + "มีผู้เข้าดูครบ 10 ครั้งแล้ว") `ON CONFLICT DO NOTHING` (ครั้งเดียวต่อสินค้า) · ห่อ `EXCEPTION WHEN OTHERS` — แจ้งเตือนพังไม่ทำให้บันทึกการดูล้ม
+- ไม่มี grant ให้ใคร (เรียกโดย trigger เท่านั้น)
 
 ### `private.enforce_ban_admin_only()` + trigger `enforce_ban_admin_only` (L8, เพิ่ม 2026-08-21, D-52)
 

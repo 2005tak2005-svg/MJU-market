@@ -341,3 +341,16 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - ในนาม user ธรรมดา (`SET LOCAL ROLE authenticated` + jwt): เห็น 9 แถว = user 3 / admin 3 / system 3 · แถวของคนอื่น 0
 - FlutterFlow: `generated_code/` — onInit `notifFilter = ''` → `loadMyNotifications`; ON_DATA_CHANGE และแตะแถวเรียก `loadMyNotifications` (ไม่มี `NotificationsTable().queryRows` เหลือ); ชิป 8 ปุ่ม `if (FFAppState().notifFilter == …)`; body `Column` → `Expanded(ListView.separated)`
 - **ไม่ได้ทดสอบ:** แอปจริง (กดชิป, ตัวกรองคงอยู่เมื่อมีแจ้งเตือนใหม่/แตะแถว, รีเซ็ตเมื่อเข้าหน้าใหม่) · Dart analyzer (ไม่มี `flutter`)
+
+### V-22 · ยอดเข้าดูสินค้า + แจ้งเตือนครบ 10 (D-99, 2026-10-25)
+
+- DO block + `RAISE EXCEPTION` (rollback) ในนาม user ธรรมดา (`SET LOCAL ROLE authenticated` + jwt) เรียก `record_product_view`:
+  - เรียก 2 ครั้งติด → นับ 1 (dedupe) · เจ้าของ → ไม่นับ · แอดมิน → ไม่นับ
+  - `view_count` ใน `products_review_view`: เจ้าของ = 1, ผู้ใช้อื่น = 0
+  - เติมให้ครบ 9 → ไม่มี `product_popular` · คนที่ 10 → แจ้ง 1 แถว ถึง `user_id` เจ้าของ body ถูกต้อง · คนที่ 11 → ยังมี 1 แถว
+  - สินค้าไม่ approved → ไม่นับ · ผู้ดูถูกแบน → ไม่นับ · ผู้ดูปกติ → นับ
+- หลังเปลี่ยน view ในนาม user ธรรมดา: `search_products` 7 · `products_review_view` 17 · `chat_summary` 5 · `chat_messages_view` 17 · `my_purchases_view` 0 (query ได้ปกติ) · อ่าน `product_views` ตรงถูกปฏิเสธ (`permission denied`)
+- `has_function_privilege`: `record_product_view`/`product_view_count` anon false · authenticated true; `notify_product_popular` ทั้งคู่ false · view ยังเป็น `security_invoker=true`
+- `get_advisors(security)`: finding ใหม่ 2 รายการที่ตั้งใจ (`rls_enabled_no_policy` INFO บน `product_views`, `authenticated_security_definer_function_executable` WARN บน `record_product_view`)
+- FlutterFlow: `generated_code/` — `ProductDetails` onLoad ต่อท้ายด้วย `FFAppState().pendingViewProductId = widget!.productId` → `actions.recordProductView()` · `MyPostSwipeableRow(viewCount: myPostsListItemItem.viewCount)` · widget มี `viewCount` + `'ดู ${widget.viewCount ?? 0} ครั้ง'`
+- **ไม่ได้ทดสอบ:** แอปจริง (เปิดสินค้าของคนอื่นแล้วยอดขึ้นใน `MyPost`, เจ้าของเปิดเองไม่ขึ้น, ครบ 10 แล้ว banner/แจ้งเตือนเด้ง) · Dart analyzer (ไม่มี `flutter`)

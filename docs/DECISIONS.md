@@ -1930,3 +1930,18 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อจำกัด:** ยังไม่มี empty-state เมื่อกรองแล้วไม่มีแถว (PT-43) · ตัวเลข unread ต่อชิปไม่มี · action จำกัด 50 แถว เท่า query เดิม
 
 **ผลทดสอบ:** V-21 · pattern PT-46
+
+## D-99 — ยอดเข้าดูสินค้า + แจ้งเตือนเมื่อถึง 10 ครั้ง (2026-10-25)
+
+**ตัดสินใจ (pete):** นับทุกครั้งที่เปิด `ProductDetails` แต่คนเดิมดูสินค้าเดิมซ้ำใน 30 นาทีนับครั้งเดียว (ไม่ใช่นับคนไม่ซ้ำ) · แจ้งเจ้าของครั้งเดียวเมื่อครบ 10 · ยอดเห็นเฉพาะเจ้าของ/แอดมิน โชว์ในแถวของ `MyPost`
+
+**ออกแบบ:**
+- ตาราง `product_views` (1 แถว = 1 การเข้าดู) ปิด RLS ไม่มี policy — เขียนผ่าน RPC `record_product_view` เท่านั้น ตัดสินที่ DB ทั้งหมด (ไม่ใช่เจ้าของ/แอดมิน/ผู้ถูกแบน, สินค้า approved, dedupe 30 นาที) เครื่องผู้ใช้ปลอมยอดไม่ได้
+- แยกตารางแทนคอลัมน์ `products.view_count`: `products` อยู่ใน `supabase_realtime` ทุกการนับจะยิง event ให้ทุกเครื่อง
+- trigger `AFTER INSERT` บน `product_views` แจ้ง `notifications.type='product_popular'` (category `system` ตาม D-98) · unique partial index กันแจ้งซ้ำเมื่อกดพร้อมกัน · banner (D-88)/กระดิ่ง/ntfy (D-96) ทำงานเองโดยไม่แก้
+- `products_review_view.view_count` ผ่าน `private.product_view_count` (เลขจริงเฉพาะเจ้าของ/แอดมิน คนอื่น 0 — แพทเทิร์นเดียวกับ `is_same_faculty` D-97)
+- UI: `ProductDetails` onLoad **ต่อท้าย** chain เดิมด้วย `pendingViewProductId` + `recordProductView` (0-arg, PT-09) ไม่หน่วงการแสดงหน้า · `MyPostSwipeableRow` รับ `viewCount` วาด "ดู N ครั้ง" (PT-47)
+
+**ข้อจำกัด:** ไม่มีประวัติก่อนวันที่ 2026-10-25 · ตัวเลขใน `MyPost` ไม่อัปเดตสด · ตารางล็อกโตตามการดู (ยังไม่มี retention) · แจ้งเตือนไม่มีปุ่มพาไปสินค้า (D-89) · `Notifications` ไม่มีไอคอนเฉพาะ type นี้ (banner ใช้กระดิ่งสีหลัก)
+
+**ผลทดสอบ:** V-22 · pattern PT-47

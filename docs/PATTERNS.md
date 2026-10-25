@@ -929,3 +929,16 @@ CallCustomAction(fn, outputAs: 'err'),
 5. รีเซ็ตตัวกรองตอนเข้าหน้า: `UpdateAppState.set(field, '')` ใน `editPageOnLoad` ใช้ได้ (compile เป็น `FFAppState().x = ''`)
 
 **ใช้แล้วที่:** `Notifications` (D-98) — เช็คก่อนใส่ตัวกรอง/sort ให้หน้าที่มี Realtime + refetch หลายจุด
+
+---
+
+## PT-47 — เพิ่ม parameter ให้ custom widget ที่อยู่ใน itemBuilder เดิม โดยไม่สร้าง ListView ใหม่ (D-99, 2026-10-25)
+
+PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuilder เดิมด้วย typed DSL ไม่ได้ ต้อง `ensureReplaced` ทั้ง ListView (one-shot, เสี่ยง key drift) — **ไม่จำเป็น** ถ้าแค่เพิ่ม argument ให้ custom widget ที่มีอยู่แล้ว:
+1. push แรก: `custom_code_helpers.updateCustomWidget(project, name:, code:, parameters: [...เดิม, FFParameter(identifier: FFIdentifier(name:, key: generateRandomAlphaNumericString()), dataType: FFDataTypeV2(scalarType: FFBaseDataType.Integer))])` — แก้โค้ดด้วย `replaceFirst` + assert ว่าพบ anchor (ดึงโค้ดที่เก็บจริงจาก `w.code` ก่อน อย่าเดาจากไฟล์ที่ generate)
+2. push ที่สอง (แยกจากข้อ 1): raw เติม `node.parameterValues.parameterPasses[<paramKey>]` ที่ node `CustomWidget` ในแถว — โคลนรูปแบบของ argument เดิม (`variable.source=GENERATOR_VARIABLE`, `operations:[accessPostgresRowField{fieldIdentifier.name}]`, `nodeKeyRef` = key ของ ListView) แล้ว `parameterValues.clear(); mergeFromProto3Json(map)` · คอลัมน์ต้อง register ใน typed schema ก่อน (`addTableField`) · key ของ ListView/แถวไม่เปลี่ยน · rerun-safe ด้วยการเช็ค key ใน map
+3. ค่าจาก Postgres row เป็น nullable เสมอ (D-80) → parameter ประกาศ `int?` แล้ว `?? 0` ในโค้ด
+
+**อย่าเก็บตัวนับที่ถี่ ๆ บนตารางที่อยู่ใน `supabase_realtime`** (เช่น `products`) — ทุก UPDATE ยิง event ให้ทุก subscriber · ใช้ตารางล็อกแยก + view ที่คำนวณ (ข้อ 1 ของ PT-42 ใช้ได้กับ aggregate)
+
+**ใช้แล้วที่:** `MyPost` `viewCount` (D-99)

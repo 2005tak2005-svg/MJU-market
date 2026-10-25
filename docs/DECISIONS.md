@@ -1993,4 +1993,6 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - `Row_suz2yjiv` padding ซ้าย 16 / ขวา 16 / ล่าง 88 (พ้น FAB) · `safeArea` ของ Scaffold เปิดอยู่แล้ว ไม่ต้องแตะ
 - `ON_PULL_TO_REFRESH` บน `Column_c9hhqcqa`: query `products_review_view` (pending) → `pendingProducts`, `admin_sales_by_seller` → `sellerSales`, แล้ว `RefreshDatabaseRequest` ของ query ระดับหน้า (`admin_dashboard_stats` ที่ Scaffold) เป็นขั้นสุดท้าย · ยืนยันจาก `generated_code/`: `RefreshIndicator` ห่อนอก `SingleChildScrollView`, `requestCompleter` + `waitForRequestCompleted()`
 
+- **หัวตาราง สินค้ารอตรวจสอบ (ตามมา, `dsl/admin_pending_header.dart`):** หัวเดิม 4 คอลัมน์ (ผู้ขาย/วันที่ลงขาย/สถานะ/รายละเอียด) ไม่มีข้อมูลรองรับในแถว → แทนด้วย 2 คอลัมน์ "สินค้า / ผู้ขาย" (Expanded) + "ตรวจสอบ" (กว้าง 92 = ปุ่ม 40+12+40 จัดกลาง) · padding ซ้าย/ขวา 24 ให้ตรงขอบในของแถว (12+12) · one-shot: `ensureReplaced` เปลี่ยนคีย์ `Row_4s8gmwfj` → `Row_pendhdr001`
+
 **ทางที่ไม่เลือก:** แปลง Row เป็น `Wrap` (ต้องย้าย/ลบ widget + ไอคอน/ตัวเลขในการ์ดต้องย่อ ความเสี่ยง key drift สูงกว่า) · pattern PT-50

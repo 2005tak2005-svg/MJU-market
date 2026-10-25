@@ -1983,3 +1983,14 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อมูลเดิม:** ลบแถวว่าง 6 แถว (id 53, 56, 89–92; ห้อง 13 และ 22) แล้วตาม pete — `chat.last_message` ของสองห้องมาจากข้อความจริงอยู่แล้ว ไม่กระทบ · **ข้อจำกัด:** ข้อความตัวอักษรไม่เคยมีบั๊กนี้ (ปุ่มส่งมี `If` ข้อความไม่ว่างอยู่แล้ว)
 
 **ผลทดสอบ:** V-25 · pattern PT-49
+
+## D-103 — `HomeAdmin`: pull-to-refresh + การ์ดสถิติเลื่อนแนวนอน + กันขอบจอ (2026-10-25)
+
+**ปัญหา (pete, จอมือถือ):** การ์ดสถิติ 3 ใบใน `Row_zau657ld` ถูกบีบจนข้อความซ้อน/ตกบรรทัดละตัวอักษร (การ์ด "ผู้ใช้ทั้งหมด"/"รอตรวจ" เป็น `Expanded` flex 1, การ์ด "ผู้ใช้ถูกระงับ" ไม่ใช่ จึงแย่งที่กัน) · เนื้อหาชิดขอบขวา (`Row_suz2yjiv` มี padding ซ้าย 16 อย่างเดียว) · FAB ทับแถวสุดท้ายของรายการรอตรวจ · ไม่มีวิธี refresh
+
+**แก้:** (`dsl/admin_home_layout.dart`, ไม่มีการเปลี่ยน DB)
+- การ์ดทั้ง 3 ใบ: ยกเลิก `Expanded`, กว้าง 200 × สูง 100 เท่ากัน · `Row_zau657ld` `scrollable` แนวนอน (เหมือนแถวชิปใน `Notifications`)
+- `Row_suz2yjiv` padding ซ้าย 16 / ขวา 16 / ล่าง 88 (พ้น FAB) · `safeArea` ของ Scaffold เปิดอยู่แล้ว ไม่ต้องแตะ
+- `ON_PULL_TO_REFRESH` บน `Column_c9hhqcqa`: query `products_review_view` (pending) → `pendingProducts`, `admin_sales_by_seller` → `sellerSales`, แล้ว `RefreshDatabaseRequest` ของ query ระดับหน้า (`admin_dashboard_stats` ที่ Scaffold) เป็นขั้นสุดท้าย · ยืนยันจาก `generated_code/`: `RefreshIndicator` ห่อนอก `SingleChildScrollView`, `requestCompleter` + `waitForRequestCompleted()`
+
+**ทางที่ไม่เลือก:** แปลง Row เป็น `Wrap` (ต้องย้าย/ลบ widget + ไอคอน/ตัวเลขในการ์ดต้องย่อ ความเสี่ยง key drift สูงกว่า) · pattern PT-50

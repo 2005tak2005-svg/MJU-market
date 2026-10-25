@@ -954,3 +954,15 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 5. คอมโพเนนต์ที่อ้าง App State ที่เพิ่งประกาศ: ต้อง push ประกาศ state ก่อน → `refresh-workspace` → ค่อยเขียนคอมโพเนนต์ด้วย `AppState(ff.AppState.x)` (ใช้ชื่อ string ดิบ compile ไม่ผ่าน)
 
 **ใช้แล้วที่:** `ReviewReceivedCard` (D-101)
+
+---
+
+## PT-49 — action ที่ตามหลัง `UploadData` รันแม้ผู้ใช้ยกเลิกเลือกไฟล์ + ค่าอัปโหลดค้างใน model (D-102, 2026-10-25)
+
+1. codegen ของ `UploadData` ห่อเฉพาะตัวอัปโหลดใน `if (selectedMedia != null && ...)` · **ทุก action ถัดไปในเชนรันเสมอ** แม้ยกเลิก (URL เป็น `''`) → insert/ส่งค่าว่างได้ · ต้องครอบขั้นถัดไปด้วย `If` เอง
+2. `uploadedFileUrl_<actionName>` ใน model **ไม่ถูกล้างหลังใช้** และ `SetState` เขียนทับ widget-state นี้ไม่ได้ → ยกเลิกหลังเคยอัปโหลดสำเร็จ = ได้ URL เดิม (ส่งซ้ำ) · แก้ด้วย page state `lastSent…` : guard `pending ไม่ว่าง` และ `pending ≠ lastSent` แล้วตั้ง `lastSent ← pending` ก่อนใช้ (ใช้ได้เมื่อ URL แต่ละครั้งไม่ซ้ำ)
+3. **ครอบ chain เดิมโดยไม่สร้างใหม่ (raw):** หา `FFActionNode` ด้วย key → `jsonEncode(node.followUpAction.toProto3Json())` → สร้าง If (JSON) ที่ฝัง JSON นั้นเป็น `followUpAction` ของ node ในสุด → `capture.clearFollowUpAction(); capture.followUpAction = FFActionNode()..mergeFromProto3Json(json)` · เหตุที่ไม่ใช้ `ensureActions` เขียนทั้งก้อน: `UploadData` มี bucket/path ที่ DSL ไม่แสดงและ regenerate ไม่ได้ (PT-12 ข้อ 1)
+4. รูปแบบ JSON ที่ validate ผ่าน: เงื่อนไข "ไม่ว่าง" = `functionCall{values:[stateVar], condition:{relation:'EXISTS_AND_NON_EMPTY'}}` (รูปเดียวกับปุ่มส่งข้อความ) · "ไม่เท่ากัน" = `operations:[{negate:{}}]` + `EQUAL_TO` สองค่า · state var = `{source:'LOCAL_STATE', baseVariable:{localState:{fieldIdentifier:{name,key}, stateVariableType:'WIDGET_CLASS_STATE'}}, nodeKeyRef:{key:<Scaffold key>}}`
+5. **เสริมที่ DB เสมอ:** CHECK "ไม่ NULL" ไม่พอ ต้อง `btrim(col) <> ''` ด้วย (`''` ไม่ใช่ NULL)
+
+**ใช้แล้วที่:** `chatMessages` `AttachImageButton` (D-102) — เช็คทุกครั้งที่มี `UploadData` ตามด้วย insert/update (เช่น `addproduct` รูปสินค้า, อวาตาร์ `ProfileUser`)

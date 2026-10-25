@@ -262,13 +262,14 @@ FOREIGN KEY (user_id) REFERENCES "Profile"(id) ON DELETE CASCADE
 FOREIGN KEY (ref_product_id) REFERENCES products(id) ON DELETE CASCADE
 FOREIGN KEY (ref_chat_id) REFERENCES chat(id) ON DELETE CASCADE
 
-CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed','product_popular'))  -- notifications_type_check
+CHECK (type IN ('listing_approved','listing_rejected','account_banned','account_unbanned','chat_message','sale_confirmed','product_popular','review_received'))  -- notifications_type_check
 CHECK (category IN ('user','admin','system'))                                                              -- notifications_category_check (D-98)
 CHECK (type <> 'chat_message' OR ref_chat_id IS NOT NULL)                                                   -- notifications_chat_ref_check
 ```
 
 - `ref_product_id` nullable โดยตั้งใจ (แก้บล็อกเดิมของ P-07 ดู D-23) · `ref_chat_id` nullable — ใช้เฉพาะ `type='chat_message'`
 - `type` CHECK: มี path เขียนจริงแล้ว 3 ตัว — `listing_rejected` (จาก `RejectProductSheet`), `account_banned`/`account_unbanned` (จาก RPC `admin_set_user_ban`, D-52) · `listing_approved` เผื่อไว้ ยังไม่มี path เขียน · `chat_message` เขียนโดย trigger `trg_notify_chat_message` (D-90) — `title` = ชื่อผู้ส่ง, `body` = ข้อความ (ตัด 100 ตัวอักษร) หรือ `📷 ส่งรูปภาพ` · ต่อผู้รับ+ห้องเหลือแถว unread 1 แถว (แถว unread เก่าถูกลบแล้ว INSERT แถวใหม่ทุกข้อความ)
+- `review_received` (D-100): trigger `trg_notify_review_received` บน `reviews` ส่งให้ผู้ถูกรีวิว (`reviewee_id` = ผู้ขาย) ทุกครั้งที่ผู้ซื้อให้ดาว · `title` "มีผู้ซื้อให้คะแนนคุณ" · `body` `<ชื่อผู้รีวิว> ให้ ★★★★ (4 ดาว) · สินค้า "<ชื่อสินค้า>"` · `ref_product_id` = สินค้าของธุรกรรมนั้น
 - `product_popular` (D-99): trigger `trg_notify_product_popular` ส่งให้เจ้าของเมื่อ `product_views` ของสินค้าครบ 10 · `ref_product_id` = สินค้านั้น · unique partial index `notifications_product_popular_once (ref_product_id) WHERE type='product_popular'` กันแจ้งซ้ำ/กดพร้อมกัน
 - `category` (D-98): `user` = แชทที่ผู้ส่งเป็น user · `admin` = แชทที่ผู้ส่ง `role='admin'` · `system` = ทุก type อื่น (เป็น DEFAULT — ตัวเขียนเดิมไม่ต้องแก้) · ตั้งค่าเฉพาะใน `notify_chat_message()` · ใช้กรองหน้า `Notifications` · `sale_confirmed` เขียนโดย migration `notify_buyer_sale_confirmed` (D-95)
 - 🔴 `account_banned`/`account_unbanned` มี `ref_product_id = NULL` เสมอ (ไม่มี `ref_user_id` และไม่ได้เพิ่ม — ตัวผู้รับคือ `user_id` อยู่แล้ว)
@@ -1151,6 +1152,12 @@ $$;
 
 - `AFTER INSERT ON product_views FOR EACH ROW` · `SECURITY DEFINER` · ถ้ายอดของสินค้านั้น `>= 10` INSERT `notifications` (`type='product_popular'`, `user_id` = เจ้าของ, `title` "ประกาศของคุณมีคนสนใจ", `body` ชื่อสินค้า + "มีผู้เข้าดูครบ 10 ครั้งแล้ว") `ON CONFLICT DO NOTHING` (ครั้งเดียวต่อสินค้า) · ห่อ `EXCEPTION WHEN OTHERS` — แจ้งเตือนพังไม่ทำให้บันทึกการดูล้ม
 - ไม่มี grant ให้ใคร (เรียกโดย trigger เท่านั้น)
+
+### `private.notify_review_received()` + trigger `trg_notify_review_received` (L6/L7, เพิ่ม 2026-10-25, D-100)
+
+- `AFTER INSERT ON reviews FOR EACH ROW` · `SECURITY DEFINER SET search_path TO ''` · INSERT `notifications` (`type='review_received'`, `user_id = NEW.reviewee_id`, `ref_product_id` = `transactions.product_id`) · ชื่อผู้รีวิวจาก `"Profile".full_name` (ไม่มี → "ผู้ซื้อ") · ห่อ `EXCEPTION WHEN OTHERS` — แจ้งเตือนพังไม่ทำให้ส่งรีวิวล้ม
+- `UNIQUE (transaction_id, reviewer_id)` ของ `reviews` ทำให้ 1 รีวิว = 1 แจ้งเตือน · ไม่ backfill รีวิวเก่า · `category` = `system` (DEFAULT)
+- ไม่มี grant ให้ใคร (เรียกโดย trigger เท่านั้น) · `private.push_notification_to_ntfy` เพิ่มแท็ก `eyes` (`product_popular`) / `star` (`review_received`)
 
 ### `private.enforce_ban_admin_only()` + trigger `enforce_ban_admin_only` (L8, เพิ่ม 2026-08-21, D-52)
 

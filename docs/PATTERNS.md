@@ -917,3 +917,15 @@ CallCustomAction(fn, outputAs: 'err'),
 - เป็น one-shot (`app.customAction`) — รันซ้ำ throw duplicate ใช้ `updateCustomAction` แก้ภายหลัง
 
 **ใช้แล้วที่:** `startInAppNotificationBanner` (`dsl/in_app_banner.dart`)
+
+---
+
+## PT-46 — ใส่ตัวกรองให้หน้าที่ refetch หลายจุด: รวมเป็น custom action เดียว + สลับเนื้อ query เดิมแบบ in-place + แทรก widget เหนือ body (D-98, 2026-10-25)
+
+1. **หน้าที่ดึงรายการซ้ำหลายจุด (onInit / `ON_DATA_CHANGE` / แตะแถว) แบบ "ชิปละ query" ใช้ไม่ได้** — ทุกจุด refetch ต้องรู้ตัวกรอง ไม่งั้น Realtime หรือแตะแถวรีเซ็ตกลับเป็นทั้งหมด และกิ่ง query ชน limit 5 output ต่อ widget (PT-31) → ทำ custom action 0-arg (PT-09) ที่อ่านตัวกรองจาก App State แล้วคืน `List<TableRow>` (PT-33) ให้ทุกจุดเรียกตัวเดียวกัน · ชิปแค่ `UpdateAppState.set` + เรียก action + `SetState`
+2. **สลับ `PostgresQuery` เดิมเป็น custom action โดยคง chain รอบข้าง:** หา `FFAction` ด้วย key (inner `action.key` ไม่ใช่ `rootAction.key`) → `act.clearDatabase(); act.customAction = FFAction()..mergeFromProto3Json({'customAction': {'customActionIdentifier': {name, key}, 'argumentValues': {}}}).customAction` — คง `key` + `outputVariableName` เดิม `SetState` ที่อ้าง output ยังถูกโดยไม่ต้องแตะ · ใช้กับ node ที่อยู่ใน `databaseRequest` trigger / itemBuilder ซึ่ง typed DSL แก้ไม่ได้ (`Actions.unsupported`) · rerun-safe ด้วย `hasCustomAction()`
+3. **`page.ensureInsertedBefore(ListView ใน body)` compile/push ผ่านแต่ widget กลายเป็นลูก Scaffold ที่ codegen ไม่เรนเดอร์** (body ชี้ผ่าน `childPropertyMap['body']`) — ต้องห่อ: สร้าง `Column`, ย้ายทั้งแถวใหม่และ ListView เข้าไป, ตั้ง `ListView.props.expanded`, `scaffold.childPropertyMap['body'] = FFChildrenKeys(keyRefs: [FFNodeKeyReference(key: …)])` ย้าย node (ไม่ clone) → key เดิมของ ListView คงอยู่ generator ref ไม่พัง · ตรวจจาก `generated_code/` ด้วยข้อความบนปุ่ม (ชื่อ widget ไม่ปรากฏในโค้ด)
+4. `updateCustomAction(project, name:, code:)` (helper `custom_code_helpers`) แก้โค้ด action ที่มีอยู่ — `app.customAction` ซ้ำชื่อ throw
+5. รีเซ็ตตัวกรองตอนเข้าหน้า: `UpdateAppState.set(field, '')` ใน `editPageOnLoad` ใช้ได้ (compile เป็น `FFAppState().x = ''`)
+
+**ใช้แล้วที่:** `Notifications` (D-98) — เช็คก่อนใส่ตัวกรอง/sort ให้หน้าที่มี Realtime + refetch หลายจุด

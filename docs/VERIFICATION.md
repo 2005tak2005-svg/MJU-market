@@ -354,3 +354,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - `get_advisors(security)`: finding ใหม่ 2 รายการที่ตั้งใจ (`rls_enabled_no_policy` INFO บน `product_views`, `authenticated_security_definer_function_executable` WARN บน `record_product_view`)
 - FlutterFlow: `generated_code/` — `ProductDetails` onLoad ต่อท้ายด้วย `FFAppState().pendingViewProductId = widget!.productId` → `actions.recordProductView()` · `MyPostSwipeableRow(viewCount: myPostsListItemItem.viewCount)` · widget มี `viewCount` + `'ดู ${widget.viewCount ?? 0} ครั้ง'`
 - **ไม่ได้ทดสอบ:** แอปจริง (เปิดสินค้าของคนอื่นแล้วยอดขึ้นใน `MyPost`, เจ้าของเปิดเองไม่ขึ้น, ครบ 10 แล้ว banner/แจ้งเตือนเด้ง) · Dart analyzer (ไม่มี `flutter`)
+
+### V-23 · แจ้งเตือนผู้ขายเมื่อได้รับรีวิว (D-100, 2026-10-25)
+
+- DO block + `RAISE EXCEPTION` (rollback) INSERT รีวิวในนามผู้ซื้อ (`SET LOCAL ROLE authenticated` + jwt) ผ่าน RLS ปกติ → แจ้งเตือน 1 แถว `type=review_received`, `user_id` = ผู้ขาย, `ref_product_id` = สินค้าของธุรกรรม, `category=system`, `title` "มีผู้ซื้อให้คะแนนคุณ", `body` `สุชานันท์ ให้ ★★★★ (4 ดาว) · สินค้า "เก้าอี้สำนักงาน ปรับระดับได้"` (ชื่อผู้รีวิว/สินค้าตรงข้อมูลจริง) · ผู้ขายอ่านแถวนี้ผ่าน RLS ปกติได้
+- หลัง rollback: `reviews` ยัง 2 แถว · `review_received` 0 แถว · `trg_notify_review_received` และ `trg_push_notification_ntfy` `tgenabled='O'` · `has_function_privilege` ของ `notify_review_received` anon/authenticated = false
+- (ผู้ซื้อที่ถูกแบนถูก `reviews_block_banned_insert` กันตามเดิม — ไม่เกี่ยวกับ trigger)
+- **ไม่ได้ทดสอบ:** แอปจริง (ผู้ซื้อให้ดาวแล้วผู้ขายเห็นแถว/banner) · ntfy ของ type นี้ (ทดสอบใน rollback ไม่ส่งจริง)

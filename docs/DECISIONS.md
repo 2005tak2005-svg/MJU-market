@@ -1945,3 +1945,13 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ข้อจำกัด:** ไม่มีประวัติก่อนวันที่ 2026-10-25 · ตัวเลขใน `MyPost` ไม่อัปเดตสด · ตารางล็อกโตตามการดู (ยังไม่มี retention) · แจ้งเตือนไม่มีปุ่มพาไปสินค้า (D-89) · `Notifications` ไม่มีไอคอนเฉพาะ type นี้ (banner ใช้กระดิ่งสีหลัก)
 
 **ผลทดสอบ:** V-22 · pattern PT-47
+
+## D-100 — แจ้งเตือนผู้ขายเมื่อผู้ซื้อให้ดาว (2026-10-25)
+
+**ตัดสินใจ (pete):** เมื่อผู้ซื้อให้ดาวผู้ขาย ส่งแจ้งเตือนกลับถึงผู้ขาย ระบุว่าใครรีวิว กี่ดาว และสินค้าตัวไหน เก็บในหน้า `Notifications`
+
+**ออกแบบ:** trigger `AFTER INSERT` บน `reviews` → `notifications.type='review_received'` (`private.notify_review_received`, รูปแบบเดียวกับ `notify_sale_confirmed` ฝั่งผู้ซื้อ) · ทำที่ DB ล้วน ไม่แตะ FlutterFlow — หน้า `Notifications` แสดง `title`/`body` อยู่แล้ว, แถวอยู่ใต้ชิป "ระบบ" (D-98), banner (D-88)/กระดิ่ง/ntfy (D-96) ทำงานเอง · ใช้ `reviewee_id` เป็นผู้รับ (ตรวจแล้ว 2/2 รีวิวคือผู้ซื้อให้ผู้ขาย) · `UNIQUE (transaction_id, reviewer_id)` กันซ้ำ
+
+**ข้อจำกัด:** ไม่ backfill รีวิวเก่า · ไม่แสดงข้อความรีวิว (`comment`) ในแจ้งเตือน · แถวไม่มีไอคอน/ปุ่มพาไปสินค้า (D-89) banner ใช้กระดิ่งสีหลัก
+
+**ผลทดสอบ:** V-23

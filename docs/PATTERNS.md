@@ -1015,3 +1015,14 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 5. ONE-SHOT (PT-16): `ensureInsertedInto`/`ensureMovedTo` ห้าม rerun หลัง push สำเร็จ
 
 **ใช้แล้วที่:** `chatMessages` (D-108)
+
+## PT-55 — ปุ่มลัด "ส่งรูปที่เก็บไว้ในโปรไฟล์" + อัปโหลดรูปแยกด้วยกลไกเดียวกับอวาตาร์ (D-110, 2026-10-26)
+
+1. **อ่านค่าของผู้ใช้เอง (เช่น URL รูป) ใน action ของหน้าอื่นโดยไม่เพิ่ม state/onLoad:** เพิ่มคอลัมน์ท้าย **view ที่หน้านั้นโหลดเป็น state ลิสต์อยู่แล้ว** (`COALESCE((SELECT col FROM "Profile" WHERE id = auth.uid()), '')` + boolean `has_…`) แล้วใช้ `ListView(source: State('<ลิสต์เดิม>'))` เป็นตัวกั้น + `visible: Equals(item['has_…'], true)` + `item['…']` ใน `onTap` (PT-23/PT-43) · เลี่ยงชนเพดาน output variable 5 ตัวต่อ widget (PT-31) · view ต้อง `security_invoker` (RLS แถวตัวเอง) · ไม่มีใน action chain ที่อ่านฟิลด์จากผล `PostgresQuery` ตรง ๆ ในโปรเจกต์นี้ (ทุกที่ `SetState` ทั้งลิสต์)
+2. **ปุ่มแบบ "โผล่เฉพาะคนที่ตั้งค่าไว้แล้ว"** = ListView ใน `Column` + `shrinkWrap` → 0 แถว = สูง 0 ไม่ต้องมีสถานะว่าง · แถวเดียวต่อห้อง เพราะ view ผูก `chat c` และหน้ากรอง `chat_id` · เตือน R19 (shrinkWrap) ของ validate เป็นคำเตือนเดิมของหน้า ไม่ใช่ error
+3. **ส่งรูปที่มี URL อยู่แล้ว = `PostgresCreate chat_message(image_url)` + `PostgresQuery chat_messages_view` + `SetState messages`** เหมือนปุ่มส่ง/แนบรูป (ใช้ `outputAs` ชื่อใหม่ไม่ซ้ำข้าม widget — PT-30) ไม่ผ่าน `UploadData` จึงไม่ต้องมี guard PT-49
+4. **โคลนกลไกอัปโหลดรูปโปรไฟล์ไปที่รูปอื่น:** สร้าง `UploadData(destination: supabase, actionName:, key:)` + `SetState(state, ActionResult.uploadUrl(<key เดียวกัน>, nodeKey: <container ที่ถือ action>))` ใน DSL (อ้าง key เดียวกันใช้ได้ ไม่ต้องใช้ key ภายในแบบอวาตาร์) แล้ว **ตั้ง bucket/ความละเอียดผ่าน raw ใน `app.raw`**: `_findActionNode(page.node, key).action.uploadData` → `clear()` + `mergeFromProto3Json({settings:{maxResolution, imageQuality…}, destination:'SUPABASE', supabase:{storageBucket:{inputValue:{serializedValue:'<bucket>'}}, storageFolderPath: <auth USER_ID>}, actionName})` (`app.raw` รันหลัง `editPage` ในสคริปต์เดียวกัน เห็น node ที่เพิ่งสร้าง) · ตรวจจาก `generated_code/`: `uploadSupabaseStorageFiles(bucketName: '<bucket>')`
+5. **รูป "ที่บันทึกไว้" ผูก query ระดับหน้า:** `FFVariable` JSON `{source:'POSTGRES_QUERY', baseVariable:{postgresQuery:{}}, operations:[{accessPostgresRowField:{fieldIdentifier:{name}}}], nodeKeyRef:{key:<Scaffold>}}` → `node.props.image.pathValue` · เงื่อนไข "มี/ไม่มี" = `FUNCTION_CALL` + `condition EXISTS_AND_NON_EMPTY` (+ `operations:[{negate:{}}]` สำหรับ placeholder) · สร้าง node ด้วย path ชั่วคราวก่อนแล้ว bind ใน `editPage` บล็อกถัดไป
+6. **bucket ใหม่ต้องเช็ค `cleanup-orphan-storage`:** ฟังก์ชันสแกนเฉพาะ `product-images`/`avatars` และถือไฟล์ที่ไม่ถูกอ้างเป็นกำพร้า → อย่าเอาข้อมูลชนิดอื่นไปเก็บใน bucket ที่ถูกสแกน · bucket public ไม่ต้องมี policy SELECT สาธารณะก็เสิร์ฟ URL ตรงได้ (ไม่มี policy = list ไม่ได้)
+
+**ใช้แล้วที่:** `ProfileUser` `PaymentQrSection` + `chatMessages` `PaymentQrShortcut` (D-110)

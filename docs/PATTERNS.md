@@ -1005,3 +1005,13 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 4. **DSL ไม่มี param สีของ ProgressBar** — ค่าปริยาย: แท่ง `PRIMARY`, ราง `ACCENT_4` (ขาวโปร่ง มองไม่เห็นบนการ์ดขาว) · ปรับด้วย `mutateNode`: `node.props.progressBar = node.props.progressBar.deepCopy()..mergeFromProto3Json({'backgroundColorValue': {'inputValue': {'themeColor': 'ALTERNATE'}}, 'animationValue': {'inputValue': true}})` · 🔴 `ensureReplaced` บน `ListView` ได้คีย์ใหม่ทั้งตัว list (`ListView_p2fqpatn` → `ListView_nqvjnz7q`) และลูกทุกตัว (`ProgressBar_opwakogf`) — ดูคีย์ใหม่จาก `inspect --node <name> --raw` ก่อนพุชถัดไป
 
 **ใช้แล้วที่:** `HomeAdmin` `SalesBySellerList` (D-107)
+
+## PT-54 — วอลล์เปเปอร์/ลายพื้นหลังใต้ลิสต์: `Stack` + PNG โปร่งใส + ย้าย node เดิมเข้า Stack (D-108, 2026-10-26)
+
+1. **DSL ไม่มี background image / image repeat / `Positioned`** (`docs grep backgroundImage|Positioned` ว่าง) → ลายพื้นหลัง = **รูป PNG โปร่งใสขนาดเต็มจอใบเดียว** (วาดลายลงรูปเองด้วย Pillow) ใส่เป็นลูกลำดับแรกของ `Stack`: `Image(path, isNetwork: false, fit: ImageFit.cover, width: double.infinity, height: double.infinity, opacity: x)` แล้ววาง widget จริงทับ · path ของ asset = ค่าที่ `flutterflow ai assets upload <id> <file> --name <ชื่อ>` พิมพ์ออกมา (`projects/.../assets/<hash>/<ชื่อ>`) ไม่ใช่ `assets/images/...`
+2. **พื้นหลังคงเป็น token เดิม (`primaryBackground`) + ลายโปร่งใส** → โหมดมืดไม่ต้องทำสองชุด · **ความจางตั้งที่ `opacity:` ของ Image ไม่ใช่ alpha ในรูป** (codegen = `Opacity(Image.asset)`) จูนทีหลังได้โดยไม่อัปโหลดใหม่
+3. **ย้าย widget เดิมเข้า Stack โดยไม่แตะ action:** `ensureInsertedInto(body, Expanded(Stack(children: [Image])), index: 0)` (สร้างปลายทางก่อน) → `ensureMovedTo(listView, stack, index: 1)` → `mutateNode(listView, (n) { n.props.clearExpanded(); })` 🔴 `Expanded` เป็น property ของ node ลูก (`props.expanded`) ถ้าไม่ถอดหลังย้ายเข้า Stack จะได้ `Expanded` ใน Stack (ParentData ผิด → พังตอนรัน) · คีย์ node ที่ย้ายคงเดิม → trigger/binding/Realtime ไม่ต้องแก้
+4. `validate` สรุปแค่ "Added 2 widget(s)" ไม่นับการย้าย/mutate → ยืนยันผลด้วย `inspect --outline` + อ่าน `generated_code/` (ต้องเห็น `Expanded > Stack > [Opacity > Image.asset, ListView.builder]` และไม่มี `Expanded` ค้างบน ListView) · `ensureWrappedWith` ห่อได้แค่ Container/Card จึงใช้สร้าง Stack ไม่ได้
+5. ONE-SHOT (PT-16): `ensureInsertedInto`/`ensureMovedTo` ห้าม rerun หลัง push สำเร็จ
+
+**ใช้แล้วที่:** `chatMessages` (D-108)

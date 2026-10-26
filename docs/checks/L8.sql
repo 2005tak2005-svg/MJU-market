@@ -108,3 +108,9 @@ SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='notifications
 SELECT p.email, p.is_banned, p.ban_reason, p.banned_at, b.email AS banned_by_email
   FROM public."Profile" p LEFT JOIN public."Profile" b ON b.id = p.banned_by
  WHERE p.is_banned;
+
+-- D-107: อันดับบน admin_sales_by_seller (รันในฐานะแอดมิน — user ธรรมดาต้องได้ 0 แถว)
+-- SELECT count(*) AS bad_rank FROM public.admin_sales_by_seller WHERE sales_rank <> (SELECT count(*) + 1 FROM public.admin_sales_by_seller x WHERE x.total_sales > admin_sales_by_seller.total_sales);  -- ต้อง 0
+-- SELECT count(*) AS bad_share FROM public.admin_sales_by_seller WHERE sales_share < 0.03 OR sales_share > 1;                                          -- ต้อง 0
+-- SELECT count(*) AS bad_top3 FROM public.admin_sales_by_seller WHERE is_top3 <> (sales_rank <= 3);                                                     -- ต้อง 0
+-- SELECT max(sales_share) AS leader_share FROM public.admin_sales_by_seller;                                                                            -- ต้อง 1.0000 (ถ้ามีข้อมูล)

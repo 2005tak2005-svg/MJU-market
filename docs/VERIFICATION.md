@@ -393,3 +393,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - FlutterFlow `generated_code/`: `custom_widgets.ProfileStatsRow()` ในการ์ดหัว · `custom_widgets.ProfileSalesChart()` ใต้การ์ดหัว · `SingleChildScrollView` + `Column(stretch)` · มุมโค้ง 28 ครบ · action เดิมครบ (อัปโหลดรูป `uploadSupabaseStorageFiles`, สลับฟอร์ม `isEditingProfile`, `MyPurchasesWidget`, `authManager.signOut`) · `triggers` 11 เท่าเดิม
 - ตรรกะ widget (Dart ล้วน, `--enable-asserts`) กับ JSON จริง: 7 วัน = `อ=0 พ=38900 พฤ…จ=0`, ป้าย "พุธ 21 ต.ค." / "ต.ค. 2569", ความสูงแท่ง 6.0/96.0, ข้อมูล null/ผิดรูป/ว่างไม่ throw
 - **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · Dart analyzer ของ custom widget (ไม่มี `flutter`) · ผู้ใช้ที่ไม่เคยขาย/ไม่มีแชทเลยบนอุปกรณ์จริง (ตรวจเฉพาะ SQL: คืน 0/[] ไม่ error)
+
+### V-28 · อันดับยอดขายผู้ขาย `admin_sales_by_seller` (D-107, 2026-10-26)
+
+- แอดมิน (`authenticated`, sub = แอดมินจริง): 4 แถว เรียง 38,900 / 200 / 30 / 20 → `sales_rank` 1–4, `is_top3` true/true/true/false, `sales_share` 1.0000 / 0.03 / 0.03 / 0.03 (ขั้นต่ำ), `total_sales_label` `38,900` · `200` · `30` · `20`
+- user ธรรมดา (`5f96…`): **0 แถว** — gate `private.is_admin()` ยังทำงาน (ไม่รั่วข้อมูลยอดขาย) · `reloptions = security_invoker=true` คงเดิม
+- FlutterFlow `generated_code/lib/home_admin/home_admin_widget.dart`: `sellerSaleItem.salesRank` (×4 badge) · `isTop3` · `totalSalesLabel!` · `LinearPercentIndicator(percent: sellerSaleItem.salesShare!, backgroundColor: alternate, animation: true)` · `_model.sellerSales = refreshedSellerSales` (ดึง refresh ยังต่ออยู่) · `triggers` 16 เท่าเดิม
+- **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · กรณีผู้ขาย ≥ 10 คน และยอดเท่ากัน (ตรวจเฉพาะ SQL ตามตรรกะ `rank()`)

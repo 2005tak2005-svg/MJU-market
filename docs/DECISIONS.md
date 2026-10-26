@@ -2054,3 +2054,20 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 - push 3 พุช `dsl/rank_step1…3.dart` (register ฟิลด์ → แทน ListView → ปรับรางแท่ง) · `triggers` 16 เท่าเดิม
 
 **ข้อจำกัด:** แท่งเป็นสัดส่วนเชิงเส้นเทียบอันดับ 1 — ผู้ขายที่ยอดน้อยมากจะเท่ากันที่แท่งขั้นต่ำ (ดูตัวเลขแทน) · อันดับเสมอกันได้เหรียญเท่ากัน (`rank()`) · `onLoad` ดึงสูงสุด 10 คน (เดิม) · ไม่มีแถว "ขายได้กี่ชิ้น" (`items_sold` ยังไม่ได้แสดง) · **ยังไม่ได้ดูบนเครื่องจริง** · ก่อนหน้า: ดู D-103
+
+## D-108 — วอลล์เปเปอร์ห้องแชท: โลโก้ MJU Market เรียงสลับแถวจาง ๆ (2026-10-26)
+
+**pete สั่ง:** แปะโลโก้ร้าน (PNG เส้นเทา) เป็นสติกเกอร์จาง ๆ บนวอลล์เปเปอร์ห้องแชท ตามแพตเทิร์นภาพอ้างอิง (ลายหัวใจเรียงสลับแถว) · เปลี่ยนสีพื้นให้กลมกลืนได้
+
+**ทำ (`dsl/chat_wallpaper.dart`, FF push `vq4HcT8jPu8aJEEvD16t`, ไม่มี custom code, ไม่แตะ DB):**
+- **รูป** `chat_wallpaper.png` 1170×2000 PNG โปร่งใส — โลโก้กว้าง 50pt 3 ตัว/แถว สลับครึ่งช่วงทุกแถว (ห่างคอลัมน์ 65pt, ห่างแถว 95pt) เส้นสี `#ADABA6` (สีจริงของโลโก้) ขาว→โปร่งใส (ตา/ไส้ถุงเห็นพื้นหลัง) · อัปโหลดด้วย `flutterflow ai assets upload` · ต้นฉบับ+สคริปต์สร้าง: `mju_market_v2_ai/backup/chat_wallpaper_D108/`
+- **UI** `chatMessages`: body `Column_lfd2x6ri` → `Expanded > Stack_chatwall` [`Image_chatwall` fit cover **opacity 0.30**, `ListView_q8swv4j1` เดิมย้ายเข้ามา] · คีย์/action/Realtime ของ ListView ไม่ถูกแตะ · pattern PT-54
+- ยืนยันจาก `inspect --outline` + `generated_code/`: `Expanded > Stack > [Opacity(0.3) > Image.asset, ListView.builder]`
+
+**ไม่เปลี่ยนสีพื้น — คง `primaryBackground` (token):** (1) แอปใช้ `ThemeMode.system` เป็นค่าเริ่มต้น พื้นครีมตายตัวทำให้ข้อความ `secondaryText` ของโหมดมืดอ่านไม่ออก (2) พรีวิวบนครีม `#F4EFE6` โลโก้เทาอุ่นกลืนเกือบหมด บนม่วงอ่อน `#F6F2FF` เห็นชัดกว่าที่ opacity เท่ากัน
+
+**ปรับความจาง:** แก้ `opacity:` ของ `Image_chatwall` (ไม่ต้องอัปรูปใหม่) · 0.2 จางมาก / 0.4 ชัดเจน
+
+**ข้อจำกัด:** ลายครอบเฉพาะพื้นที่รายการข้อความ (ในกรอบ padding 14 ของ body, ไม่รวม `MarkSoldSection`/`ComposeBar`) · `fit: cover` กว้างพอดีบนจอส่วนใหญ่ จอสั้นตัดบน/ล่างของลาย · ลายอยู่กับที่ ไม่เลื่อนตามข้อความ · asset ถูกใส่ bundle ตอน FF build ไม่อยู่ใน export (เหมือน D-104) · **ยังไม่ได้ดูบนเครื่องจริง** (ไม่มี `flutter`/Live Session)
+
+**ย้อนกลับ:** ย้าย `ListView_q8swv4j1` กลับเข้า `Column_lfd2x6ri` index 0 + ตั้ง `props.expanded` แล้วลบ `Stack_chatwall`

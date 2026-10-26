@@ -619,7 +619,10 @@ CREATE VIEW public.products_review_view WITH (security_invoker = true) AS
     COALESCE(rv.avg_rating >= 4.5 AND rv.review_count >= 3, false) AS is_trusted_seller,  -- D-82: badge ผู้ขายน่าเชื่อถือ
     p.created_at > now() - interval '24 hours' AS is_new_listing,      -- D-97: ป้าย "เพิ่งลงประกาศ"
     private.is_same_faculty(p.seller_id) AS is_same_faculty,           -- D-97: ป้าย "คณะเดียวกัน"
-    private.product_view_count(p.id, p.seller_id) AS view_count       -- D-99: ยอดเข้าดู (เจ้าของ/แอดมินเห็นเลขจริง คนอื่น 0)
+    private.product_view_count(p.id, p.seller_id) AS view_count,      -- D-99: ยอดเข้าดู (เจ้าของ/แอดมินเห็นเลขจริง คนอื่น 0)
+    COALESCE(pr.avatar_url, ''::text) AS seller_avatar_url,           -- D-105: รูปโปรไฟล์ผู้ขาย ('' ถ้าไม่มี)
+    COALESCE(pr.avatar_url IS NOT NULL AND pr.avatar_url <> ''::text, false) AS seller_has_avatar,
+    CASE WHEN COALESCE(rv.review_count, 0) > 0 THEN to_char(rv.avg_rating, 'FM0.0') ELSE '-' END AS seller_rating_label  -- D-105: '4.5' / '-' ถ้ายังไม่มีรีวิว
    FROM products p
      LEFT JOIN "CAT" c ON c.id = p.category_id
      LEFT JOIN public_profiles pr ON pr.id = p.seller_id

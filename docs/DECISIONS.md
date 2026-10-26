@@ -2085,3 +2085,24 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 **ไม่เลือก:** ม่วงเข้มกว่านี้แบบสี literal — ไม่ตามโหมดมืด (พื้นเข้มใต้ข้อความเข้มอ่านไม่ออก)
 
 **ยังไม่ได้ดู:** ภาพหลังแก้ · สีไอคอนแถบสถานะ (ไม่ได้ตั้งเอง ให้ Flutter เลือกตามความสว่างของ AppBar) · โหมดมืด (ลูกศรขาว + ชื่อเกือบดำบน `#9F7AEA`)
+
+## D-110 — ปุ่มลัดส่ง QR Code รับชำระเงินในห้องแชท + อัปโหลด QR ที่โปรไฟล์ (2026-10-26)
+
+**pete สั่ง:** ผู้ขายส่ง QR ให้ลูกค้าในแชทได้ทันทีโดยไม่ต้องค้นแกลเลอรี่ · อัปโหลดรูป QR แยกต่างหากที่ `ProfileUser` (`Scaffold_8myjbpxe`) ใต้ `Container_twiyefr8` (แถว Edit Profile) ด้วยกลไกเดียวกับรูปโปรไฟล์ · ซิงค์มาที่ห้องแชท
+
+**DB (apply แล้ว, V-29, ไม่มีข้อมูลเดิมกระทบ):**
+- `"Profile".payment_qr_url text` (+CHECK ไม่ว่างเปล่า) · อ่าน/แก้ได้ตาม RLS เดิม (เจ้าของ/แอดมิน) — view สาธารณะไม่มี `select *` จึงไม่รั่ว
+- bucket ใหม่ `payment-qr` (public, 5MB, jpeg/png/webp, path `<uid>/…`) · **ไม่ใช้ `avatars`**: `cleanup-orphan-storage` ถือไฟล์ใน `avatars` ที่ไม่ถูกอ้างด้วย `avatar_url` เป็นกำพร้า (ตอนนี้ dry-run) → QR จะถูกลบเมื่อสลับเป็นลบจริง · ไม่มี policy SELECT สาธารณะ กัน list QR คนอื่น
+- `chat_sale_status_view` +`my_payment_qr_url` (`''` ถ้าไม่มี) +`has_my_payment_qr` — QR ของ `auth.uid()` เอง · **ฝัง QR ไว้ใน view ที่ `chatMessages` โหลดเป็น state `saleStatus` อยู่แล้ว** แทนสร้าง state/onLoad ใหม่ (Scaffold นี้มี output variable 4 ตัว ใกล้เพดาน 5 ของ PT-31)
+
+**UI (`dsl/payment_qr_step1.dart`, `step2.dart`; FF `nIY2kL7lYWxmoJcUnvnC`, `MWUGP5Ozgwzu35Hbmexc`, ไม่มี custom code):**
+- `ProfileUser`: `Container_pqrsec01` ต่อจาก `RenameProfileSection` (เห็นเมื่อกด Edit Profile) · แตะกรอบ → `UploadData` bucket `payment-qr` ย่อสูงสุด **1280px q90** (avatar 512 — QR ต้องคมพอให้สแกน) → state `paymentQrUrl` → ปุ่ม "บันทึก QR Code" (แสดงเมื่อมีรูปใหม่) → `PostgresUpdate Profile` · แสดงรูปที่บันทึกไว้จาก query ระดับหน้า (ไม่มี → ไอคอน placeholder) เหมือน `AvatarStoredImage`
+- `chatMessages`: `ListView_pqrgate01` (source `saleStatus`) แทรกก่อน `ComposeBar` → ชิป "ส่ง QR Code รับชำระเงิน" **โผล่เฉพาะคนที่อัปโหลด QR แล้ว** (`has_my_payment_qr`) · แตะ = insert `chat_message(image_url = QR ตัวเอง)` + refetch → ขึ้นเป็นบับเบิลรูปปกติ แตะเปิดเต็มจอได้ (`FullImageViewer` D-41) · รูปไม่ผ่านการอัปโหลดซ้ำ จึงไม่ต้องมี guard PT-49
+- ยืนยันจาก `generated_code/` ทั้งสองหน้า · pattern PT-55
+
+**ข้อจำกัด / ความเสี่ยง:**
+- **QR เป็นรูป public ใครมี URL ก็เปิดได้** (เดายาก: `<uid>/<ชื่อไฟล์>`) — เหตุเดียวกับ D-12/`chat-images`; ไม่มี signed URL · พร้อมเพย์ QR มักมีชื่อบัญชีบางส่วน
+- ไฟล์ QR เก่าที่ถูกแทนที่ค้างใน bucket (ไม่มี cleanup)
+- ชิปแสดงเมื่อโหลดห้องแชท: อัปโหลด QR ขณะเปิดห้องค้างไว้ต้องออก-เข้าห้องใหม่ · เปลี่ยน QR แล้วข้อความที่ส่งไปแล้วยังเป็นรูปเก่า
+- ส่งเงียบ ไม่มี error feedback (PT-18) · ไม่มีปุ่มลบ QR (ทำได้ด้วยการเขียนทับเท่านั้น) · ไม่มี confirm ก่อนส่ง
+- **ยังไม่ได้ดูบนเครื่องจริง** · ตำแหน่ง "ภายใต้ `Container_twiyefr8`" ตีความว่าเป็นส่วนที่เปิดต่อจากแถว Edit Profile (ไม่ใช่แถวเมนูใหม่) — ย้ายได้

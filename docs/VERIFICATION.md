@@ -410,3 +410,13 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - storage: A อัปโหลดเข้า `<uid ตัวเอง>/` ได้ · เข้า `<uid ของ B>/` ถูกปฏิเสธ
 - FlutterFlow `generated_code/`: อัปโหลด `bucketName: 'payment-qr'` · บันทึก `ProfileTable().update({'payment_qr_url': …})` กรอง `id = currentUserUid` · ชิปแชท `ChatMessageTable().insert({chat_id, user_id, image_url: saleStatuItem.myPaymentQrUrl})` + refetch `messages` · รูปโปรไฟล์ยัง `avatars`
 - **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · การอัปโหลดไฟล์จริงเข้า bucket ผ่าน Storage API (ทดสอบแค่ policy ด้วย INSERT ตรง) · ผู้ใช้ถูกแบน (RESTRICTIVE policy ของ `chat_message` ไม่ได้ทดสอบกับชิปนี้) · แอดมินเห็น/ใช้ชิปในห้องแชทแอดมินหรือไม่
+
+### V-30 · Seed ข้อมูลทดสอบ (2026-10-26)
+
+สคริปต์ `docs/seed/2026-10-26-part{1,2,3}-*.sql` + `…-cleanup.sql` (รันผ่าน `execute_sql` role `postgres`, แยก 3 ก้อน, ทุกก้อนปิด `trg_push_notification_ntfy` ภายใน transaction เดียวแล้วเปิดคืน)
+- **ได้:** สินค้า 21→45 (approved 34 / rejected 8 / pending 3) · หมวดที่มีสินค้า approved 5→11 จาก 12 · แชท 21→31, ข้อความ 69→129 · ธุรกรรม 5→9, รีวิว 3→7 · แจ้งเตือน 35→68 (unread 28) · ยอดดู 13→144 · wishlist 2→13 · โพสต์โฆษณา 2→3, ไลก์ 5→16 · ผู้ใช้ role `user` ทุกคนมี `faculty_id`
+- ปิดการขายเรียก `mark_product_sold()` จริง (ตั้ง `request.jwt.claims` = ผู้ขาย) → ได้ `transactions` + `sale_confirmed` จากทริกเกอร์ปกติ · สินค้า #04/#18 ได้ผู้ดู 10 คนต่างกัน → `product_popular` จากทริกเกอร์จริง 2 แถว
+- **ตรวจ (user ธรรมดา `88d36b1d…` เทียบ postgres):** `products_review_view` 41 = 41 แถว, `seller_name`/`category_name` NULL = 0 ทั้งสองรอบ · `get_my_chats()` 5 ห้อง (กฤตยา) · `get_my_seller_dashboard()` ผู้ขาย seed คืนยอดรายวัน/เดือน/rating จริง · ไม่มีคำขอค้างใน `net.http_request_queue`, ไม่มี response ใหม่ใน 30 นาที
+- **cleanup:** ทดสอบด้วย `RAISE EXCEPTION` ท้าย `DO` (rollback เอง) → นับกลับเท่าเดิม (สินค้า 21 / แชท 21 / ข้อความ 69 / ธุรกรรม 5 / รีวิว 3) แจ้งเตือน 34 (เดิม 35: `notify_chat_message` ลบแจ้งเตือนแชทที่ยังไม่อ่านเดิม 1 แถวในห้อง 10/17 ตอน seed) · **ยังไม่เคยรันจริง**
+- พบ: กราฟยอดขาย 7 วันของ `get_my_seller_dashboard` ว่างเมื่อการขายเก่ากว่า 7 วัน → เลื่อนเวลาปิดการขาย 4 รายการเข้าสัปดาห์นี้ · ห้องแชท 10/17 เป็นห้องเดิมของคู่เดียวกัน seed ต่อท้ายตาม find-or-create
+- **ไม่ได้ทดสอบ:** ภาพบนหน้าจอแอปจริง (รูป placeholder ของ placehold.co โหลดได้ตอน `curl` 200 แต่ยังไม่ดูใน FlutterFlow) · มุมมองแอดมิน (คิวรอตรวจ 3 รายการ, `admin_sales_by_seller`) ผ่านแอป · `listing_approved` ไม่มี path เขียนจึงไม่มีใน seed

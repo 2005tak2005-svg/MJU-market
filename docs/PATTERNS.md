@@ -996,3 +996,12 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 5. `patch.margin(...)` สร้าง wrapper container ใหม่ (ตามเอกสาร SDK) — **ยังไม่ได้ทดสอบ**กับ widget ที่ `visible` มีเงื่อนไข จึงเลี่ยง: ย้าย widget เข้า container ที่มี padding แทน · สีพื้นหัวต่อถึงขอบบน: ตั้ง Scaffold = สีเดียวกับการ์ดหัว (เพราะ `safeArea: true` เว้นแถบสถานะด้วยสีพื้น Scaffold) แล้วทำส่วนล่างเป็นแผ่นขาวมุมบนโค้ง (PT-51 ข้อ 5)
 
 **ใช้แล้วที่:** `ProfileUser` (`ProfileStatsRow`, `ProfileSalesChart`) · ต่อยอดได้กับ "ประกาศของฉัน"/รีวิวล่าสุดโดยเพิ่ม key ใน RPC เดิม
+
+## PT-53 — กราฟจัดอันดับ/แท่งสัดส่วนแบบ native: คำนวณสัดส่วนที่ view แล้วผูก `ProgressBar.linear(value:)` (D-107, 2026-10-26)
+
+1. **กราฟแท่งในลิสต์ไม่ต้องใช้ custom widget/`BarChart`** — ให้ view คืน `sales_share` (0–1) แล้วผูก `ProgressBar.linear(thickness:, value: item['sales_share'])` ใน `itemBuilder` (compile เป็น `LinearPercentIndicator(percent:)` ของแพ็กเกจ `percent_indicator` ที่โปรเจกต์มีอยู่แล้ว) · ใช้ได้เมื่อข้อมูลเป็นลิสต์ที่ query/state เดิมโหลดอยู่แล้ว (ต่างจากกราฟที่ต้องคำนวณข้ามตารางหลายชุด → PT-52)
+2. **คำนวณที่ DB:** `rank() OVER (ORDER BY sum(...) DESC)` (ใช้ window บนผล aggregate ใน `GROUP BY` เดียวกันได้) · สัดส่วน = `sum / NULLIF(max(sum(...)) OVER (), 0)` · ใส่ `GREATEST(…, 0.03)` กันแท่งหายเมื่อข้อมูลห่างกันมาก · ป้ายเงิน `to_char(x, 'FM999,999,999,990')` — DSL `Text` ไม่ format ตัวเลขเอง
+3. **เหรียญ/สีต่างกันตามอันดับ = หลาย `Container` ซ้อนแถวเดียวกัน แต่ละอัน `visible: Equals(item['sales_rank'], N)`** (DSL ไม่มีสีแบบผูกข้อมูล/ตัวเปรียบเทียบเชิงตัวเลข, PT-24 §1) · "อันดับ 4+" ใช้คอลัมน์ boolean `is_top3` แล้ว `Not(Equals(item['is_top3'], true))` · ทุก `item[...]` ต้อง inline ใน `itemBuilder` (PT-23)
+4. **DSL ไม่มี param สีของ ProgressBar** — ค่าปริยาย: แท่ง `PRIMARY`, ราง `ACCENT_4` (ขาวโปร่ง มองไม่เห็นบนการ์ดขาว) · ปรับด้วย `mutateNode`: `node.props.progressBar = node.props.progressBar.deepCopy()..mergeFromProto3Json({'backgroundColorValue': {'inputValue': {'themeColor': 'ALTERNATE'}}, 'animationValue': {'inputValue': true}})` · 🔴 `ensureReplaced` บน `ListView` ได้คีย์ใหม่ทั้งตัว list (`ListView_p2fqpatn` → `ListView_nqvjnz7q`) และลูกทุกตัว (`ProgressBar_opwakogf`) — ดูคีย์ใหม่จาก `inspect --node <name> --raw` ก่อนพุชถัดไป
+
+**ใช้แล้วที่:** `HomeAdmin` `SalesBySellerList` (D-107)

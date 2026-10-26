@@ -400,3 +400,13 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - user ธรรมดา (`5f96…`): **0 แถว** — gate `private.is_admin()` ยังทำงาน (ไม่รั่วข้อมูลยอดขาย) · `reloptions = security_invoker=true` คงเดิม
 - FlutterFlow `generated_code/lib/home_admin/home_admin_widget.dart`: `sellerSaleItem.salesRank` (×4 badge) · `isTop3` · `totalSalesLabel!` · `LinearPercentIndicator(percent: sellerSaleItem.salesShare!, backgroundColor: alternate, animation: true)` · `_model.sellerSales = refreshedSellerSales` (ดึง refresh ยังต่ออยู่) · `triggers` 16 เท่าเดิม
 - **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · กรณีผู้ขาย ≥ 10 คน และยอดเท่ากัน (ตรวจเฉพาะ SQL ตามตรรกะ `rank()`)
+
+### V-29 · QR รับชำระเงิน `Profile.payment_qr_url` + bucket `payment-qr` + `chat_sale_status_view` (D-110, 2026-10-26)
+
+ทดสอบใน `DO` block เดียวด้วย `SET LOCAL ROLE authenticated` + jwt claims ของ user ธรรมดา 2 คน (ห้อง 23, ไม่ใช่แอดมิน) จบด้วย `RAISE EXCEPTION` → rollback เอง (ยืนยันหลังรัน: `payment_qr_url` ไม่ NULL = 0 แถว, `storage.objects` ใน `payment-qr` = 0)
+- A ก่อนตั้ง QR: `has_my_payment_qr=false`, `my_payment_qr_url=''` · A update แถวตัวเอง = 1 แถว → `true` + URL ตรง
+- B ดูห้องเดียวกัน: `false`, `''` (ไม่เห็น QR ของ A) · B update แถว A = **0 แถว**
+- A ตั้ง `'   '` → `check_violation` (`profile_payment_qr_url_not_blank`)
+- storage: A อัปโหลดเข้า `<uid ตัวเอง>/` ได้ · เข้า `<uid ของ B>/` ถูกปฏิเสธ
+- FlutterFlow `generated_code/`: อัปโหลด `bucketName: 'payment-qr'` · บันทึก `ProfileTable().update({'payment_qr_url': …})` กรอง `id = currentUserUid` · ชิปแชท `ChatMessageTable().insert({chat_id, user_id, image_url: saleStatuItem.myPaymentQrUrl})` + refetch `messages` · รูปโปรไฟล์ยัง `avatars`
+- **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · การอัปโหลดไฟล์จริงเข้า bucket ผ่าน Storage API (ทดสอบแค่ policy ด้วย INSERT ตรง) · ผู้ใช้ถูกแบน (RESTRICTIVE policy ของ `chat_message` ไม่ได้ทดสอบกับชิปนี้) · แอดมินเห็น/ใช้ชิปในห้องแชทแอดมินหรือไม่

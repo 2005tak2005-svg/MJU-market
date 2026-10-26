@@ -670,7 +670,11 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
  SELECT t.seller_id,
     pr.full_name AS seller_name,
     count(*) AS items_sold,
-    sum(t.price) AS total_sales
+    sum(t.price) AS total_sales,
+    (rank() OVER (ORDER BY sum(t.price) DESC))::integer AS sales_rank,        -- D-107
+    (rank() OVER (ORDER BY sum(t.price) DESC)) <= 3 AS is_top3,
+    GREATEST(round(sum(t.price) / NULLIF(max(sum(t.price)) OVER (), 0), 4), 0.03) AS sales_share,
+    to_char(sum(t.price), 'FM999,999,999,990') AS total_sales_label
    FROM transactions t
      LEFT JOIN public_profiles pr ON pr.id = t.seller_id
   WHERE private.is_admin()
@@ -723,6 +727,8 @@ CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
 > 🔴 **ทั้ง 3 ตัวต้อง `COALESCE(..., false)` ห้ามลืม** — FlutterFlow codegen ผูก `visible:` เป็น `if (userItem.canBan ?? true)` **fallback เป็น `true`** ถ้าคอลัมน์เป็น NULL ปุ่มจะโผล่ทั้งที่ไม่ควร (`role` nullable → `NULL <> 'admin'` = NULL) และใช้ `IS DISTINCT FROM` แทน `<>` ตอนเทียบ `auth.uid()` ที่เป็น NULL ได้ — เจอจริงตอนอ่าน `generated_code/` (PT-29 §2)
 >
 > `banned_by` join ผ่าน `public_profiles` ไม่ใช่ `"Profile"` ตรง ๆ ตามกฎ PT-01/D-01
+
+> 📌 `admin_sales_by_seller` +4 คอลัมน์ท้าย (D-107, 2026-10-26) สำหรับกราฟจัดอันดับบน `HomeAdmin`: `sales_rank` (`rank()` เท่ากันได้อันดับเดียวกัน) · `is_top3` · `sales_share` = ยอด ÷ ยอดอันดับ 1 (0–1) **ขั้นต่ำ 0.03** ให้แท่งของคนยอดน้อยยังมองเห็น (ข้อมูลจริงห่างกัน 38,900 vs 20) — เป็นค่าสำหรับวาดแท่งเท่านั้น ไม่ใช่สัดส่วนจริง · `total_sales_label` = ยอดมีคอมมา (`'38,900'`) · gate `private.is_admin()` เดิมยังอยู่ (user ธรรมดาได้ 0 แถว)
 
 > 📌 `admin_sales_by_seller` (L8, เพิ่ม 2026-08-14) ประมาณ "ยอดขายที่ปิดแล้วต่อผู้ขาย" — **repoint ไปอ้างตาราง `transactions` แล้ว (D-59, 2026-08-23)**, เดิมอ้าง `products.status = 'sold'` ตรง ๆ ชั่วคราวเพราะ L5 ยังไม่เริ่ม คอลัมน์ output เหมือนเดิมทุกตัว (`seller_id`/`seller_name`/`items_sold`/`total_sales`) — `HomeAdmin`'s `SalesBySellerList` ไม่ต้องแก้ DSL เลย
 >

@@ -37,6 +37,7 @@
 | 13 | `banned_by` | uuid | nullable | – |
 | 14 | `year_of_study` | smallint | nullable | – |
 | 15 | `faculty_id` | bigint | nullable | – |
+| 16 | `payment_qr_url` | text | nullable | – (D-110 — URL รูป QR รับชำระเงินใน bucket `payment-qr`; อ่าน/แก้ได้เฉพาะเจ้าของแถว + แอดมิน ไม่อยู่ใน view สาธารณะใด ๆ) |
 
 ```sql
 -- constraint ทั้งหมด (pg_get_constraintdef คำต่อคำ)
@@ -61,6 +62,8 @@ CHECK (((email IS NULL)
         OR (lower((email)::text) ~ '^[^@]+@mju\.ac\.th$'::text)))            -- profile_email_domain
 
 CHECK ((year_of_study IS NULL) OR (year_of_study BETWEEN 1 AND 4))          -- profile_year_of_study_range (D-56: 4 ระดับชั้นปีจริง)
+
+CHECK ((payment_qr_url IS NULL) OR (btrim(payment_qr_url) <> ''::text))     -- profile_payment_qr_url_not_blank (D-110)
 ```
 
 > ⚠️ `profile_student_id_matches_email` ผูก `student_id` เข้ากับ `email` แบบตายตัว — ตั้ง `student_id` ที่ไม่ตรงรูปแบบ `mju<10หลัก>@mju.ac.th` ไม่ได้เลย ผลกระทบเต็ม ๆ ดู `DECISIONS.md` **D-10**
@@ -681,17 +684,26 @@ CREATE VIEW public.admin_sales_by_seller WITH (security_invoker = true) AS
   GROUP BY t.seller_id, pr.full_name
   ORDER BY (sum(t.price)) DESC;
 
--- reloptions: security_invoker=true   (L5, เพิ่ม 2026-08-23, D-59)
+-- reloptions: security_invoker=true   (L5, เพิ่ม 2026-08-23, D-59; +inquiry_* D-93; +my_payment_qr_url/has_my_payment_qr D-110 — นิยามตรงกับ DB ณ 2026-10-26)
 CREATE VIEW public.chat_sale_status_view WITH (security_invoker = true) AS
  SELECT c.id AS chat_id,
-    (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id)) AS chat_already_sold,
-    (NOT (EXISTS (SELECT 1 FROM transactions t WHERE t.chat_id = c.id))
-     AND NOT private.is_banned()
-     AND (EXISTS (SELECT 1 FROM products p
-            WHERE p.seller_id = auth.uid()
-              AND p.moderation_status::text = 'approved'::text
-              AND p.status::text <> 'sold'::text))) AS can_show_picker
-   FROM chat c;
+        CASE
+            WHEN li.product_id IS NOT NULL THEN li.status::text = 'sold'::text
+            ELSE (EXISTS ( SELECT 1 FROM transactions t WHERE t.chat_id = c.id))
+        END AS chat_already_sold,
+    NOT private.is_banned() AND (EXISTS ( SELECT 1
+           FROM products p
+          WHERE p.seller_id = auth.uid() AND p.moderation_status::text = 'approved'::text AND p.status::text <> 'sold'::text)) AS can_show_picker,
+    li.product_id AS inquiry_product_id,
+    li.title AS inquiry_product_title,
+    COALESCE(( SELECT pr.payment_qr_url FROM public."Profile" pr WHERE pr.id = auth.uid()), ''::text) AS my_payment_qr_url,
+    EXISTS ( SELECT 1 FROM public."Profile" pr WHERE pr.id = auth.uid() AND pr.payment_qr_url IS NOT NULL) AS has_my_payment_qr
+   FROM chat c
+     LEFT JOIN LATERAL ( SELECT cm.product_id, pv.status, pv.title
+           FROM chat_message cm JOIN products_review_view pv ON pv.id = cm.product_id
+          WHERE cm.chat_id = c.id AND cm.product_id IS NOT NULL
+          ORDER BY cm.created_at DESC, cm.id DESC
+         LIMIT 1) li ON true;
 
 -- reloptions: security_invoker=true   (L8, เพิ่ม 2026-08-21, D-52)
 CREATE VIEW public.admin_users_view WITH (security_invoker = true) AS
@@ -1701,6 +1713,20 @@ GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authen
 ```
 
 > ⚠️ **ยังไม่มีฝั่ง FlutterFlow อัปโหลดเข้า bucket นี้เลย** — schema/policy พร้อมแล้ว รอ Action Flow ส่งรูป (ดู `layers/L4-chat.md`)
+
+### bucket `payment-qr` (L4, เพิ่ม 2026-10-26, D-110)
+
+| ค่า | |
+|---|---|
+| `public` | **true** — แชทต้องโหลดรูปด้วย URL ตรง (เหมือน `chat-images`) · path = `<auth.uid()>/<ชื่อไฟล์>` เดายาก แต่**ใครมี URL ก็เปิดได้** (QR ถูกส่งให้คู่สนทนาอยู่แล้ว) |
+| `file_size_limit` | `5242880` (5 MB) · `allowed_mime_types` `{image/jpeg, image/png, image/webp}` |
+
+| policyname | cmd | roles | เงื่อนไข |
+|---|---|---|---|
+| `payment-qr: owner upload` / `update` / `delete` / `read` | INSERT / UPDATE / DELETE / SELECT | `{authenticated}` | `bucket_id = 'payment-qr' AND (storage.foldername(name))[1] = (SELECT auth.uid())::text` (เหมือน `chat-images`) |
+
+> **จงใจไม่มี policy SELECT แบบ public** (ต่างจาก bucket อื่น) — กัน `storage.list()` ไล่รายการ QR ของคนอื่น; URL ตรงยังเปิดได้เพราะ bucket เป็น public
+> ⚠️ **ไม่อยู่ใน `cleanup-orphan-storage`** (สแกนแค่ `product-images`/`avatars`) → ไฟล์ QR เก่าที่ถูกแทนที่จะค้างใน bucket · ถ้าจะให้เก็บกวาด ต้องเพิ่ม bucket + `Profile.payment_qr_url` เข้า `BUCKETS`/`loadReferencedPaths` ของฟังก์ชัน
 
 ### bucket `ad-post-images` (L8, เพิ่ม 2026-08-22, D-58)
 

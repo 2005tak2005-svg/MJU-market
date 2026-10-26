@@ -39,3 +39,11 @@ GROUP BY 1 HAVING count(*) > 1;
 
 -- [5.7] chat_sale_status_view ตอบถูกทั้ง 2 คอลัมน์ไหม (แทนคีย์จริงก่อนรัน)
 -- SELECT * FROM chat_sale_status_view WHERE chat_id = <CHAT_ID>;
+
+-- D-106: RPC แดชบอร์ดผู้ขาย — ต้องไม่เปิดให้ anon และคืนค่าสอดคล้องกับตารางต้นทาง (รันในฐานะ user จริง: SET LOCAL ROLE authenticated + request.jwt.claims)
+-- SELECT has_function_privilege('anon', 'public.get_my_seller_dashboard()', 'EXECUTE') AS anon_can_execute;            -- ต้อง false
+-- SELECT has_function_privilege('authenticated', 'public.get_my_seller_dashboard()', 'EXECUTE') AS auth_can_execute;   -- ต้อง true
+-- SELECT p.prosecdef, p.proconfig FROM pg_proc p WHERE p.oid = 'public.get_my_seller_dashboard()'::regprocedure;       -- true + {search_path=""}
+-- (ในฐานะ user U) d->>'total_sales' ต้องเท่า SELECT COALESCE(sum(price),0) FROM transactions WHERE seller_id = U
+-- (ในฐานะ user U) d->>'customers' ต้องเท่านับ distinct ผู้ใช้อื่นที่ร่วม chat_user กับ U และ "Profile".role <> 'admin'
+-- (ในฐานะ user U) sum(days[].amount) ต้อง <= total_sales และ sum(months[].amount) ต้อง <= total_sales

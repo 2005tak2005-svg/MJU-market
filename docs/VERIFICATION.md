@@ -383,3 +383,13 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - ข้อมูลจริงครบ 4 กรณี: มีรูป+ไม่มีรีวิว (`-`, 9 ประกาศ) · มีรูป+4.5 (2 รีวิว, 4 ประกาศ) · ไม่มีรูป+ไม่มีรีวิว (`-`, 3) · ไม่มีรูป+5.0 (1 รีวิว, 2) · `seller_avatar_url = ''` ⇔ `seller_has_avatar = false` ตรงกันทุกแถว
 - FlutterFlow `generated_code/lib/product_details/product_details_widget.dart`: `sellerHasAvatar` / `sellerAvatarUrl!` / `sellerRatingLabel!` ผูกถูก · action เดิมครบ (`loadViewedProfile`, `findOrCreateChatWithSeller`/`Admin`, `recordProductView`, `launchUrl`, `FullImageViewerWidget` ×3, `RateSellerSheetWidget`, `ReportProductSheetWidget`, `UserProfileCardWidget`) · `triggers` 11 เท่าเดิม
 - **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ (ไม่มี `flutter` และ Live Session bridge) · ไม่ได้ทดสอบด้วยบัญชี user ธรรมดา (view เดิมเป็น `security_invoker` และคอลัมน์ใหม่ดึงจาก `public_profiles` ที่เปิดเผยอยู่แล้ว ไม่มีข้อมูลใหม่)
+
+### V-27 · `get_my_seller_dashboard()` (D-106, 2026-10-26)
+
+- จำลอง `authenticated` (`SET LOCAL ROLE` + `request.jwt.claims`) เทียบกับ query ตรงด้วย `postgres`: ผู้ใช้ `a255…` → rating 4.5 (2 รีวิว) · ยอดรวม 38,900 (2 รายการ, 21 ต.ค.) · ลูกค้า 3 — ตรงกับ query ตรงทุกค่า · **ถ้ารวมแอดมินจะได้ 5** (ยืนยันว่าตัดแอดมินจริง)
+- ผู้ใช้ `5f96…` → ลูกค้า 7 · ยอด 200 (ส.ค. อยู่ในหน้าต่าง 6 เดือน, ผลรวม `months` = 200, `days` = 0) · ไม่มีรีวิว → `rating_avg = null`, `rating_count = 0`
+- `anon` เรียก → `permission denied for function` ✔ · ฟังก์ชันไม่รับ argument → ดูของคนอื่นไม่ได้
+- `get_advisors` (security): finding ใหม่ชนิดเดิมเพียง `authenticated_security_definer_function_executable` สำหรับฟังก์ชันนี้ (รวม 12 รายการ ชนิดเดียวกับ `get_seller_profile_header` ฯลฯ ที่ตั้งใจ) ไม่มีชนิดใหม่
+- FlutterFlow `generated_code/`: `custom_widgets.ProfileStatsRow()` ในการ์ดหัว · `custom_widgets.ProfileSalesChart()` ใต้การ์ดหัว · `SingleChildScrollView` + `Column(stretch)` · มุมโค้ง 28 ครบ · action เดิมครบ (อัปโหลดรูป `uploadSupabaseStorageFiles`, สลับฟอร์ม `isEditingProfile`, `MyPurchasesWidget`, `authManager.signOut`) · `triggers` 11 เท่าเดิม
+- ตรรกะ widget (Dart ล้วน, `--enable-asserts`) กับ JSON จริง: 7 วัน = `อ=0 พ=38900 พฤ…จ=0`, ป้าย "พุธ 21 ต.ค." / "ต.ค. 2569", ความสูงแท่ง 6.0/96.0, ข้อมูล null/ผิดรูป/ว่างไม่ throw
+- **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ · Dart analyzer ของ custom widget (ไม่มี `flutter`) · ผู้ใช้ที่ไม่เคยขาย/ไม่มีแชทเลยบนอุปกรณ์จริง (ตรวจเฉพาะ SQL: คืน 0/[] ไม่ error)

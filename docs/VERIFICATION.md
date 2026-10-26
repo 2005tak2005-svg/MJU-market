@@ -376,3 +376,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - FlutterFlow `generated_code/lib/chat_messages/chat_messages_widget.dart`: หลัง `_model.pendingChatImageUrl = _model.uploadedFileUrl_chatImageUpload` → `if (pending != null && pending != '')` → `if (!(pending == lastSentChatImageUrl))` → `lastSentChatImageUrl = pending` → `ChatMessageTable().insert` → refetch → `pending = ''` · ไล่ตามโค้ด: ยกเลิกครั้งแรก = ไม่ insert · ส่งรูปใหม่ = insert · ยกเลิกหลังเคยส่ง = ไม่ insert (URL เท่า lastSent)
 - **ไม่ได้ทดสอบ:** แอปจริง (ยกเลิกเลือกรูป, ส่งรูป, ยกเลิกหลังส่งรูป, ส่งรูปที่สองต่อเนื่อง) · Dart analyzer (ไม่มี `flutter`)
 - **ลบแถวว่างเก่า (pete สั่ง 2026-10-25):** ตรวจก่อนลบ — ตรงเงื่อนไข `message` ว่าง + `image_url` ว่าง ครบ 6 แถว (53, 56 ห้อง 13 · 89–92 ห้อง 22) · trigger บน `chat_message` ยิงเฉพาะ INSERT · `DELETE ... WHERE id IN (...) AND <ว่าง> RETURNING` ได้ 6 แถว · หลังลบ: ข้อความทั้งหมด 67 · แถวว่างเหลือ 0 · `VALIDATE CONSTRAINT chat_message_has_content` ผ่าน (`convalidated = true`)
+
+### V-26 · `products_review_view` คอลัมน์ผู้ขายใหม่ (D-105, 2026-10-26)
+
+- apply `CREATE OR REPLACE VIEW` (เพิ่ม 3 คอลัมน์ท้าย) แล้ว: `reloptions = {security_invoker=true}` คงเดิม · 37 คอลัมน์ · view 18 แถว / `search_products(NULL,NULL,NULL,NULL)` 7 แถว (ทำงานปกติ)
+- ข้อมูลจริงครบ 4 กรณี: มีรูป+ไม่มีรีวิว (`-`, 9 ประกาศ) · มีรูป+4.5 (2 รีวิว, 4 ประกาศ) · ไม่มีรูป+ไม่มีรีวิว (`-`, 3) · ไม่มีรูป+5.0 (1 รีวิว, 2) · `seller_avatar_url = ''` ⇔ `seller_has_avatar = false` ตรงกันทุกแถว
+- FlutterFlow `generated_code/lib/product_details/product_details_widget.dart`: `sellerHasAvatar` / `sellerAvatarUrl!` / `sellerRatingLabel!` ผูกถูก · action เดิมครบ (`loadViewedProfile`, `findOrCreateChatWithSeller`/`Admin`, `recordProductView`, `launchUrl`, `FullImageViewerWidget` ×3, `RateSellerSheetWidget`, `ReportProductSheetWidget`, `UserProfileCardWidget`) · `triggers` 11 เท่าเดิม
+- **ไม่ได้ทดสอบ:** แอปจริง/ภาพหน้าจอ (ไม่มี `flutter` และ Live Session bridge) · ไม่ได้ทดสอบด้วยบัญชี user ธรรมดา (view เดิมเป็น `security_invoker` และคอลัมน์ใหม่ดึงจาก `public_profiles` ที่เปิดเผยอยู่แล้ว ไม่มีข้อมูลใหม่)

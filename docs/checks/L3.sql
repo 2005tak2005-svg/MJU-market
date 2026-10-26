@@ -71,3 +71,12 @@ SELECT (view_definition LIKE '%wishlist_items%')          AS มี_join_wishlis
 --   SELECT count(*) AS orphaned_rows FROM wishlist_items wi
 --     WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.id = wi.product_id);      -- ต้องได้ 0
 -- ROLLBACK;
+
+-- D-105: คอลัมน์ผู้ขายบน products_review_view (หน้า ProductDetails)
+-- ต้องไม่มีแถวที่ seller_has_avatar ขัดกับ seller_avatar_url · label ต้องเป็น '-' เมื่อไม่มีรีวิว และเป็นตัวเลขทศนิยม 1 ตำแหน่งเมื่อมี
+-- SELECT count(*) AS bad_avatar FROM public.products_review_view
+--   WHERE seller_has_avatar <> (seller_avatar_url <> '');                                     -- ต้องได้ 0
+-- SELECT count(*) AS bad_label FROM public.products_review_view
+--   WHERE (seller_review_count = 0 AND seller_rating_label <> '-')
+--      OR (seller_review_count > 0 AND seller_rating_label !~ '^[0-5]\.[0-9]$');              -- ต้องได้ 0
+-- SELECT reloptions FROM pg_class WHERE oid = 'public.products_review_view'::regclass;       -- ต้องมี security_invoker=true

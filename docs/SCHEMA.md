@@ -1588,6 +1588,23 @@ GRANT EXECUTE ON FUNCTION public.get_seller_profile_header(uuid, uuid) TO authen
 
 ---
 
+### L5/L7 แดชบอร์ดผู้ขายบนหน้าโปรไฟล์ — `get_my_seller_dashboard()` (เพิ่ม 2026-10-26, D-106)
+
+`public.get_my_seller_dashboard()` → `jsonb` · ไม่มี parameter · `LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''` · `REVOKE` จาก `PUBLIC`/`anon` · `GRANT EXECUTE` ให้ `authenticated` เท่านั้น · **คืนเฉพาะข้อมูลของ `auth.uid()` เอง** (ไม่มี argument ให้ดูของคนอื่น)
+
+| key | ความหมาย | แหล่ง |
+|---|---|---|
+| `rating_avg` / `rating_count` | คะแนนเฉลี่ย (1 ตำแหน่ง, `null` ถ้าไม่มีรีวิว) / จำนวนรีวิวที่ได้รับ | `reviews.reviewee_id = me` |
+| `total_sales` / `sales_count` | ยอดขายรวมทั้งหมด / จำนวนรายการขาย | `transactions.seller_id = me` (`price` = snapshot ตอนขาย) |
+| `customers` | จำนวน**ผู้ใช้อื่นที่ไม่ซ้ำ**ที่มีห้องแชทร่วมกับเรา **ไม่นับแอดมิน** (`"Profile".role = 'admin'`) — นับห้องที่ถูกสร้างไว้ ไม่ต้องมีข้อความ ไม่กรองผู้ถูกแบน | `chat_user` self-join + `"Profile"` |
+| `today` | วันที่ปัจจุบันเขตเวลา `Asia/Bangkok` | – |
+| `days[7]` | 7 วันล่าสุดรวมวันนี้ (เก่า→ใหม่): `{date, amount, count}` ยอดขายรายวัน | `transactions` |
+| `months[6]` | 6 เดือนล่าสุดรวมเดือนนี้: `{month (วันที่ 1), amount, count}` | `transactions` |
+
+- ทำไม SECURITY DEFINER: ต้องอ่าน `role` ของ `"Profile"` คนอื่น (RLS ซ่อน) เพื่อตัดแอดมินออกจาก `customers` · ผลที่คืนเป็นตัวเลขรวมไม่เผยข้อมูลรายคน
+- วันที่/เดือนทุกอย่างตัดตามเวลาไทย (`created_at AT TIME ZONE 'Asia/Bangkok'`) ไม่ใช่ UTC
+- ผู้เรียกที่ไม่มีข้อมูลขายได้ `0`/`[]` ไม่ใช่ error (ผลบนผู้ใช้ที่ไม่เคยขาย: `total_sales = 0`, `days`/`months` เป็นศูนย์ครบ)
+
 ## Storage
 
 ### bucket `product-images`

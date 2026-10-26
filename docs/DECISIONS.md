@@ -2061,13 +2061,27 @@ RLS 3 policy: `reviews_select_all` (SELECT, `authenticated`, `true` — public r
 
 **ทำ (`dsl/chat_wallpaper.dart`, FF push `vq4HcT8jPu8aJEEvD16t`, ไม่มี custom code, ไม่แตะ DB):**
 - **รูป** `chat_wallpaper.png` 1170×2000 PNG โปร่งใส — โลโก้กว้าง 50pt 3 ตัว/แถว สลับครึ่งช่วงทุกแถว (ห่างคอลัมน์ 65pt, ห่างแถว 95pt) เส้นสี `#ADABA6` (สีจริงของโลโก้) ขาว→โปร่งใส (ตา/ไส้ถุงเห็นพื้นหลัง) · อัปโหลดด้วย `flutterflow ai assets upload` · ต้นฉบับ+สคริปต์สร้าง: `mju_market_v2_ai/backup/chat_wallpaper_D108/`
-- **UI** `chatMessages`: body `Column_lfd2x6ri` → `Expanded > Stack_chatwall` [`Image_chatwall` fit cover **opacity 0.30**, `ListView_q8swv4j1` เดิมย้ายเข้ามา] · คีย์/action/Realtime ของ ListView ไม่ถูกแตะ · pattern PT-54
-- ยืนยันจาก `inspect --outline` + `generated_code/`: `Expanded > Stack > [Opacity(0.3) > Image.asset, ListView.builder]`
+- **UI** `chatMessages`: body `Column_lfd2x6ri` → `Expanded > Stack_chatwall` [`Image_chatwall` fit cover **opacity 0.30 → 0.35 (D-109)**, `ListView_q8swv4j1` เดิมย้ายเข้ามา] · คีย์/action/Realtime ของ ListView ไม่ถูกแตะ · pattern PT-54
+- ยืนยันจาก `inspect --outline` + `generated_code/`: `Expanded > Stack > [Opacity > Image.asset, ListView.builder]`
 
 **ไม่เปลี่ยนสีพื้น — คง `primaryBackground` (token):** (1) แอปใช้ `ThemeMode.system` เป็นค่าเริ่มต้น พื้นครีมตายตัวทำให้ข้อความ `secondaryText` ของโหมดมืดอ่านไม่ออก (2) พรีวิวบนครีม `#F4EFE6` โลโก้เทาอุ่นกลืนเกือบหมด บนม่วงอ่อน `#F6F2FF` เห็นชัดกว่าที่ opacity เท่ากัน
 
 **ปรับความจาง:** แก้ `opacity:` ของ `Image_chatwall` (ไม่ต้องอัปรูปใหม่) · 0.2 จางมาก / 0.4 ชัดเจน
 
-**ข้อจำกัด:** ลายครอบเฉพาะพื้นที่รายการข้อความ (ในกรอบ padding 14 ของ body, ไม่รวม `MarkSoldSection`/`ComposeBar`) · `fit: cover` กว้างพอดีบนจอส่วนใหญ่ จอสั้นตัดบน/ล่างของลาย · ลายอยู่กับที่ ไม่เลื่อนตามข้อความ · asset ถูกใส่ bundle ตอน FF build ไม่อยู่ใน export (เหมือน D-104) · **ยังไม่ได้ดูบนเครื่องจริง** (ไม่มี `flutter`/Live Session)
+**ข้อจำกัด:** ลายครอบเฉพาะพื้นที่รายการข้อความ (ในกรอบ padding 14 ของ body, ไม่รวม `MarkSoldSection`/`ComposeBar`) · `fit: cover` กว้างพอดีบนจอส่วนใหญ่ จอสั้นตัดบน/ล่างของลาย · ลายอยู่กับที่ ไม่เลื่อนตามข้อความ · asset ถูกใส่ bundle ตอน FF build ไม่อยู่ใน export (เหมือน D-104) · **pete ทดสอบบนเครื่องจริงแล้ว: ลายแสดง ไม่บังบับเบิล** (2026-10-26)
 
 **ย้อนกลับ:** ย้าย `ListView_q8swv4j1` กลับเข้า `Column_lfd2x6ri` index 0 + ตั้ง `props.expanded` แล้วลบ `Stack_chatwall`
+
+## D-109 — `chatMessages`: AppBar สีม่วงเข้ม + ลายวอลล์เปเปอร์เข้มขึ้น (2026-10-26)
+
+**pete สั่ง (หลังทดสอบ D-108 บนเครื่องจริง):** ลายเข้มขึ้นเป็น 35% · เพิ่มแถบสี AppBar ด้านบนให้เข้มและอยู่ในธีมเดียวกัน
+
+**ทำ (`dsl/chat_appbar.dart`, FF push `TKdlo2QnWIvQTMab5a1b`, rerun-safe, ไม่แตะ DB):**
+- `Image_chatwall` opacity 0.30 → **0.35** (`patch.opacity`)
+- `AppBar_xqbvfm6y` พื้น `primaryBackground` → **`primary`** (token: สว่าง `#7C3AED` / มืด `#9F7AEA` — ม่วงเดียวกับบับเบิลฝั่งเรากับไอคอนส่ง) · raw proto ตาม PT-34
+- `Text_3ew234z3` (ชื่อห้อง) สี → **`primaryBackground`** (ขาวอมม่วงบนพื้นม่วงโหมดสว่าง / เกือบดำโหมดมืด — ตรงข้ามกับพื้นทั้งสองโหมด) · ลูกศรย้อนกลับไม่ได้ตั้งสี = ค่าเริ่มต้น Flutter (เป็นสีขาว ตามภาพทดสอบ D-108)
+- ยืนยันจาก `generated_code/`: `AppBar(backgroundColor: primary)` · title `color: primaryBackground` · `Opacity(opacity: 0.35)`
+
+**ไม่เลือก:** ม่วงเข้มกว่านี้แบบสี literal — ไม่ตามโหมดมืด (พื้นเข้มใต้ข้อความเข้มอ่านไม่ออก)
+
+**ยังไม่ได้ดู:** ภาพหลังแก้ · สีไอคอนแถบสถานะ (ไม่ได้ตั้งเอง ให้ Flutter เลือกตามความสว่างของ AppBar) · โหมดมืด (ลูกศรขาว + ชื่อเกือบดำบน `#9F7AEA`)

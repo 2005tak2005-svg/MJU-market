@@ -975,3 +975,14 @@ PT-23/PT-42 สรุปว่า `item['field']` ใส่เข้า itemBuil
 4. `responsiveVisibility` ของ widget ในการ์ดเทมเพลต (เช่นไอคอนนำหน้า `phoneHidden: true`) ต้องดูก่อนคำนวณความกว้างจอแคบ — `inspect --node <key> --raw`
 
 **ใช้แล้วที่:** `HomeAdmin` (`dsl/admin_home_layout.dart`, D-103)
+
+## PT-51 — รีดีไซน์หน้าที่ผูก `item[]` ของ ListView โดยไม่เขียน action ใหม่ (D-105, 2026-10-26)
+
+1. **ถ้าหน้ามี query แถวเดียวระดับ Scaffold อยู่แล้ว (D-44) ไม่ต้องใช้ `ListView` ครอบเนื้อหา** — ถอด `item[]` ด้วย raw: ไล่ `props` + `triggerActions` ของ node ใต้ ListView → JSON → ทุกตัวแปร `source: GENERATOR_VARIABLE` (`nodeKeyRef` = ListView) แก้เป็น `source: POSTGRES_QUERY`, `baseVariable: {postgresQuery: {}}`, `nodeKeyRef: {key: <Scaffold>}` (ลบ `key` ใน `fieldIdentifier` ให้เหมือน `productField()`) → `FFWidgetProperties()`/`FFTriggerActions()` `.mergeFromProto3Json` กลับ · ครอบ text/visible/รูป **และ** action ที่ใช้ `item[]` (alertDialog param, `seller_id`, `callNumber`) · ทำเป็นพุชแยกก่อนย้าย: หน้าตาต้องเท่าเดิม ตรวจ `generated_code/` ว่า `productRowItem` เหลือแค่ประกาศตัวแปร · ปลดข้อจำกัด D-43 (Image ≤1 ต่อ itemBuilder, `item[]` ส่งเข้า action ไม่ได้)
+2. **ย้ายโครงด้วย `ensureInsertedInto(index:)` + `ensureMovedTo(index:/slot:)` ใน `editPage` เดียวกัน** — destination ที่เพิ่ง insert อ้างได้ (SDK วางแผนย้ายหลัง insert) · `app.editPage` บล็อกถัดไปในสคริปต์เดียวกันอ้าง node ที่บล็อกก่อนสร้างได้ด้วย `findByKey` (ใช้ผูกข้อมูลของ node ใหม่ได้) · ย้าย node ที่มี action/คีย์เดิม = action คงเดิม (`inspect` นับ `triggers` ก่อน/หลังต้องเท่ากัน) · ลบ ListView ที่เหลือซากในบล็อกหลังสุด · ย้ายเข้า AppBar: `slot: 'actions'`
+3. **sticky bottom bar บน Scaffold ที่ body เป็น Column scrollable:** ปิด `scrollable` ของ body, แทรก `Expanded(Column(scrollable: true))` ที่ index 0 แล้วย้ายเนื้อหาเข้าไป + แทรกแถบล่างต่อท้าย body
+4. 🔴 **`page.update(sel, (p) => p.size(height: X))` เขียนทับ `dimensions` ทั้งก้อน** — ไม่ส่ง `width` = ความกว้างเดิม (เช่น `Infinity`) หาย · ส่ง `width:` เดิมทุกครั้ง · ดู `sizing changed on … width` ใน dry-run (ถ้าไม่ได้ตั้งใจเปลี่ยน width ให้แก้ก่อน push)
+5. `mutateNode` ได้ proto บางชั้นแบบ frozen → กำหนดคืนทั้งชั้น: `node.props.text = node.props.text.deepCopy()..mergeFromProto3Json({...})` (ใช้กับ `text`/`column`/`row`/`iconButton`/`button`/`container`/`appBar`) · มุมโค้งเฉพาะบน: `boxDecoration.borderRadius = {type: FF_BORDER_RADIUS_ONLY, topLeftValue, topRightValue, ...}` · ไอคอนในปุ่ม: `iconPosition: LEADING` + `iconValue.inputValue{sizeValue, colorValue, iconDataValue{family,name}}`
+6. `Container(padding:, child:)` ใน DSL compile padding ไปไว้ที่ node ลูก (เช่น Row) ไม่ใช่ Container · เพิ่มคอลัมน์ท้าย view: `CREATE OR REPLACE VIEW` ใส่ `WITH (security_invoker = true)` ซ้ำ แล้ว register ฟิลด์ใน FF คนละพุช (PT-15/17) · `search_products` (`SETOF products_review_view`) ไม่พัง
+
+**ใช้แล้วที่:** `ProductDetails` (`dsl/pd_redesign_step1…2c.dart`)

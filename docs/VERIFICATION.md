@@ -420,3 +420,10 @@ error: failed to close prepared statement: ERROR: current transaction is aborted
 - **cleanup:** ทดสอบด้วย `RAISE EXCEPTION` ท้าย `DO` (rollback เอง) → นับกลับเท่าเดิม (สินค้า 21 / แชท 21 / ข้อความ 69 / ธุรกรรม 5 / รีวิว 3) แจ้งเตือน 34 (เดิม 35: `notify_chat_message` ลบแจ้งเตือนแชทที่ยังไม่อ่านเดิม 1 แถวในห้อง 10/17 ตอน seed) · **ยังไม่เคยรันจริง**
 - พบ: กราฟยอดขาย 7 วันของ `get_my_seller_dashboard` ว่างเมื่อการขายเก่ากว่า 7 วัน → เลื่อนเวลาปิดการขาย 4 รายการเข้าสัปดาห์นี้ · ห้องแชท 10/17 เป็นห้องเดิมของคู่เดียวกัน seed ต่อท้ายตาม find-or-create
 - **ไม่ได้ทดสอบ:** ภาพบนหน้าจอแอปจริง (รูป placeholder ของ placehold.co โหลดได้ตอน `curl` 200 แต่ยังไม่ดูใน FlutterFlow) · มุมมองแอดมิน (คิวรอตรวจ 3 รายการ, `admin_sales_by_seller`) ผ่านแอป · `listing_approved` ไม่มี path เขียนจึงไม่มีใน seed
+
+### V-31 · ซ้อมเดโมแจ้งเตือนจริง บัญชี `mju6606105382` (2026-10-27)
+
+seed `docs/seed/2026-10-27-demo-piti-notifications.sql` (ปิด `trg_push_notification_ntfy` ใน transaction เดียว แล้วเปิดคืน)
+- **สถานะหลัง seed:** เสื้อเชิ้ต/เบลเซอร์ยอดดู 9 แถว ยังไม่มี `product_popular` · ไม่มีการดูใน 30 นาทีล่าสุด · ประกาศรอตรวจของ user นี้ 2 (คิวรวม 4) · แจ้งเตือนยังไม่อ่านของ user นี้ 7 (แชท 5 รวมแอดมิน 1, `listing_rejected` 1, `review_received` 1) · ntfy trigger `O`, `net.http_request_queue` 0
+- **ซ้อม (DO + `RAISE EXCEPTION` ท้ายบล็อก → rollback เอง, ปิด ntfy ในบล็อก):** พีทน้อยเรียก `record_product_view(เสื้อเชิ้ต)` → ยอด 10 + `product_popular` ถึงปิติเทพ 1 แถว · ปิติเทพเรียก `mark_product_sold(6, เสื้อเชิ้ต)` → `sale_confirmed` ถึงพีทน้อย 1 แถว · พีทน้อยให้ดาว → `review_received` ถึงปิติเทพ 1 แถว · หลังรัน: ยอดดู 9, เสื้อ `available`, ธุรกรรมห้อง 6 = 0, ไม่มีแถวหลุด
+- **ไม่ได้ทดสอบ:** push ถึงมือถือจริง (ซ้อมโดยปิด ntfy) · banner ในแอป · ปฏิเสธประกาศผ่านหน้าแอดมิน (`RejectProductSheet`) · ผู้ดูเปิดสินค้าผ่านแอป (ทดสอบเรียก RPC ตรง)

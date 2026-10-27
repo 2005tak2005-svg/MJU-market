@@ -51,7 +51,8 @@ BEGIN
                     v.label || CASE WHEN i = 1 THEN '' ELSE '+' || i END)
       FROM generate_series(1, v.nimg) i) END,
     v.cond,
-    (SELECT NULLIF(btrim(phone), '') FROM public."Profile" WHERE id = u.id),
+    -- ProductDetails บังคับ contactPhone! (แอปบังคับกรอก 10 หลักตอนลงประกาศ) → ห้ามเป็น NULL; ผู้ขายไม่มีเบอร์ใช้เบอร์สมมติ
+    COALESCE((SELECT NULLIF(btrim(phone), '') FROM public."Profile" WHERE id = u.id), '0800000000'),
     v.modst, v.cat, v.reason
   FROM (VALUES
     -- n, seller, title, descr, price, status, nimg, cond, moderation, cat, reason, label, days_ago

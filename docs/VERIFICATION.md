@@ -427,3 +427,10 @@ seed `docs/seed/2026-10-27-demo-piti-notifications.sql` (ปิด `trg_push_not
 - **สถานะหลัง seed:** เสื้อเชิ้ต/เบลเซอร์ยอดดู 9 แถว ยังไม่มี `product_popular` · ไม่มีการดูใน 30 นาทีล่าสุด · ประกาศรอตรวจของ user นี้ 2 (คิวรวม 4) · แจ้งเตือนยังไม่อ่านของ user นี้ 7 (แชท 5 รวมแอดมิน 1, `listing_rejected` 1, `review_received` 1) · ntfy trigger `O`, `net.http_request_queue` 0
 - **ซ้อม (DO + `RAISE EXCEPTION` ท้ายบล็อก → rollback เอง, ปิด ntfy ในบล็อก):** พีทน้อยเรียก `record_product_view(เสื้อเชิ้ต)` → ยอด 10 + `product_popular` ถึงปิติเทพ 1 แถว · ปิติเทพเรียก `mark_product_sold(6, เสื้อเชิ้ต)` → `sale_confirmed` ถึงพีทน้อย 1 แถว · พีทน้อยให้ดาว → `review_received` ถึงปิติเทพ 1 แถว · หลังรัน: ยอดดู 9, เสื้อ `available`, ธุรกรรมห้อง 6 = 0, ไม่มีแถวหลุด
 - **ไม่ได้ทดสอบ:** push ถึงมือถือจริง (ซ้อมโดยปิด ntfy) · banner ในแอป · ปฏิเสธประกาศผ่านหน้าแอดมิน (`RejectProductSheet`) · ผู้ดูเปิดสินค้าผ่านแอป (ทดสอบเรียก RPC ตรง)
+
+### V-32 · สินค้า seed เปิด ProductDetails ไม่ขึ้น (2026-10-27)
+
+- **สาเหตุ:** `contact_phone` เป็น NULL ใน 18 แถวที่ seed (ผู้ขายไม่มีเบอร์ในโปรไฟล์) · `ProductDetails` ใช้ `contactPhone!` ทั้งข้อความและ `tel:` (generated_code/lib/product_details) → null check error · แอปบังคับเบอร์ 10 หลักตอนลงประกาศ (`isPhoneComplete`) ข้อมูลจริงจึงไม่เคยเป็น NULL → เป็นข้อมูล seed ผิดกติกา ไม่ใช่บั๊กแอป
+- **แก้:** UPDATE 18 แถวเป็นเบอร์สมมติ 10 หลัก `08000000NN` (ผู้ขายละหมายเลข) · สคริปต์ part1 ใส่ fallback แล้ว
+- **ตรวจ (user ธรรมดา):** คอลัมน์ที่หน้าใช้ `!` ทั้ง 15 ตัว ไม่มี NULL ในสินค้าเดิม 17 + seed 25 แถว (รวมกรณีมีอวาตาร์/รูปที่ 2/ชื่อผู้ซื้อ)
+- **ไม่ได้ทดสอบ:** เปิดหน้าในแอปจริง (ตรวจจากโค้ดที่ generate + ข้อมูลใน view) · หน้าอื่นที่อ่านสินค้า seed (`Mypost`, การ์ดสินค้าในแชท)
